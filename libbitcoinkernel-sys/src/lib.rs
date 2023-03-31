@@ -63,3 +63,33 @@ pub fn set_logging_callback_and_start_logging_wrapper() {
         set_logging_callback_and_start_logging(Some(rust_log_callback))
     }
 }
+
+pub trait LogFn: Fn(&str) {}
+impl<F: Fn(&str)> LogFn for F{}
+
+struct CallbackHolder {
+    callback: Box<dyn LogFn>,
+}
+
+static mut GLOBAL_CALLBACK_HOLDER: Option<CallbackHolder> = None;
+
+pub fn set_logging_callback<F>(callback: F)
+where
+    F: LogFn + 'static,
+{
+    extern "C" fn log_callback(message: *const c_char) {
+        let message = unsafe {
+            CStr::from_ptr(message)
+                .to_string_lossy()
+                .into_owned()
+        };
+        let callback = unsafe { GLOBAL_CALLBACK_HOLDER.as_ref().unwrap().callback.as_ref() };
+        callback(&message);
+    }
+
+    let callback_box = Box::new(callback);
+    let callback_holder = CallbackHolder { callback: callback_box };
+    unsafe { GLOBAL_CALLBACK_HOLDER = Some(callback_holder) };
+
+    unsafe { set_logging_callback_and_start_logging(Some(log_callback)) };
+}
