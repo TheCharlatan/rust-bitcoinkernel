@@ -2,11 +2,16 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use std::ffi::{CString, NulError};
-use std::os::raw::c_void;
+use std::ffi::{CString, NulError, CStr};
+use std::os::raw::{c_void, c_char};
 use std::default::Default;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+extern "C" fn rust_log_callback(message: *const c_char) {
+    let message_str = unsafe { CStr::from_ptr(message).to_str().unwrap()};
+    println!("rust-bitcoinkernel: {}", message_str);
+}
 
 pub struct Scheduler {
     inner: *mut c_void,
@@ -50,5 +55,11 @@ impl ChainstateManager {
 pub fn c_chainstate_manager_delete_wrapper(chainman: ChainstateManager, scheduler: Scheduler) {
     unsafe {
         c_chainstate_manager_delete(chainman.inner, scheduler.inner);
+    }
+}
+
+pub fn set_logging_callback_and_start_logging_wrapper() {
+    unsafe {
+        set_logging_callback_and_start_logging(Some(rust_log_callback))
     }
 }
