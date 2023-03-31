@@ -1,0 +1,7 @@
+[package]
+name = "rust-bitcoinkernel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libbitcoinkernel-sys = { path = "libbitcoinkernel-sys" }
