@@ -2,19 +2,40 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use std::ffi::{CString, NulError, CStr};
-use std::os::raw::{c_void, c_char};
 use std::default::Default;
+use std::ffi::{CStr, CString, NulError};
+use std::os::raw::{c_char, c_void};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 extern "C" fn rust_log_callback(message: *const c_char) {
-    let message_str = unsafe { CStr::from_ptr(message).to_str().unwrap()};
+    let message_str = unsafe { CStr::from_ptr(message).to_str().unwrap() };
     println!("rust-bitcoinkernel: {}", message_str);
 }
 
 pub struct Scheduler {
     inner: *mut c_void,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChainstateInfoWrapper {
+    pub path: String,
+    pub reindexing: bool,
+    pub snapshot_active: bool,
+    pub active_height: i32,
+    pub active_ibd: bool,
+}
+
+impl From<ChainstateInfo> for ChainstateInfoWrapper {
+    fn from(c: ChainstateInfo) -> ChainstateInfoWrapper {
+        ChainstateInfoWrapper {
+            path: unsafe { CStr::from_ptr(c.path).to_string_lossy().into_owned() },
+            reindexing: c.reindexing != 0,
+            snapshot_active: c.snapshot_active != 0,
+            active_height: c.active_height,
+            active_ibd: c.active_ibd != 0,
+        }
+    }
 }
 
 impl Default for Scheduler {
@@ -50,6 +71,12 @@ impl ChainstateManager {
         };
         Ok(())
     }
+
+    pub fn get_chainstate_info_wrapper(&self) -> ChainstateInfoWrapper {
+        unsafe {
+            get_chainstate_info(self.inner).into()
+        }
+    }
 }
 
 pub fn c_chainstate_manager_delete_wrapper(chainman: ChainstateManager, scheduler: Scheduler) {
@@ -59,13 +86,11 @@ pub fn c_chainstate_manager_delete_wrapper(chainman: ChainstateManager, schedule
 }
 
 pub fn set_logging_callback_and_start_logging_wrapper() {
-    unsafe {
-        set_logging_callback_and_start_logging(Some(rust_log_callback))
-    }
+    unsafe { set_logging_callback_and_start_logging(Some(rust_log_callback)) }
 }
 
 pub trait LogFn: Fn(&str) {}
-impl<F: Fn(&str)> LogFn for F{}
+impl<F: Fn(&str)> LogFn for F {}
 
 struct CallbackHolder {
     callback: Box<dyn LogFn>,
@@ -78,17 +103,15 @@ where
     F: LogFn + 'static,
 {
     extern "C" fn log_callback(message: *const c_char) {
-        let message = unsafe {
-            CStr::from_ptr(message)
-                .to_string_lossy()
-                .into_owned()
-        };
+        let message = unsafe { CStr::from_ptr(message).to_string_lossy().into_owned() };
         let callback = unsafe { GLOBAL_CALLBACK_HOLDER.as_ref().unwrap().callback.as_ref() };
         callback(&message);
     }
 
     let callback_box = Box::new(callback);
-    let callback_holder = CallbackHolder { callback: callback_box };
+    let callback_holder = CallbackHolder {
+        callback: callback_box,
+    };
     unsafe { GLOBAL_CALLBACK_HOLDER = Some(callback_holder) };
 
     unsafe { set_logging_callback_and_start_logging(Some(log_callback)) };

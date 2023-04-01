@@ -23,6 +23,8 @@ fn main() {
     setup_logging();
     let scheduler = Scheduler::new();
     let chainman = ChainstateManager::new("/home/drgrid/.bitcoin", &scheduler).unwrap();
+    let chainstate_info = chainman.get_chainstate_info_wrapper();
+    log::info!("{:?}", chainstate_info);
     chainman.validate_block("deadbeef").unwrap();
     c_chainstate_manager_delete_wrapper(chainman, scheduler);
 }
