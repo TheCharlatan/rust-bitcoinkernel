@@ -18,7 +18,7 @@ pub struct Scheduler {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChainstateInfoWrapper {
+pub struct ChainstateInfo {
     pub path: String,
     pub reindexing: bool,
     pub snapshot_active: bool,
@@ -26,14 +26,67 @@ pub struct ChainstateInfoWrapper {
     pub active_ibd: bool,
 }
 
-impl From<ChainstateInfo> for ChainstateInfoWrapper {
-    fn from(c: ChainstateInfo) -> ChainstateInfoWrapper {
-        ChainstateInfoWrapper {
+impl From<C_ChainstateInfo> for ChainstateInfo {
+    fn from(c: C_ChainstateInfo) -> ChainstateInfo {
+        ChainstateInfo {
             path: unsafe { CStr::from_ptr(c.path).to_string_lossy().into_owned() },
             reindexing: c.reindexing != 0,
             snapshot_active: c.snapshot_active != 0,
             active_height: c.active_height,
             active_ibd: c.active_ibd != 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OutPoint {
+    pub hash: [u8; 32],
+    pub n: u32,
+}
+
+impl From<C_OutPoint> for OutPoint {
+    fn from(c: C_OutPoint) -> OutPoint {
+        OutPoint {
+            hash: c.hash,
+            n: c.n,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TxOut {
+    pub value: i64,
+    pub script_pubkey: Vec<u8>,
+}
+
+impl From<C_TxOut> for TxOut {
+    fn from(c: C_TxOut) -> TxOut {
+        TxOut {
+            value: c.value,
+            script_pubkey: unsafe {
+                std::slice::from_raw_parts(
+                    c.script_pubkey.data,
+                    c.script_pubkey.len.try_into().unwrap(),
+                )
+            }
+            .to_vec(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Coin {
+    pub out: TxOut,
+    pub is_coinbase: bool,
+    pub confirmation_height: u32,
+}
+
+impl From<C_Coin> for Coin {
+    fn from(c: C_Coin) -> Coin {
+        Coin {
+            out: c.out.into(),
+            is_coinbase: c.is_coinbase != 0,
+            confirmation_height: c.confirmation_height,
         }
     }
 }
@@ -55,6 +108,50 @@ impl Scheduler {
     }
 }
 
+pub struct CoinsCursor {
+    inner: *mut c_void,
+}
+
+impl CoinsCursor {
+    pub fn cursor_next(&self) {
+        unsafe { c_coins_cursor_next(self.inner) };
+    }
+
+    pub fn get_key(&self) -> OutPoint {
+        unsafe { c_coins_cursor_get_key(self.inner).into() }
+    }
+
+    pub fn get_value(&self) -> Coin {
+        unsafe { c_coins_cursor_get_value(self.inner).into() }
+    }
+
+    pub fn valid(&self) -> bool {
+        unsafe { c_coins_cursor_valid(self.inner) != 0 }
+    }
+}
+
+impl Iterator for CoinsCursor {
+    type Item = (OutPoint, Coin);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let key = self.get_key();
+        let value = self.get_value();
+        self.cursor_next();
+
+        if !self.valid() {
+            None
+        } else {
+            Some((key, value))
+        }
+    }
+}
+
+impl Drop for CoinsCursor {
+    fn drop(&mut self) {
+        unsafe { c_coins_cursor_delete(self.inner) }
+    }
+}
+
 impl ChainstateManager {
     pub fn new(data_dir: &str, scheduler: &Scheduler) -> Result<Self, NulError> {
         let c_data_dir = CString::new(data_dir)?;
@@ -72,9 +169,15 @@ impl ChainstateManager {
         Ok(())
     }
 
-    pub fn get_chainstate_info_wrapper(&self) -> ChainstateInfoWrapper {
+    pub fn get_chainstate_info(&self) -> ChainstateInfo {
+        unsafe { c_get_chainstate_info(self.inner).into() }
+    }
+
+    pub fn chainstate_coins_cursor(&self) -> CoinsCursor {
         unsafe {
-            get_chainstate_info(self.inner).into()
+            CoinsCursor {
+                inner: c_chainstate_coins_cursor(self.inner),
+            }
         }
     }
 }
@@ -85,8 +188,8 @@ pub fn c_chainstate_manager_delete_wrapper(chainman: ChainstateManager, schedule
     }
 }
 
-pub fn set_logging_callback_and_start_logging_wrapper() {
-    unsafe { set_logging_callback_and_start_logging(Some(rust_log_callback)) }
+pub fn set_logging_callback_and_start_logging() {
+    unsafe { c_set_logging_callback_and_start_logging(Some(rust_log_callback)) }
 }
 
 pub trait LogFn: Fn(&str) {}
@@ -114,5 +217,5 @@ where
     };
     unsafe { GLOBAL_CALLBACK_HOLDER = Some(callback_holder) };
 
-    unsafe { set_logging_callback_and_start_logging(Some(log_callback)) };
+    unsafe { c_set_logging_callback_and_start_logging(Some(log_callback)) };
 }
