@@ -35,7 +35,7 @@ fn main() {
         size += std::mem::size_of_val(&out_point) + std::mem::size_of_val(&coin);
         iter += 1;
         if iter > 100000 {
-            println!("iterations: {}, read size: {}", iter, size);
+            log::info!("Coins db iterations: {}, read size: {}", iter, size);
             break;
         }
     }
