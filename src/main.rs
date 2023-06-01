@@ -1,7 +1,7 @@
 extern crate libbitcoinkernel_sys;
 
 use libbitcoinkernel_sys::{c_chainstate_manager_delete_wrapper, set_logging_callback};
-use libbitcoinkernel_sys::{ChainstateManager, Scheduler};
+use libbitcoinkernel_sys::{ChainstateManager, ContextWrapper};
 
 use env_logger::Builder;
 use log::LevelFilter;
@@ -21,8 +21,8 @@ fn setup_logging() {
 
 fn main() {
     setup_logging();
-    let scheduler = Scheduler::new();
-    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin", &scheduler).unwrap();
+    let context = ContextWrapper::new();
+    let chainman = ChainstateManager::new("/home/drgrid/test/regtest", &context).unwrap();
     let chainstate_info = chainman.get_chainstate_info();
     log::info!("{:?}", chainstate_info);
 
@@ -41,5 +41,5 @@ fn main() {
     }
 
     chainman.validate_block("deadbeef").unwrap();
-    c_chainstate_manager_delete_wrapper(chainman, scheduler);
+    c_chainstate_manager_delete_wrapper(chainman, context);
 }

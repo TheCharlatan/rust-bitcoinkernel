@@ -13,7 +13,7 @@ extern "C" fn rust_log_callback(message: *const c_char) {
     println!("rust-bitcoinkernel: {}", message_str);
 }
 
-pub struct Scheduler {
+pub struct ContextWrapper {
     inner: *mut c_void,
 }
 
@@ -91,7 +91,7 @@ impl From<C_Coin> for Coin {
     }
 }
 
-impl Default for Scheduler {
+impl Default for ContextWrapper {
     fn default() -> Self {
         Self::new()
     }
@@ -101,9 +101,9 @@ pub struct ChainstateManager {
     inner: *mut c_void,
 }
 
-impl Scheduler {
-    pub fn new() -> Scheduler {
-        let inner = unsafe { c_scheduler_new() };
+impl ContextWrapper {
+    pub fn new() -> ContextWrapper {
+        let inner = unsafe { c_context_new() };
         Self { inner }
     }
 }
@@ -153,7 +153,7 @@ impl Drop for CoinsCursor {
 }
 
 impl ChainstateManager {
-    pub fn new(data_dir: &str, scheduler: &Scheduler) -> Result<Self, NulError> {
+    pub fn new(data_dir: &str, scheduler: &ContextWrapper) -> Result<Self, NulError> {
         let c_data_dir = CString::new(data_dir)?;
         let inner = unsafe {
             c_chainstate_manager_create(c_data_dir.as_ptr().cast::<i8>(), scheduler.inner)
@@ -182,7 +182,7 @@ impl ChainstateManager {
     }
 }
 
-pub fn c_chainstate_manager_delete_wrapper(chainman: ChainstateManager, scheduler: Scheduler) {
+pub fn c_chainstate_manager_delete_wrapper(chainman: ChainstateManager, scheduler: ContextWrapper) {
     unsafe {
         c_chainstate_manager_delete(chainman.inner, scheduler.inner);
     }
@@ -199,7 +199,7 @@ struct CallbackHolder {
     callback: Box<dyn LogFn>,
 }
 
-static mut GLOBAL_CALLBACK_HOLDER: Option<CallbackHolder> = None;
+static mut GLOBAL_LOG_CALLBACK_HOLDER: Option<CallbackHolder> = None;
 
 pub fn set_logging_callback<F>(callback: F)
 where
@@ -207,7 +207,7 @@ where
 {
     extern "C" fn log_callback(message: *const c_char) {
         let message = unsafe { CStr::from_ptr(message).to_string_lossy().into_owned() };
-        let callback = unsafe { GLOBAL_CALLBACK_HOLDER.as_ref().unwrap().callback.as_ref() };
+        let callback = unsafe { GLOBAL_LOG_CALLBACK_HOLDER.as_ref().unwrap().callback.as_ref() };
         callback(&message);
     }
 
@@ -215,7 +215,7 @@ where
     let callback_holder = CallbackHolder {
         callback: callback_box,
     };
-    unsafe { GLOBAL_CALLBACK_HOLDER = Some(callback_holder) };
+    unsafe { GLOBAL_LOG_CALLBACK_HOLDER = Some(callback_holder) };
 
     unsafe { c_set_logging_callback_and_start_logging(Some(log_callback)) };
 }
