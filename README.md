@@ -1,6 +1,6 @@
 # rust-bitcoinkernel
 
-:warning: This library is still under contruction. :warning:
+:warning::construction: This library is still under contruction. :warning::construction:
 
 `rust-bitcoinkernel` is a wrapper around
 [libbitcoinkernel](https://github.com/bitcoin/bitcoin/issues/24303), a C++
@@ -26,7 +26,7 @@ unchanged to install it system-wide.
 Then, to compile `rust-bitcoinkernel`:
 
 ```
-PKG_CONFIG_PATH=~/bitcoin/install_dir/lib/pkgconfig cargo b
+PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig cargo b
 ```
 
 At the moment `PKG_CONFIG_PATH` has to be set no matter if you installed the

@@ -1,10 +1,18 @@
 extern crate libbitcoinkernel_sys;
 
-use libbitcoinkernel_sys::{c_chainstate_manager_delete_wrapper, set_logging_callback};
+use libbitcoinkernel_sys::{
+    execute_event, register_validation_interface, set_logging_callback,
+    unregister_validation_interface, Event, KernelNotificationInterfaceCallbackHolder,
+    TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
+};
 use libbitcoinkernel_sys::{ChainstateManager, ContextWrapper};
 
 use env_logger::Builder;
 use log::LevelFilter;
+
+use std::collections::VecDeque;
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 
 fn setup_logging() {
     let mut builder = Builder::from_default_env();
@@ -19,10 +27,97 @@ fn setup_logging() {
     set_logging_callback(callback);
 }
 
+fn runtime(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
+    thread::spawn(move || {
+        let (lock, cvar) = &*queue;
+        loop {
+            let mut queue = lock.lock().unwrap();
+            while queue.is_empty() {
+                queue = cvar.wait(queue).unwrap();
+            }
+            let event = queue.pop_front().unwrap();
+            execute_event(event);
+            log::info!("executed runtime event!");
+        }
+    });
+}
+
+fn empty_queue(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
+    log::info!("Empty the processing queue!");
+    let (lock, _) = &*queue;
+    let mut queue = lock.lock().unwrap();
+    while let Some(event) = queue.pop_front() {
+        execute_event(event);
+    }
+    log::info!("Processing queue emptied");
+}
+
 fn main() {
+    let queue = Arc::new((Mutex::new(VecDeque::<Event>::new()), Condvar::new()));
+
+    runtime(queue.clone());
+
     setup_logging();
-    let context = ContextWrapper::new();
-    let chainman = ChainstateManager::new("/home/drgrid/test/regtest", &context).unwrap();
+
+    let context = ContextWrapper::new(
+        Box::new(KernelNotificationInterfaceCallbackHolder {
+            kn_block_tip: Box::new(|_state| {
+                log::info!("Processed new block!");
+            }),
+            kn_header_tip: Box::new(|_state, height, timestamp, presync| {
+                log::info!("Processed new header: {height}, at {timestamp}, presyncing {presync}");
+            }),
+            kn_progress: Box::new(|title, progress, resume_possible| {
+                log::info!("Made progress {title}, {progress}, resume possible: {resume_possible}");
+            }),
+            kn_warning: Box::new(|warning| {
+                log::info!("Received warning: {warning}");
+            }),
+            kn_flush_error: Box::new(|debug_message| {
+                log::info!("Flush error! {debug_message}");
+            }),
+            kn_fatal_error: Box::new(|debug_message, user_message| {
+                log::info!("Fatal Error! {debug_message}. {user_message}");
+            }),
+        }),
+        Box::new(TaskRunnerCallbackHolder {
+            tr_insert: {
+                let queue = queue.clone();
+                Box::new(move |event| {
+                    log::info!("Added to process queue");
+                    let (lock, cvar) = &*queue;
+                    lock.lock().unwrap().push_back(event);
+                    cvar.notify_one();
+                })
+            },
+
+            tr_flush: {
+                let queue = queue.clone();
+                Box::new(move || {
+                    empty_queue(queue.clone());
+                })
+            },
+
+            tr_size: {
+                let queue = queue.clone();
+                Box::new(move || {
+                    log::info!("Callbacks pending...");
+                    let (lock, _) = &*queue;
+                    lock.lock().unwrap().len().try_into().unwrap()
+                })
+            },
+        }),
+    );
+
+    let validation_interface =
+        ValidationInterfaceWrapper::new(Box::new(ValidationInterfaceCallbackHolder {
+            block_checked: Box::new(|| {
+                log::info!("Block checked!");
+            }),
+        }));
+    register_validation_interface(&validation_interface, &context);
+
+    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", &context).unwrap();
     let chainstate_info = chainman.get_chainstate_info();
     log::info!("{:?}", chainstate_info);
 
@@ -40,6 +135,11 @@ fn main() {
         }
     }
 
-    chainman.validate_block("deadbeef").unwrap();
-    c_chainstate_manager_delete_wrapper(chainman, context);
+    log::info!("validating block");
+    chainman.validate_block(&context, "deadbeef").unwrap();
+    log::info!("validated block");
+
+    empty_queue(queue.clone());
+
+    unregister_validation_interface(&validation_interface, &context);
 }
