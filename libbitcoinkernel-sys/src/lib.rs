@@ -50,8 +50,8 @@ impl<F: Fn(String)> KNWarningFn for F {}
 pub trait KNFlushErrorFn: Fn(String) {}
 impl<F: Fn(String)> KNFlushErrorFn for F {}
 
-pub trait KNFatalErrorFn: Fn(String, String) {}
-impl<F: Fn(String, String)> KNFatalErrorFn for F {}
+pub trait KNFatalErrorFn: Fn(String) {}
+impl<F: Fn(String)> KNFatalErrorFn for F {}
 
 pub struct KernelNotificationInterfaceCallbackHolder {
     pub kn_block_tip: Box<dyn KNBlockTipFn>,
@@ -97,18 +97,17 @@ unsafe extern "C" fn kn_warning_wrapper(user_data: *mut c_void, warning: *const 
     (holder.kn_warning)(cast_string(warning));
 }
 
-unsafe extern "C" fn kn_flush_error_wrapper(user_data: *mut c_void, debug_message: *const i8) {
+unsafe extern "C" fn kn_flush_error_wrapper(user_data: *mut c_void, message: *const i8) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
-    (holder.kn_flush_error)(cast_string(debug_message));
+    (holder.kn_flush_error)(cast_string(message));
 }
 
 unsafe extern "C" fn kn_fatal_error_wrapper(
     user_data: *mut c_void,
-    debug_message: *const i8,
-    user_message: *const i8,
+    message: *const i8,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
-    (holder.kn_fatal_error)(cast_string(debug_message), cast_string(user_message));
+    (holder.kn_fatal_error)(cast_string(message));
 }
 
 pub trait TRInsertFn: Fn(Event) {}

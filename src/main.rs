@@ -73,11 +73,11 @@ fn main() {
             kn_warning: Box::new(|warning| {
                 log::info!("Received warning: {warning}");
             }),
-            kn_flush_error: Box::new(|debug_message| {
-                log::info!("Flush error! {debug_message}");
+            kn_flush_error: Box::new(|message| {
+                log::info!("Flush error! {message}");
             }),
-            kn_fatal_error: Box::new(|debug_message, user_message| {
-                log::info!("Fatal Error! {debug_message}. {user_message}");
+            kn_fatal_error: Box::new(|message| {
+                log::info!("Fatal Error! {message}");
             }),
         }),
         Box::new(TaskRunnerCallbackHolder {
