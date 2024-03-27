@@ -248,7 +248,7 @@ pub struct ValidationInterfaceCallbackHolder {
 unsafe extern "C" fn vi_block_checked_wrapper(
     user_data: *mut c_void,
     _block: *mut c_void,
-    _stateIn: *mut c_void,
+    _stateIn: C_BlockValidationState,
 ) {
     let holder = &*(user_data as *mut ValidationInterfaceCallbackHolder);
     (holder.block_checked)();
