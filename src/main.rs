@@ -24,7 +24,7 @@ fn setup_logging() {
             "{}", message.strip_suffix("\r\n").or_else(|| message.strip_suffix('\n')).unwrap_or(message));
     };
 
-    set_logging_callback(callback);
+    set_logging_callback(callback).unwrap();
 }
 
 fn runtime(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
@@ -107,7 +107,7 @@ fn main() {
                 })
             },
         }),
-    );
+    ).unwrap();
 
     let validation_interface =
         ValidationInterfaceWrapper::new(Box::new(ValidationInterfaceCallbackHolder {
@@ -115,13 +115,13 @@ fn main() {
                 log::info!("Block checked!");
             }),
         }));
-    register_validation_interface(&validation_interface, &context);
+    register_validation_interface(&validation_interface, &context).unwrap();
 
     let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", &context).unwrap();
     let chainstate_info = chainman.get_chainstate_info();
     log::info!("{:?}", chainstate_info);
 
-    let cursor = chainman.chainstate_coins_cursor();
+    let cursor = chainman.chainstate_coins_cursor().unwrap();
 
     let mut iter = 0;
     let mut size = 0;
@@ -136,10 +136,10 @@ fn main() {
     }
 
     log::info!("validating block");
-    chainman.validate_block(&context, "deadbeef").unwrap();
+    chainman.validate_block("deadbeef").unwrap();
     log::info!("validated block");
 
     empty_queue(queue.clone());
 
-    unregister_validation_interface(&validation_interface, &context);
+    unregister_validation_interface(&validation_interface, &context).unwrap();
 }
