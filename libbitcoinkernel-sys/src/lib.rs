@@ -443,11 +443,11 @@ impl Drop for CoinsCursor {
 }
 
 impl<'a> ChainstateManager<'a> {
-    pub fn new(data_dir: &str, context: &'a ContextWrapper) -> Result<Self, NulError> {
+    pub fn new(data_dir: &str, reindex: bool, context: &'a ContextWrapper) -> Result<Self, NulError> {
         let c_data_dir = CString::new(data_dir)?;
         let mut err = kernel_error_t_kernel_ERR_OK;
         let inner =
-            unsafe { c_chainstate_manager_create(c_data_dir.as_ptr().cast::<i8>(), context.inner, &mut err) };
+            unsafe { c_chainstate_manager_create(c_data_dir.as_ptr().cast::<i8>(), reindex, context.inner, &mut err) };
         handle_kernel_error(err).unwrap();
         Ok(Self { inner, context })
     }

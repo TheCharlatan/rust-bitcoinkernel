@@ -117,7 +117,7 @@ fn main() {
         }));
     register_validation_interface(&validation_interface, &context).unwrap();
 
-    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", &context).unwrap();
+    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", false, &context).unwrap();
     let chainstate_info = chainman.get_chainstate_info();
     log::info!("{:?}", chainstate_info);
 
