@@ -180,12 +180,12 @@ impl ContextWrapper {
         let viq_pointer = Box::into_raw(tr_callbacks);
 
         let mut err = kernel_error_t_kernel_ERR_OK;
-        let inner = unsafe { c_context_new(&mut err) };
-        handle_kernel_error(err)?;
+
+        let opts = unsafe { c_context_opt_new() };
 
         unsafe {
             c_context_set_opt(
-                inner,
+                opts,
                 C_ContextOptions_KernelNotificationInterfaceCallbacksOption,
                 Box::into_raw(Box::new(KernelNotificationInterfaceCallbacks {
                     user_data: kn_pointer as *mut c_void,
@@ -198,12 +198,9 @@ impl ContextWrapper {
                 }))as *mut c_void,
                 &mut err,
             );
-        }
-        handle_kernel_error(err)?;
-
-        unsafe {
+            handle_kernel_error(err)?;
             c_context_set_opt(
-                inner,
+                opts,
                 C_ContextOptions_TaskRunnerCallbacksOption,
                 Box::into_raw(Box::new(TaskRunnerCallbacks {
                     user_data: viq_pointer as *mut c_void,
@@ -213,7 +210,10 @@ impl ContextWrapper {
                 })) as *mut c_void,
                 &mut err,
             );
+            handle_kernel_error(err)?;
         }
+
+        let inner = unsafe { c_context_new(opts, &mut err) };
         handle_kernel_error(err)?;
 
         // We have to do this ugly trick here in order to safely extend the
