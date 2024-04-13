@@ -2,10 +2,10 @@ extern crate libbitcoinkernel_sys;
 
 use libbitcoinkernel_sys::{
     execute_event, register_validation_interface, set_logging_callback,
-    unregister_validation_interface, ChainType, Event, KernelNotificationInterfaceCallbackHolder,
-    TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
+    unregister_validation_interface, ChainType, ChainstateManager, ContextBuilder, Event,
+    KernelNotificationInterfaceCallbackHolder, TaskRunnerCallbackHolder,
+    ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
 };
-use libbitcoinkernel_sys::{ChainstateManager, ContextWrapper};
 
 use env_logger::Builder;
 use log::LevelFilter;
@@ -59,8 +59,10 @@ fn main() {
 
     setup_logging();
 
-    let context = ContextWrapper::new(
-        Box::new(KernelNotificationInterfaceCallbackHolder {
+    let context = ContextBuilder::new()
+        .chain_type(ChainType::SIGNET)
+        .unwrap()
+        .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
             kn_block_tip: Box::new(|_state| {
                 log::info!("Processed new block!");
             }),
@@ -79,8 +81,9 @@ fn main() {
             kn_fatal_error: Box::new(|message| {
                 log::info!("Fatal Error! {message}");
             }),
-        }),
-        Box::new(TaskRunnerCallbackHolder {
+        }))
+        .unwrap()
+        .tr_callbacks(Box::new(TaskRunnerCallbackHolder {
             tr_insert: {
                 let queue = queue.clone();
                 Box::new(move |event| {
@@ -106,10 +109,10 @@ fn main() {
                     lock.lock().unwrap().len().try_into().unwrap()
                 })
             },
-        }),
-        ChainType::SIGNET,
-    )
-    .unwrap();
+        }))
+        .unwrap()
+        .build()
+        .unwrap();
 
     let validation_interface =
         ValidationInterfaceWrapper::new(Box::new(ValidationInterfaceCallbackHolder {

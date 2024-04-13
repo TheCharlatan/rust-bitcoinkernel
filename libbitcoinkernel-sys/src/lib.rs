@@ -161,10 +161,97 @@ unsafe extern "C" fn tr_size_wrapper(user_data: *mut c_void) -> c_ulong {
     res
 }
 
-pub struct ContextWrapper {
+pub struct Context {
     inner: *mut c_void,
     pub tr_callbacks: Box<TaskRunnerCallbackHolder>,
     pub kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
+}
+
+pub struct ContextBuilder {
+    inner: *mut c_void,
+    pub tr_callbacks: Option<Box<TaskRunnerCallbackHolder>>,
+    pub kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
+}
+
+impl ContextBuilder {
+    pub fn new() -> ContextBuilder {
+        ContextBuilder {
+            inner: unsafe { c_context_opt_new() },
+            tr_callbacks: None,
+            kn_callbacks: None,
+        }
+    }
+
+    pub fn build(self) -> Result<Context, KernelError> {
+        let mut err = kernel_error_t_kernel_ERR_OK;
+        let inner = unsafe { c_context_new(self.inner, &mut err) };
+        handle_kernel_error(err)?;
+        if self.tr_callbacks.is_none() {
+            return Err(KernelError::MissingCallbacks);
+        }
+        if self.kn_callbacks.is_none() {
+            return Err(KernelError::MissingCallbacks);
+        }
+        Ok(Context {
+            inner,
+            tr_callbacks: self.tr_callbacks.unwrap(),
+            kn_callbacks: self.kn_callbacks.unwrap(),
+        })
+    }
+
+    pub fn tr_callbacks(mut self, tr_callbacks: Box<TaskRunnerCallbackHolder>) -> Result<ContextBuilder, KernelError> {
+        let tr_pointer= Box::into_raw(tr_callbacks);
+        let mut err = kernel_error_t_kernel_ERR_OK;
+
+        unsafe { c_context_set_opt(
+            self.inner,
+            C_ContextOptions_TaskRunnerCallbacksOption,
+            Box::into_raw(Box::new(TaskRunnerCallbacks {
+                user_data: tr_pointer as *mut c_void,
+                insert: Some(tr_insert_wrapper),
+                flush: Some(tr_flush_wrapper),
+                size: Some(tr_size_wrapper),
+            })) as *mut c_void,
+            &mut err,
+        )};
+        handle_kernel_error(err)?;
+        self.tr_callbacks = unsafe { Some(Box::from_raw(tr_pointer)) };
+        Ok(self)
+    }
+
+    pub fn kn_callbacks(mut self, kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>) -> Result<ContextBuilder, KernelError> {
+        let kn_pointer = Box::into_raw(kn_callbacks);
+        let mut err = kernel_error_t_kernel_ERR_OK;
+        unsafe { c_context_set_opt(
+            self.inner,
+            C_ContextOptions_KernelNotificationInterfaceCallbacksOption,
+            Box::into_raw(Box::new(KernelNotificationInterfaceCallbacks {
+                user_data: kn_pointer as *mut c_void,
+                block_tip: Some(kn_block_tip_wrapper),
+                header_tip: Some(kn_header_tip_wrapper),
+                progress: Some(kn_progress_wrapper),
+                warning: Some(kn_warning_wrapper),
+                flush_error: Some(kn_flush_error_wrapper),
+                fatal_error: Some(kn_fatal_error_wrapper),
+            }))as *mut c_void,
+            &mut err,
+        )};
+        handle_kernel_error(err)?;
+        self.kn_callbacks = unsafe { Some(Box::from_raw(kn_pointer))};
+        Ok(self)
+    }
+
+    pub fn chain_type(self, chain_type: ChainType) -> Result<ContextBuilder, KernelError> {
+        let mut err = kernel_error_t_kernel_ERR_OK;
+        unsafe { c_context_set_opt(
+            self.inner,
+            C_ContextOptions_ChainTypeOption,
+            Box::into_raw(Box::new(C_Chain::from(chain_type))) as *mut c_void,
+            &mut err,
+        )};
+        handle_kernel_error(err)?;
+        Ok(self)
+    }
 }
 
 #[derive(Debug)]
@@ -175,6 +262,7 @@ pub enum KernelError {
     InvalidContext,
     SignatureCacheInit,
     ScriptExecutionCacheInit,
+    MissingCallbacks,
 }
 
 fn handle_kernel_error(error: kernel_error_t) -> Result<(), KernelError> {
@@ -189,73 +277,7 @@ fn handle_kernel_error(error: kernel_error_t) -> Result<(), KernelError> {
     }
 }
 
-impl ContextWrapper {
-    pub fn new(
-        kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
-        tr_callbacks: Box<TaskRunnerCallbackHolder>,
-        chain_type: ChainType,
-    ) -> Result<ContextWrapper, KernelError> {
-        let kn_pointer = Box::into_raw(kn_callbacks);
-        let viq_pointer = Box::into_raw(tr_callbacks);
-
-        let mut err = kernel_error_t_kernel_ERR_OK;
-
-        let opts = unsafe { c_context_opt_new() };
-
-        unsafe {
-            c_context_set_opt(
-                opts,
-                C_ContextOptions_KernelNotificationInterfaceCallbacksOption,
-                Box::into_raw(Box::new(KernelNotificationInterfaceCallbacks {
-                    user_data: kn_pointer as *mut c_void,
-                    block_tip: Some(kn_block_tip_wrapper),
-                    header_tip: Some(kn_header_tip_wrapper),
-                    progress: Some(kn_progress_wrapper),
-                    warning: Some(kn_warning_wrapper),
-                    flush_error: Some(kn_flush_error_wrapper),
-                    fatal_error: Some(kn_fatal_error_wrapper),
-                }))as *mut c_void,
-                &mut err,
-            );
-            handle_kernel_error(err)?;
-            c_context_set_opt(
-                opts,
-                C_ContextOptions_TaskRunnerCallbacksOption,
-                Box::into_raw(Box::new(TaskRunnerCallbacks {
-                    user_data: viq_pointer as *mut c_void,
-                    insert: Some(tr_insert_wrapper),
-                    flush: Some(tr_flush_wrapper),
-                    size: Some(tr_size_wrapper),
-                })) as *mut c_void,
-                &mut err,
-            );
-            handle_kernel_error(err)?;
-            c_context_set_opt(
-                opts,
-                C_ContextOptions_ChainTypeOption,
-                Box::into_raw(Box::new(C_Chain::from(chain_type))) as *mut c_void,
-                &mut err,
-            );
-            handle_kernel_error(err)?;
-        }
-
-        let inner = unsafe { c_context_new(opts, &mut err) };
-        handle_kernel_error(err)?;
-
-        // We have to do this ugly trick here in order to safely extend the
-        // lifetime of the pointers
-        let tr_callbacks = unsafe { Box::from_raw(viq_pointer) };
-        let kn_callbacks = unsafe { Box::from_raw(kn_pointer) };
-
-        Ok(Self {
-            inner,
-            tr_callbacks,
-            kn_callbacks,
-        })
-    }
-}
-
-impl Drop for ContextWrapper {
+impl Drop for Context {
     fn drop(&mut self) {
         let mut err = kernel_error_t_kernel_ERR_OK;
         unsafe { c_context_delete(self.inner, &mut err); }
@@ -302,14 +324,14 @@ impl ValidationInterfaceWrapper {
     }
 }
 
-pub fn register_validation_interface(vi: &ValidationInterfaceWrapper, context: &ContextWrapper) -> Result<(), KernelError> {
+pub fn register_validation_interface(vi: &ValidationInterfaceWrapper, context: &Context) -> Result<(), KernelError> {
     let mut err = kernel_error_t_kernel_ERR_OK;
     unsafe { c_register_validation_interface(context.inner, vi.inner, &mut err); }
     handle_kernel_error(err)?;
     Ok(())
 }
 
-pub fn unregister_validation_interface(vi: &ValidationInterfaceWrapper, context: &ContextWrapper) -> Result<(), KernelError> {
+pub fn unregister_validation_interface(vi: &ValidationInterfaceWrapper, context: &Context) -> Result<(), KernelError> {
     let mut err = kernel_error_t_kernel_ERR_OK;
     unsafe { c_unregister_validation_interface(context.inner, vi.inner, &mut err); }
     handle_kernel_error(err)?;
@@ -408,7 +430,7 @@ pub fn execute_event(event: Event) {
 
 pub struct ChainstateManager<'a> {
     inner: *mut c_void,
-    context: &'a ContextWrapper,
+    context: &'a Context,
 }
 
 pub struct CoinsCursor {
@@ -473,7 +495,7 @@ impl Drop for CoinsCursor {
 }
 
 impl<'a> ChainstateManager<'a> {
-    pub fn new(data_dir: &str, reindex: bool, context: &'a ContextWrapper) -> Result<Self, NulError> {
+    pub fn new(data_dir: &str, reindex: bool, context: &'a Context) -> Result<Self, NulError> {
         let c_data_dir = CString::new(data_dir)?;
         let mut err = kernel_error_t_kernel_ERR_OK;
         let inner =
