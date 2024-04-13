@@ -35,6 +35,24 @@ impl From<C_SynchronizationState> for SynchronizationState {
     }
 }
 
+pub enum ChainType {
+    MAINNET,
+    TESTNET,
+    SIGNET,
+    REGTEST,
+}
+
+impl From<ChainType> for C_Chain {
+    fn from(chain: ChainType) -> C_Chain {
+        match chain {
+            ChainType::MAINNET => C_Chain_kernel_MAINNET,
+            ChainType::TESTNET => C_Chain_kernel_TESTNET,
+            ChainType::SIGNET => C_Chain_kernel_SIGNET,
+            ChainType::REGTEST => C_Chain_kernel_REGTEST,
+        }
+    }
+}
+
 pub trait KNBlockTipFn: Fn(SynchronizationState) {}
 impl<F: Fn(SynchronizationState)> KNBlockTipFn for F {}
 
@@ -175,6 +193,7 @@ impl ContextWrapper {
     pub fn new(
         kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
         tr_callbacks: Box<TaskRunnerCallbackHolder>,
+        chain_type: ChainType,
     ) -> Result<ContextWrapper, KernelError> {
         let kn_pointer = Box::into_raw(kn_callbacks);
         let viq_pointer = Box::into_raw(tr_callbacks);
@@ -208,6 +227,13 @@ impl ContextWrapper {
                     flush: Some(tr_flush_wrapper),
                     size: Some(tr_size_wrapper),
                 })) as *mut c_void,
+                &mut err,
+            );
+            handle_kernel_error(err)?;
+            c_context_set_opt(
+                opts,
+                C_ContextOptions_ChainTypeOption,
+                Box::into_raw(Box::new(C_Chain::from(chain_type))) as *mut c_void,
                 &mut err,
             );
             handle_kernel_error(err)?;
@@ -398,6 +424,10 @@ impl CoinsCursor {
 
     pub fn get_key(&self) -> Result<OutPoint, KernelError> {
         let mut err = kernel_error_t_kernel_ERR_OK;
+        if self.inner.is_null() {
+            return Err(KernelError::InvalidPointer);
+        }
+        self.valid()?;
         let outpoint = unsafe { c_coins_cursor_get_key(self.inner, &mut err).into() };
         handle_kernel_error(err)?;
         Ok(outpoint)
@@ -474,6 +504,13 @@ impl<'a> ChainstateManager<'a> {
         let chainstate_info = unsafe { c_get_chainstate_info(self.inner, &mut err).into() };
         handle_kernel_error(err)?;
         Ok(chainstate_info)
+    }
+
+    pub fn import_blocks(&self) -> Result<(), KernelError> {
+        let mut err: u32 = kernel_error_t_kernel_ERR_OK;
+        unsafe { c_import_blocks(self.inner, &mut err)}
+        handle_kernel_error(err)?;
+        Ok(())
     }
 
     pub fn chainstate_coins_cursor(&self) -> Result<CoinsCursor, KernelError> {

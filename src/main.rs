@@ -2,7 +2,7 @@ extern crate libbitcoinkernel_sys;
 
 use libbitcoinkernel_sys::{
     execute_event, register_validation_interface, set_logging_callback,
-    unregister_validation_interface, Event, KernelNotificationInterfaceCallbackHolder,
+    unregister_validation_interface, ChainType, Event, KernelNotificationInterfaceCallbackHolder,
     TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
 };
 use libbitcoinkernel_sys::{ChainstateManager, ContextWrapper};
@@ -37,19 +37,19 @@ fn runtime(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
             }
             let event = queue.pop_front().unwrap();
             execute_event(event);
-            log::info!("executed runtime event!");
+            log::trace!("executed runtime event!");
         }
     });
 }
 
 fn empty_queue(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
-    log::info!("Empty the processing queue!");
+    log::trace!("Emptying the processing queue...");
     let (lock, _) = &*queue;
     let mut queue = lock.lock().unwrap();
     while let Some(event) = queue.pop_front() {
         execute_event(event);
     }
-    log::info!("Processing queue emptied");
+    log::trace!("Processing queue emptied.");
 }
 
 fn main() {
@@ -84,7 +84,7 @@ fn main() {
             tr_insert: {
                 let queue = queue.clone();
                 Box::new(move |event| {
-                    log::info!("Added to process queue");
+                    log::trace!("Added to process queue");
                     let (lock, cvar) = &*queue;
                     lock.lock().unwrap().push_back(event);
                     cvar.notify_one();
@@ -101,13 +101,15 @@ fn main() {
             tr_size: {
                 let queue = queue.clone();
                 Box::new(move || {
-                    log::info!("Callbacks pending...");
+                    log::trace!("Callbacks pending...");
                     let (lock, _) = &*queue;
                     lock.lock().unwrap().len().try_into().unwrap()
                 })
             },
         }),
-    ).unwrap();
+        ChainType::SIGNET,
+    )
+    .unwrap();
 
     let validation_interface =
         ValidationInterfaceWrapper::new(Box::new(ValidationInterfaceCallbackHolder {
@@ -117,15 +119,14 @@ fn main() {
         }));
     register_validation_interface(&validation_interface, &context).unwrap();
 
-    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", false, &context).unwrap();
+    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", true, &context).unwrap();
     let chainstate_info = chainman.get_chainstate_info();
+    chainman.import_blocks().unwrap();
     log::info!("{:?}", chainstate_info);
 
     let cursor = chainman.chainstate_coins_cursor().unwrap();
-
     let mut iter = 0;
     let mut size = 0;
-
     for (out_point, coin) in cursor {
         size += std::mem::size_of_val(&out_point) + std::mem::size_of_val(&coin);
         iter += 1;
