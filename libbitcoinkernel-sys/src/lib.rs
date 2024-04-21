@@ -347,27 +347,6 @@ impl Drop for ValidationInterfaceWrapper {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChainstateInfo {
-    pub path: String,
-    pub reindexing: bool,
-    pub snapshot_active: bool,
-    pub active_height: i32,
-    pub active_ibd: bool,
-}
-
-impl From<C_ChainstateInfo> for ChainstateInfo {
-    fn from(c: C_ChainstateInfo) -> ChainstateInfo {
-        ChainstateInfo {
-            path: unsafe { CStr::from_ptr(c.path).to_string_lossy().into_owned() },
-            reindexing: c.reindexing != 0,
-            snapshot_active: c.snapshot_active != 0,
-            active_height: c.active_height,
-            active_ibd: c.active_ibd != 0,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct OutPoint {
     pub hash: [u8; 32],
     pub n: u32,
@@ -519,13 +498,6 @@ impl<'a> ChainstateManager<'a> {
         };
         handle_kernel_error(err).unwrap();
         Ok(())
-    }
-
-    pub fn get_chainstate_info(&self) -> Result<ChainstateInfo, KernelError> {
-        let mut err = kernel_error_t_kernel_ERR_OK;
-        let chainstate_info = unsafe { c_get_chainstate_info(self.inner, &mut err).into() };
-        handle_kernel_error(err)?;
-        Ok(chainstate_info)
     }
 
     pub fn import_blocks(&self) -> Result<(), KernelError> {

@@ -123,9 +123,7 @@ fn main() {
     register_validation_interface(&validation_interface, &context).unwrap();
 
     let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", true, &context).unwrap();
-    let chainstate_info = chainman.get_chainstate_info();
     chainman.import_blocks().unwrap();
-    log::info!("{:?}", chainstate_info);
 
     let cursor = chainman.chainstate_coins_cursor().unwrap();
     let mut iter = 0;
