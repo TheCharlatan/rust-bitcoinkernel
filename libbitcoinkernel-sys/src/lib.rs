@@ -143,7 +143,7 @@ pub struct TaskRunnerCallbackHolder {
     pub tr_size: Box<dyn TRSizeFn>,
 }
 
-unsafe extern "C" fn tr_insert_wrapper(user_data: *mut c_void, event: *mut c_void) {
+unsafe extern "C" fn tr_insert_wrapper(user_data: *mut c_void, event: *mut C_ValidationEvent) {
     let holder = &*(user_data as *mut TaskRunnerCallbackHolder);
     (holder.tr_insert)(Event {
         inner: AtomicPtr::new(event),
@@ -162,13 +162,13 @@ unsafe extern "C" fn tr_size_wrapper(user_data: *mut c_void) -> c_ulong {
 }
 
 pub struct Context {
-    inner: *mut c_void,
+    inner: *mut C_Context,
     pub tr_callbacks: Box<TaskRunnerCallbackHolder>,
     pub kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
 }
 
 pub struct ContextBuilder {
-    inner: *mut c_void,
+    inner: *mut C_ContextOptions,
     pub tr_callbacks: Option<Box<TaskRunnerCallbackHolder>>,
     pub kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
 }
@@ -205,7 +205,7 @@ impl ContextBuilder {
 
         unsafe { c_context_set_opt(
             self.inner,
-            C_ContextOptions_TaskRunnerCallbacksOption,
+            C_ContextOptionType_TaskRunnerCallbacksOption,
             Box::into_raw(Box::new(TaskRunnerCallbacks {
                 user_data: tr_pointer as *mut c_void,
                 insert: Some(tr_insert_wrapper),
@@ -224,7 +224,7 @@ impl ContextBuilder {
         let mut err = kernel_error_t_kernel_ERR_OK;
         unsafe { c_context_set_opt(
             self.inner,
-            C_ContextOptions_KernelNotificationInterfaceCallbacksOption,
+            C_ContextOptionType_KernelNotificationInterfaceCallbacksOption,
             Box::into_raw(Box::new(KernelNotificationInterfaceCallbacks {
                 user_data: kn_pointer as *mut c_void,
                 block_tip: Some(kn_block_tip_wrapper),
@@ -245,7 +245,7 @@ impl ContextBuilder {
         let mut err = kernel_error_t_kernel_ERR_OK;
         unsafe { c_context_set_opt(
             self.inner,
-            C_ContextOptions_ChainTypeOption,
+            C_ContextOptionType_ChainTypeOption,
             Box::into_raw(Box::new(C_Chain::from(chain_type))) as *mut c_void,
             &mut err,
         )};
@@ -302,7 +302,7 @@ unsafe extern "C" fn vi_block_checked_wrapper(
 }
 
 pub struct ValidationInterfaceWrapper {
-    inner: *mut c_void,
+    inner: *mut C_ValidationInterface,
     pub vi_callbacks: Box<ValidationInterfaceCallbackHolder>,
 }
 
@@ -400,7 +400,7 @@ impl From<C_Coin> for Coin {
 }
 
 pub struct Event {
-    pub inner: AtomicPtr<c_void>,
+    pub inner: AtomicPtr<C_ValidationEvent>,
 }
 
 pub fn execute_event(event: Event) {
@@ -408,7 +408,7 @@ pub fn execute_event(event: Event) {
 }
 
 pub struct ChainstateManager<'a> {
-    inner: *mut c_void,
+    inner: *mut C_ChainstateManager,
     context: &'a Context,
 }
 
