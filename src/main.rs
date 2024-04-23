@@ -4,7 +4,7 @@ use libbitcoinkernel_sys::{
     execute_event, register_validation_interface, set_logging_callback,
     unregister_validation_interface, ChainType, ChainstateManager, ContextBuilder, Event,
     KernelNotificationInterfaceCallbackHolder, TaskRunnerCallbackHolder,
-    ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
+    ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, Block
 };
 
 use env_logger::Builder;
@@ -122,7 +122,7 @@ fn main() {
         }));
     register_validation_interface(&validation_interface, &context).unwrap();
 
-    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", true, &context).unwrap();
+    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", false, &context).unwrap();
     chainman.import_blocks().unwrap();
 
     let cursor = chainman.chainstate_coins_cursor().unwrap();
@@ -138,7 +138,23 @@ fn main() {
     }
 
     log::info!("validating block");
-    chainman.validate_block("deadbeef").unwrap();
+    let block = Block::try_from("deadbeef");
+    if let Err(err) = block {
+        log::error!("Attempted to deserialize and invalid block: {}", err);
+    }
+
+    let block_1 = Block::try_from(
+        "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd\
+        1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299\
+        0101000000010000000000000000000000000000000000000000000000000000000000000000ffff\
+        ffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec1\
+        1600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf62\
+        1e73a82cbf2342c858eeac00000000"
+    );
+    if let Err(err) = chainman.validate_block(&block_1.unwrap()) {
+        log::error!("Validated invalid block: {}", err);
+    }
+
     log::info!("validated block");
 
     empty_queue(queue.clone());

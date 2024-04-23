@@ -5,6 +5,7 @@
 use std::ffi::{CStr, CString, NulError};
 use std::os::raw::{c_char, c_ulong, c_void};
 use std::sync::atomic::{AtomicPtr, Ordering};
+use std::fmt;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -173,6 +174,13 @@ pub struct ContextBuilder {
     pub kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
 }
 
+pub fn make_kernel_error() -> kernel_error {
+    kernel_error {
+        code: kernel_error_t_kernel_ERR_OK,
+        message: std::ptr::null_mut(),
+    }
+}
+
 impl ContextBuilder {
     pub fn new() -> ContextBuilder {
         ContextBuilder {
@@ -183,14 +191,14 @@ impl ContextBuilder {
     }
 
     pub fn build(self) -> Result<Context, KernelError> {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         let inner = unsafe { c_context_new(self.inner, &mut err) };
         handle_kernel_error(err)?;
         if self.tr_callbacks.is_none() {
-            return Err(KernelError::MissingCallbacks);
+            return Err(KernelError::MissingCallbacks("Missing TaskRunner callbacks.".to_string()));
         }
         if self.kn_callbacks.is_none() {
-            return Err(KernelError::MissingCallbacks);
+            return Err(KernelError::MissingCallbacks("Missing KernelNotificationInterface callbacks.".to_string()));
         }
         Ok(Context {
             inner,
@@ -201,7 +209,7 @@ impl ContextBuilder {
 
     pub fn tr_callbacks(mut self, tr_callbacks: Box<TaskRunnerCallbackHolder>) -> Result<ContextBuilder, KernelError> {
         let tr_pointer= Box::into_raw(tr_callbacks);
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
 
         unsafe { c_context_set_opt(
             self.inner,
@@ -221,7 +229,7 @@ impl ContextBuilder {
 
     pub fn kn_callbacks(mut self, kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>) -> Result<ContextBuilder, KernelError> {
         let kn_pointer = Box::into_raw(kn_callbacks);
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         unsafe { c_context_set_opt(
             self.inner,
             C_ContextOptionType_KernelNotificationInterfaceCallbacksOption,
@@ -242,7 +250,7 @@ impl ContextBuilder {
     }
 
     pub fn chain_type(self, chain_type: ChainType) -> Result<ContextBuilder, KernelError> {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         unsafe { c_context_set_opt(
             self.inner,
             C_ContextOptionType_ChainTypeOption,
@@ -256,30 +264,57 @@ impl ContextBuilder {
 
 #[derive(Debug)]
 pub enum KernelError {
-    InvalidPointer,
-    LoggingFailed,
-    UnknownOption,
-    InvalidContext,
-    SignatureCacheInit,
-    ScriptExecutionCacheInit,
-    MissingCallbacks,
+    InvalidPointer(String),
+    LoggingFailed(String),
+    UnknownOption(String),
+    InvalidContext(String),
+    SignatureCacheInit(String),
+    ScriptExecutionCacheInit(String),
+    MissingCallbacks(String),
+    Internal(String),
+    CStringCreationFailed(String),
 }
 
-fn handle_kernel_error(error: kernel_error_t) -> Result<(), KernelError> {
-    match error {
-        kernel_error_t_kernel_ERR_INVALID_CONTEXT => Err(KernelError::InvalidContext),
-        kernel_error_t_kernel_ERR_INVALID_POINTER => Err(KernelError::InvalidPointer),
-        kernel_error_t_kernel_ERR_LOGGING_FAILED => Err(KernelError::LoggingFailed),
-        kernel_error_t_kernel_ERR_UNKNOWN_OPTION => Err(KernelError::UnknownOption),
-        kernel_error_t_kernel_ERR_SIGNATURE_CACHE_INIT => Err(KernelError::SignatureCacheInit),
-        kernel_error_t_kernel_ERR_SCRIPT_EXECUTION_CACHE_INIT => Err(KernelError::ScriptExecutionCacheInit),
+impl From<NulError> for KernelError {
+    fn from(err: NulError) -> Self {
+        KernelError::CStringCreationFailed(err.to_string())
+    }
+}
+
+impl fmt::Display for KernelError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            KernelError::InvalidPointer(msg) => write!(f, "{}", msg),
+            KernelError::LoggingFailed(msg) => write!(f, "{}", msg),
+            KernelError::UnknownOption(msg) => write!(f, "{}", msg),
+            KernelError::InvalidContext(msg) => write!(f, "{}", msg),
+            KernelError::SignatureCacheInit(msg) => write!(f, "{}", msg),
+            KernelError::ScriptExecutionCacheInit(msg) => write!(f, "{}", msg),
+            KernelError::MissingCallbacks(msg) => write!(f, "{}", msg),
+            KernelError::Internal(msg) => write!(f, "{}", msg),
+            KernelError::CStringCreationFailed(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+fn handle_kernel_error(error: kernel_error) -> Result<(), KernelError> {
+    unsafe {
+    match error.code {
+        kernel_error_t_kernel_ERR_INVALID_POINTER => Err(KernelError::InvalidPointer(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_t_kernel_ERR_LOGGING_FAILED => Err(KernelError::LoggingFailed(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_t_kernel_ERR_UNKNOWN_OPTION => Err(KernelError::UnknownOption(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_t_kernel_ERR_INVALID_CONTEXT => Err(KernelError::InvalidContext(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_t_kernel_ERR_SIGNATURE_CACHE_INIT => Err(KernelError::SignatureCacheInit(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_t_kernel_ERR_SCRIPT_EXECUTION_CACHE_INIT => Err(KernelError::ScriptExecutionCacheInit(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_t_kernel_ERR_INTERNAL => Err(KernelError::Internal(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
         _ => Ok(())
+    }
     }
 }
 
 impl Drop for Context {
     fn drop(&mut self) {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         unsafe { c_context_delete(self.inner, &mut err); }
         handle_kernel_error(err).unwrap();
     }
@@ -294,7 +329,7 @@ pub struct ValidationInterfaceCallbackHolder {
 
 unsafe extern "C" fn vi_block_checked_wrapper(
     user_data: *mut c_void,
-    _block: *mut c_void,
+    _block: *const C_BlockRef,
     _stateIn: C_BlockValidationState,
 ) {
     let holder = &*(user_data as *mut ValidationInterfaceCallbackHolder);
@@ -325,14 +360,14 @@ impl ValidationInterfaceWrapper {
 }
 
 pub fn register_validation_interface(vi: &ValidationInterfaceWrapper, context: &Context) -> Result<(), KernelError> {
-    let mut err = kernel_error_t_kernel_ERR_OK;
+    let mut err = make_kernel_error();
     unsafe { c_register_validation_interface(context.inner, vi.inner, &mut err); }
     handle_kernel_error(err)?;
     Ok(())
 }
 
 pub fn unregister_validation_interface(vi: &ValidationInterfaceWrapper, context: &Context) -> Result<(), KernelError> {
-    let mut err = kernel_error_t_kernel_ERR_OK;
+    let mut err = make_kernel_error();
     unsafe { c_unregister_validation_interface(context.inner, vi.inner, &mut err); }
     handle_kernel_error(err)?;
     Ok(())
@@ -340,7 +375,7 @@ pub fn unregister_validation_interface(vi: &ValidationInterfaceWrapper, context:
 
 impl Drop for ValidationInterfaceWrapper {
     fn drop(&mut self) {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         unsafe { c_destroy_validation_interface(self.inner, &mut err); }
         handle_kernel_error(err).unwrap();
     }
@@ -412,21 +447,47 @@ pub struct ChainstateManager<'a> {
     context: &'a Context,
 }
 
+pub struct Block {
+    inner: *mut C_Block,
+}
+
+impl TryFrom<&str> for Block {
+    type Error = KernelError;
+
+    fn try_from(block_str: &str) -> Result<Self, Self::Error> {
+        let mut err = make_kernel_error();
+        let string = CString::new(block_str).unwrap();
+        unsafe {
+        let block = Block {
+            inner: c_block_from_str(string.as_ptr().cast::<i8>(), &mut err),
+        };
+        handle_kernel_error(err)?;
+        Ok(block)
+        }
+    }
+}
+
+impl Drop for Block {
+    fn drop(&mut self) {
+        unsafe { c_block_delete(self.inner)};
+    }
+}
+
 pub struct CoinsCursor {
-    inner: *mut c_void,
+    inner: *mut C_CoinsViewCursor,
 }
 
 impl CoinsCursor {
     pub fn cursor_next(&self) {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         unsafe { c_coins_cursor_next(self.inner, &mut err) };
         handle_kernel_error(err).unwrap();
     }
 
     pub fn get_key(&self) -> Result<OutPoint, KernelError> {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         if self.inner.is_null() {
-            return Err(KernelError::InvalidPointer);
+            return Err(KernelError::InvalidPointer("Invalid CoinsCursor inner pointer.".to_string()));
         }
         self.valid()?;
         let outpoint = unsafe { c_coins_cursor_get_key(self.inner, &mut err).into() };
@@ -435,14 +496,14 @@ impl CoinsCursor {
     }
 
     pub fn get_value(&self) -> Result<Coin, KernelError> {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         let coin = unsafe { c_coins_cursor_get_value(self.inner, &mut err).into() };
         handle_kernel_error(err)?;
         Ok(coin)
     }
 
     pub fn valid(&self) -> Result<bool, KernelError> {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         let valid = unsafe { c_coins_cursor_valid(self.inner, &mut err) != 0 };
         handle_kernel_error(err)?;
         Ok(valid)
@@ -467,48 +528,47 @@ impl Iterator for CoinsCursor {
 
 impl Drop for CoinsCursor {
     fn drop(&mut self) {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         unsafe { c_coins_cursor_delete(self.inner, &mut err) };
         handle_kernel_error(err).unwrap();
     }
 }
 
 impl<'a> ChainstateManager<'a> {
-    pub fn new(data_dir: &str, reindex: bool, context: &'a Context) -> Result<Self, NulError> {
+    pub fn new(data_dir: &str, reindex: bool, context: &'a Context) -> Result<Self, KernelError> {
         let c_data_dir = CString::new(data_dir)?;
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         let inner =
             unsafe { c_chainstate_manager_create(c_data_dir.as_ptr().cast::<i8>(), reindex, context.inner, &mut err) };
-        handle_kernel_error(err).unwrap();
+        handle_kernel_error(err)?;
         Ok(Self { inner, context })
     }
 
     pub fn validate_block(
         &self,
-        raw_block: &str,
-    ) -> Result<(), NulError> {
-        let c_raw_block = CString::new(raw_block)?;
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        block: &Block,
+    ) -> Result<(), KernelError> {
+        let mut err = make_kernel_error();
         unsafe {
             c_chainstate_manager_validate_block(
                 self.inner,
-                c_raw_block.as_ptr().cast::<i8>(),
+                block.inner,
                 &mut err,
             );
         };
-        handle_kernel_error(err).unwrap();
+        handle_kernel_error(err)?;
         Ok(())
     }
 
     pub fn import_blocks(&self) -> Result<(), KernelError> {
-        let mut err: u32 = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         unsafe { c_import_blocks(self.inner, &mut err)}
         handle_kernel_error(err)?;
         Ok(())
     }
 
     pub fn chainstate_coins_cursor(&self) -> Result<CoinsCursor, KernelError> {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         let coins_cursor = unsafe {
             CoinsCursor {
                 inner: c_chainstate_coins_cursor(self.inner, &mut err),
@@ -521,7 +581,7 @@ impl<'a> ChainstateManager<'a> {
 
 impl<'a> Drop for ChainstateManager<'a> {
     fn drop(&mut self) {
-        let mut err = kernel_error_t_kernel_ERR_OK;
+        let mut err = make_kernel_error();
         unsafe {
             c_chainstate_manager_delete(self.inner, self.context.inner, &mut err);
         }
@@ -561,7 +621,7 @@ where
     };
     unsafe { GLOBAL_LOG_CALLBACK_HOLDER = Some(callback_holder) };
 
-    let mut err = kernel_error_t_kernel_ERR_OK;
+    let mut err = make_kernel_error();
     unsafe { c_set_logging_callback_and_start_logging(Some(log_callback), &mut err) };
     handle_kernel_error(err)?;
     Ok(())
