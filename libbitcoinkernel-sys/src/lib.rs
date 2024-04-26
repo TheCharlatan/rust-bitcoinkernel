@@ -329,7 +329,7 @@ pub struct ValidationInterfaceCallbackHolder {
 
 unsafe extern "C" fn vi_block_checked_wrapper(
     user_data: *mut c_void,
-    _block: *const C_BlockRef,
+    _block: *const C_BlockPointer,
     _stateIn: C_BlockValidationState,
 ) {
     let holder = &*(user_data as *mut ValidationInterfaceCallbackHolder);
@@ -517,8 +517,7 @@ impl Iterator for CoinsCursor {
         let key = self.get_key().unwrap();
         let value = self.get_value().unwrap();
         self.cursor_next();
-
-        if !self.valid().unwrap() {
+        if self.valid().is_err() {
             None
         } else {
             Some((key, value))
@@ -531,6 +530,102 @@ impl Drop for CoinsCursor {
         let mut err = make_kernel_error();
         unsafe { c_coins_cursor_delete(self.inner, &mut err) };
         handle_kernel_error(err).unwrap();
+    }
+}
+
+pub struct BlockIndex {
+    inner: *mut C_BlockIndex,
+}
+
+impl BlockIndex {
+    pub fn block_height(&self) -> Result<i32, KernelError> {
+        let mut err = make_kernel_error();
+        let height = unsafe { c_get_block_height(self.inner, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(height)
+    }
+}
+
+pub struct CTransactionRef {
+    inner: *const C_TransactionRef,
+    pub n_ins: size_t,
+    pub n_outs: size_t,
+}
+
+impl CTransactionRef {
+    pub fn get_output_script_pubkey_by_index(&self, index: u64) -> Result<Vec<u8>, KernelError> {
+        let mut err = make_kernel_error();
+        let output = unsafe { c_get_output_by_index(self.inner, &mut err, index)};
+        handle_kernel_error(err)?;
+        let script_pubkey = unsafe { c_get_script_pubkey(output, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(unsafe { std::slice::from_raw_parts(
+            (*script_pubkey).data,
+            (*script_pubkey).len.try_into().unwrap(),
+        )}.to_vec())
+    }
+}
+
+pub struct CBlock {
+    inner: *mut C_BlockPointer,
+    pub n_txs: size_t,
+}
+
+impl CBlock {
+    pub fn get_transaction_by_index(&self, index: u64) -> Result<CTransactionRef, KernelError> {
+        let mut err = make_kernel_error();
+        let transaction_ref = unsafe { c_get_transaction_by_index(self.inner, &mut err, index)};
+        handle_kernel_error(err)?;
+        let n_ins = unsafe { c_get_transaction_input_size(transaction_ref, &mut err)};
+        handle_kernel_error(err)?;
+        let n_outs = unsafe { c_get_transaction_output_size(transaction_ref, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(CTransactionRef {
+            inner: transaction_ref,
+            n_ins,
+            n_outs
+        })
+    }
+}
+
+pub struct CBlockUndo {
+    inner: *mut C_BlockUndo,
+    pub n_txundo: size_t,
+}
+
+impl CBlockUndo {
+    pub fn get_txundo_by_index(&self, index: u64) -> Result<CTxUndo, KernelError> {
+        let mut err = make_kernel_error();
+        let tx_undo = unsafe { c_get_tx_undo_by_index(self.inner, &mut err, index)};
+        handle_kernel_error(err)?;
+        let n_out = unsafe { c_number_of_coins_in_tx_undo(tx_undo, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(CTxUndo {
+            inner: tx_undo,
+            n_out,
+        })
+    }
+}
+
+pub struct CTxUndo {
+    inner: *mut C_TxUndo,
+    pub n_out: size_t,
+}
+
+impl CTxUndo {
+    pub fn get_output_script_pubkey_by_index(&self, index: u64) -> Result<Vec<u8>, KernelError> {
+        let mut err = make_kernel_error();
+        let coin = unsafe { c_get_coin_by_index(self.inner, &mut err, index)};
+        handle_kernel_error(err)?;
+        let prev_out = unsafe { c_get_prevout(coin, &mut err)};
+        handle_kernel_error(err)?;
+        let script_pubkey = unsafe { c_get_script_pubkey(prev_out, &mut err)};
+        handle_kernel_error(err)?;
+        let res = unsafe { std::slice::from_raw_parts(
+            (*script_pubkey).data,
+            (*script_pubkey).len.try_into().unwrap(),
+        )}.to_vec();
+        Ok(res)
     }
 }
 
@@ -576,6 +671,45 @@ impl<'a> ChainstateManager<'a> {
         };
         handle_kernel_error(err)?;
         Ok(coins_cursor)
+    }
+
+    pub fn get_genesis_block_index(&self) -> Result<BlockIndex, KernelError> {
+        let mut err = make_kernel_error();
+        let block_index = unsafe { BlockIndex {
+                inner: c_get_genesis_block_index(self.inner, &mut err),
+            }
+        };
+        handle_kernel_error(err)?;
+        Ok(block_index)
+    }
+
+    pub fn get_next_block_index(&self, mut block_index: BlockIndex) -> Result<BlockIndex, KernelError> {
+        let mut err = make_kernel_error();
+        block_index.inner = unsafe {c_get_next_block_index(self.inner, &mut err, block_index.inner)};
+        handle_kernel_error(err)?;
+        if block_index.inner == std::ptr::null_mut() {
+            return Err(KernelError::InvalidPointer("Block index is null, indicating we are at the end of the chain".to_string()));
+        }
+        Ok(block_index)
+    }
+
+    pub fn read_block_data(&self, block_index: &BlockIndex) -> Result<(CBlock, CBlockUndo), KernelError> {
+        let mut err = make_kernel_error();
+        let mut block_data = CBlock {
+            inner: std::ptr::null_mut(),
+            n_txs: 0,
+        };
+        let mut undo_data = CBlockUndo {
+            inner: std::ptr::null_mut(),
+            n_txundo: 0,
+        };
+        unsafe { c_read_block_data(self.inner, block_index.inner, &mut err, &mut block_data.inner, true, &mut undo_data.inner, true)};
+        handle_kernel_error(err)?;
+        unsafe {block_data.n_txs = c_number_of_transactions_in_block(block_data.inner, &mut err)};
+        handle_kernel_error(err)?;
+        unsafe {undo_data.n_txundo = c_number_of_txundo_in_block_undo(undo_data.inner, &mut err)};
+        handle_kernel_error(err)?;
+        Ok((block_data, undo_data))
     }
 }
 

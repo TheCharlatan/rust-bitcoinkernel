@@ -27,6 +27,12 @@ fn setup_logging() {
     set_logging_callback(callback).unwrap();
 }
 
+#[derive(Debug)]
+struct ScanTxHelper {
+    prevouts: Vec<Vec<u8>>,
+    outs: Vec<Vec<u8>>,
+}
+
 fn runtime(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
     thread::spawn(move || {
         let (lock, cvar) = &*queue;
@@ -52,6 +58,35 @@ fn empty_queue(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
     log::trace!("Processing queue emptied.");
 }
 
+fn scan_txs(chainman: &ChainstateManager) {
+    let mut block_index_res = chainman.get_genesis_block_index();
+
+    block_index_res = chainman.get_next_block_index(block_index_res.unwrap());
+    let mut txs: Vec<ScanTxHelper> = vec![];
+    while let Ok(ref block_index) = block_index_res {
+        let (block, block_undo) = chainman.read_block_data(block_index).unwrap();
+        for i_tx in 0..block.n_txs {
+            // Skip the coinbase transaction
+            if i_tx == 0 {continue;}
+            let mut scan_tx = ScanTxHelper {
+                prevouts: vec![],
+                outs: vec![],
+            };
+            let tx = block.get_transaction_by_index(i_tx).unwrap();
+            let tx_undo = block_undo.get_txundo_by_index(i_tx - 1).unwrap();
+            for i_in in 0..tx.n_ins {
+                scan_tx.prevouts.push(tx_undo.get_output_script_pubkey_by_index(i_in).unwrap());
+            }
+            for i_out in 0..tx.n_outs {
+                scan_tx.outs.push(tx.get_output_script_pubkey_by_index(i_out).unwrap());
+            }
+            txs.push(scan_tx);
+        }
+        block_index_res = chainman.get_next_block_index(block_index_res.unwrap());
+    }
+    // Now use the txs for further scanning
+}
+
 fn main() {
     let queue = Arc::new((Mutex::new(VecDeque::<Event>::new()), Condvar::new()));
 
@@ -60,7 +95,7 @@ fn main() {
     setup_logging();
 
     let context = ContextBuilder::new()
-        .chain_type(ChainType::SIGNET)
+        .chain_type(ChainType::REGTEST)
         .unwrap()
         .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
             kn_block_tip: Box::new(|_state| {
@@ -122,8 +157,10 @@ fn main() {
         }));
     register_validation_interface(&validation_interface, &context).unwrap();
 
-    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/signet", false, &context).unwrap();
+    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/regtest", false, &context).unwrap();
     chainman.import_blocks().unwrap();
+
+    scan_txs(&chainman);
 
     let cursor = chainman.chainstate_coins_cursor().unwrap();
     let mut iter = 0;
@@ -136,6 +173,7 @@ fn main() {
             break;
         }
     }
+    log::info!("Iterated through all {} chainstate coin entires", iter);
 
     log::info!("validating block");
     let block = Block::try_from("deadbeef");
