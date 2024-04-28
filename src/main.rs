@@ -65,7 +65,7 @@ fn scan_txs(chainman: &ChainstateManager) {
     let mut txs: Vec<ScanTxHelper> = vec![];
     while let Ok(ref block_index) = block_index_res {
         let (block, block_undo) = chainman.read_block_data(block_index).unwrap();
-        for i_tx in 0..block.n_txs {
+        for i_tx in 0..block.n_txs.try_into().unwrap() {
             // Skip the coinbase transaction
             if i_tx == 0 {continue;}
             let mut scan_tx = ScanTxHelper {
@@ -74,10 +74,10 @@ fn scan_txs(chainman: &ChainstateManager) {
             };
             let tx = block.get_transaction_by_index(i_tx).unwrap();
             let tx_undo = block_undo.get_txundo_by_index(i_tx - 1).unwrap();
-            for i_in in 0..tx.n_ins {
+            for i_in in 0..tx.n_ins.try_into().unwrap() {
                 scan_tx.prevouts.push(tx_undo.get_output_script_pubkey_by_index(i_in).unwrap());
             }
-            for i_out in 0..tx.n_outs {
+            for i_out in 0..tx.n_outs.try_into().unwrap() {
                 scan_tx.outs.push(tx.get_output_script_pubkey_by_index(i_out).unwrap());
             }
             txs.push(scan_tx);

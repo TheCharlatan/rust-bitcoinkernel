@@ -3,7 +3,7 @@
 #![allow(non_snake_case)]
 
 use std::ffi::{CStr, CString, NulError};
-use std::os::raw::{c_char, c_ulong, c_void};
+use std::os::raw::{c_char, c_void};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::fmt;
 
@@ -135,8 +135,8 @@ impl<F: Fn(Event)> TRInsertFn for F {}
 pub trait TRFlushFn: Fn() {}
 impl<F: Fn()> TRFlushFn for F {}
 
-pub trait TRSizeFn: Fn() -> size_t {}
-impl<F: Fn() -> size_t> TRSizeFn for F {}
+pub trait TRSizeFn: Fn() -> usize {}
+impl<F: Fn() -> usize> TRSizeFn for F {}
 
 pub struct TaskRunnerCallbackHolder {
     pub tr_insert: Box<dyn TRInsertFn>,
@@ -156,7 +156,7 @@ unsafe extern "C" fn tr_flush_wrapper(user_data: *mut c_void) {
     (holder.tr_flush)();
 }
 
-unsafe extern "C" fn tr_size_wrapper(user_data: *mut c_void) -> c_ulong {
+unsafe extern "C" fn tr_size_wrapper(user_data: *mut c_void) -> usize {
     let holder = &*(user_data as *mut TaskRunnerCallbackHolder);
     let res = (holder.tr_size)();
     res
@@ -504,7 +504,7 @@ impl CoinsCursor {
 
     pub fn valid(&self) -> Result<bool, KernelError> {
         let mut err = make_kernel_error();
-        let valid = unsafe { c_coins_cursor_valid(self.inner, &mut err) != 0 };
+        let valid = unsafe { c_coins_cursor_valid(self.inner, &mut err) };
         handle_kernel_error(err)?;
         Ok(valid)
     }
@@ -517,7 +517,8 @@ impl Iterator for CoinsCursor {
         let key = self.get_key().unwrap();
         let value = self.get_value().unwrap();
         self.cursor_next();
-        if self.valid().is_err() {
+        let valid = self.valid();
+        if valid.is_err() || !valid.unwrap() {
             None
         } else {
             Some((key, value))
@@ -548,8 +549,8 @@ impl BlockIndex {
 
 pub struct CTransactionRef {
     inner: *const C_TransactionRef,
-    pub n_ins: size_t,
-    pub n_outs: size_t,
+    pub n_ins: usize,
+    pub n_outs: usize,
 }
 
 impl CTransactionRef {
@@ -568,7 +569,7 @@ impl CTransactionRef {
 
 pub struct CBlock {
     inner: *mut C_BlockPointer,
-    pub n_txs: size_t,
+    pub n_txs: usize,
 }
 
 impl CBlock {
@@ -590,7 +591,7 @@ impl CBlock {
 
 pub struct CBlockUndo {
     inner: *mut C_BlockUndo,
-    pub n_txundo: size_t,
+    pub n_txundo: usize,
 }
 
 impl CBlockUndo {
@@ -609,7 +610,7 @@ impl CBlockUndo {
 
 pub struct CTxUndo {
     inner: *mut C_TxUndo,
-    pub n_out: size_t,
+    pub n_out: usize,
 }
 
 impl CTxUndo {
