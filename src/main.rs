@@ -28,8 +28,15 @@ fn setup_logging() {
 }
 
 #[derive(Debug)]
+struct Input {
+    prevout: Vec<u8>,
+    script_sig: Vec<u8>,
+    witness: Vec<u8>,
+}
+
+#[derive(Debug)]
 struct ScanTxHelper {
-    prevouts: Vec<Vec<u8>>,
+    ins: Vec<Input>,
     outs: Vec<Vec<u8>>,
 }
 
@@ -69,13 +76,19 @@ fn scan_txs(chainman: &ChainstateManager) {
             // Skip the coinbase transaction
             if i_tx == 0 {continue;}
             let mut scan_tx = ScanTxHelper {
-                prevouts: vec![],
+                ins: vec![],
                 outs: vec![],
             };
             let tx = block.get_transaction_by_index(i_tx).unwrap();
             let tx_undo = block_undo.get_txundo_by_index(i_tx - 1).unwrap();
             for i_in in 0..tx.n_ins.try_into().unwrap() {
-                scan_tx.prevouts.push(tx_undo.get_output_script_pubkey_by_index(i_in).unwrap());
+                scan_tx.ins.push(
+                    Input {
+                        prevout: tx_undo.get_output_script_pubkey_by_index(i_in).unwrap(),
+                        witness: tx.get_input_witness_by_index(i_in).unwrap(),
+                        script_sig: tx.get_input_script_sig_by_index(i_in).unwrap(),
+                    }
+                );
             }
             for i_out in 0..tx.n_outs.try_into().unwrap() {
                 scan_tx.outs.push(tx.get_output_script_pubkey_by_index(i_out).unwrap());
@@ -84,7 +97,9 @@ fn scan_txs(chainman: &ChainstateManager) {
         }
         block_index_res = chainman.get_next_block_index(block_index_res.unwrap());
     }
+    log::info!("scanned txs: {:02x?}", txs);
     // Now use the txs for further scanning
+    log::info!("scanned txs!\n\n");
 }
 
 fn main() {

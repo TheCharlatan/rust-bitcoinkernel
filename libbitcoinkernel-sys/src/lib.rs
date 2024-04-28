@@ -560,10 +560,43 @@ impl CTransactionRef {
         handle_kernel_error(err)?;
         let script_pubkey = unsafe { c_get_script_pubkey(output, &mut err)};
         handle_kernel_error(err)?;
-        Ok(unsafe { std::slice::from_raw_parts(
+        let res = unsafe {std::slice::from_raw_parts(
             (*script_pubkey).data,
             (*script_pubkey).len.try_into().unwrap(),
-        )}.to_vec())
+        ).to_vec()};
+        unsafe { c_delete_byte_array(script_pubkey)};
+        Ok(res)
+    }
+
+    pub fn get_input_script_sig_by_index(&self, index: u64) -> Result<Vec<u8>, KernelError> {
+        let mut err = make_kernel_error();
+        let input = unsafe { c_get_input_by_index(self.inner, &mut err, index)};
+        handle_kernel_error(err)?;
+        let script_sig = unsafe { c_get_script_sig(input, &mut err)};
+        handle_kernel_error(err)?;
+        let res = unsafe {std::slice::from_raw_parts(
+            (*script_sig).data,
+            (*script_sig).len.try_into().unwrap(),
+        ).to_vec()};
+        unsafe { c_delete_byte_array(script_sig)};
+        Ok(res)
+    }
+
+    pub fn get_input_witness_by_index(&self, index: u64) -> Result<Vec<u8>, KernelError> {
+        let mut err = make_kernel_error();
+        let input= unsafe { c_get_input_by_index(self.inner, &mut err, index)};
+        handle_kernel_error(err)?;
+        let tx_in_witness = unsafe {c_get_tx_in_witness(input, &mut err)};
+        handle_kernel_error(err)?;
+        let witness = unsafe {c_get_witness(tx_in_witness, &mut err)};
+        let res = unsafe {std::slice::from_raw_parts(
+            (*witness).data,
+            (*witness).len.try_into().unwrap(),
+        ).to_vec()};
+        unsafe { c_delete_byte_array(witness)};
+        unsafe { c_delete_tx_in_witness(tx_in_witness, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(res)
     }
 }
 
@@ -626,6 +659,7 @@ impl CTxUndo {
             (*script_pubkey).data,
             (*script_pubkey).len.try_into().unwrap(),
         )}.to_vec();
+        unsafe {c_delete_byte_array(script_pubkey)};
         Ok(res)
     }
 }
