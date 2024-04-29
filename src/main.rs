@@ -2,9 +2,9 @@ extern crate libbitcoinkernel_sys;
 
 use libbitcoinkernel_sys::{
     execute_event, register_validation_interface, set_logging_callback,
-    unregister_validation_interface, ChainType, ChainstateManager, ContextBuilder, Event,
+    unregister_validation_interface, Block, ChainType, ChainstateManager, ContextBuilder, Event,
     KernelNotificationInterfaceCallbackHolder, TaskRunnerCallbackHolder,
-    ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, Block
+    ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
 };
 
 use env_logger::Builder;
@@ -73,25 +73,27 @@ fn scan_txs(chainman: &ChainstateManager) {
     while let Ok(ref block_index) = block_index_res {
         let (block, block_undo) = chainman.read_block_data(block_index).unwrap();
         for i_tx in 0..block.n_txs.try_into().unwrap() {
-            // Skip the coinbase transaction
-            if i_tx == 0 {continue;}
             let mut scan_tx = ScanTxHelper {
                 ins: vec![],
                 outs: vec![],
             };
             let tx = block.get_transaction_by_index(i_tx).unwrap();
+            // skip the coinbase transaction
+            if tx.is_coinbase().unwrap() {
+                continue;
+            }
             let tx_undo = block_undo.get_txundo_by_index(i_tx - 1).unwrap();
             for i_in in 0..tx.n_ins.try_into().unwrap() {
-                scan_tx.ins.push(
-                    Input {
-                        prevout: tx_undo.get_output_script_pubkey_by_index(i_in).unwrap(),
-                        witness: tx.get_input_witness_by_index(i_in).unwrap(),
-                        script_sig: tx.get_input_script_sig_by_index(i_in).unwrap(),
-                    }
-                );
+                scan_tx.ins.push(Input {
+                    prevout: tx_undo.get_output_script_pubkey_by_index(i_in).unwrap(),
+                    witness: tx.get_input_witness_by_index(i_in).unwrap(),
+                    script_sig: tx.get_input_script_sig_by_index(i_in).unwrap(),
+                });
             }
             for i_out in 0..tx.n_outs.try_into().unwrap() {
-                scan_tx.outs.push(tx.get_output_script_pubkey_by_index(i_out).unwrap());
+                scan_tx
+                    .outs
+                    .push(tx.get_output_script_pubkey_by_index(i_out).unwrap());
             }
             txs.push(scan_tx);
         }
@@ -172,7 +174,8 @@ fn main() {
         }));
     register_validation_interface(&validation_interface, &context).unwrap();
 
-    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/regtest", false, &context).unwrap();
+    let chainman =
+        ChainstateManager::new("/home/drgrid/.bitcoin/regtest", false, &context).unwrap();
     chainman.import_blocks().unwrap();
 
     scan_txs(&chainman);
@@ -202,7 +205,7 @@ fn main() {
         0101000000010000000000000000000000000000000000000000000000000000000000000000ffff\
         ffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec1\
         1600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf62\
-        1e73a82cbf2342c858eeac00000000"
+        1e73a82cbf2342c858eeac00000000",
     );
     if let Err(err) = chainman.validate_block(&block_1.unwrap()) {
         log::error!("Validated invalid block: {}", err);
@@ -211,6 +214,8 @@ fn main() {
     log::info!("validated block");
 
     empty_queue(queue.clone());
+    log::info!("emptied validation queue");
 
     unregister_validation_interface(&validation_interface, &context).unwrap();
+    log::info!("unregistered validation interface");
 }

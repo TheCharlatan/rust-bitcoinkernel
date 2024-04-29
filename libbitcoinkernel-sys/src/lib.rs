@@ -176,7 +176,7 @@ pub struct ContextBuilder {
 
 pub fn make_kernel_error() -> kernel_error {
     kernel_error {
-        code: kernel_error_t_kernel_ERR_OK,
+        code: kernel_error_code_kernel_ERR_OK,
         message: std::ptr::null_mut(),
     }
 }
@@ -184,7 +184,7 @@ pub fn make_kernel_error() -> kernel_error {
 impl ContextBuilder {
     pub fn new() -> ContextBuilder {
         ContextBuilder {
-            inner: unsafe { c_context_opt_new() },
+            inner: unsafe { c_context_opt_create() },
             tr_callbacks: None,
             kn_callbacks: None,
         }
@@ -192,7 +192,8 @@ impl ContextBuilder {
 
     pub fn build(self) -> Result<Context, KernelError> {
         let mut err = make_kernel_error();
-        let inner = unsafe { c_context_new(self.inner, &mut err) };
+        let mut inner = std::ptr::null_mut();
+        unsafe { c_context_create(self.inner, &mut inner, &mut err) };
         handle_kernel_error(err)?;
         if self.tr_callbacks.is_none() {
             return Err(KernelError::MissingCallbacks("Missing TaskRunner callbacks.".to_string()));
@@ -300,13 +301,13 @@ impl fmt::Display for KernelError {
 fn handle_kernel_error(error: kernel_error) -> Result<(), KernelError> {
     unsafe {
     match error.code {
-        kernel_error_t_kernel_ERR_INVALID_POINTER => Err(KernelError::InvalidPointer(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_t_kernel_ERR_LOGGING_FAILED => Err(KernelError::LoggingFailed(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_t_kernel_ERR_UNKNOWN_OPTION => Err(KernelError::UnknownOption(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_t_kernel_ERR_INVALID_CONTEXT => Err(KernelError::InvalidContext(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_t_kernel_ERR_SIGNATURE_CACHE_INIT => Err(KernelError::SignatureCacheInit(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_t_kernel_ERR_SCRIPT_EXECUTION_CACHE_INIT => Err(KernelError::ScriptExecutionCacheInit(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_t_kernel_ERR_INTERNAL => Err(KernelError::Internal(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_code_kernel_ERR_INVALID_POINTER => Err(KernelError::InvalidPointer(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_code_kernel_ERR_LOGGING_FAILED => Err(KernelError::LoggingFailed(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_code_kernel_ERR_UNKNOWN_OPTION => Err(KernelError::UnknownOption(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_code_kernel_ERR_INVALID_CONTEXT => Err(KernelError::InvalidContext(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_code_kernel_ERR_SIGNATURE_CACHE_INIT => Err(KernelError::SignatureCacheInit(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_code_kernel_ERR_SCRIPT_EXECUTION_CACHE_INIT => Err(KernelError::ScriptExecutionCacheInit(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_code_kernel_ERR_INTERNAL => Err(KernelError::Internal(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
         _ => Ok(())
     }
     }
@@ -315,8 +316,9 @@ fn handle_kernel_error(error: kernel_error) -> Result<(), KernelError> {
 impl Drop for Context {
     fn drop(&mut self) {
         let mut err = make_kernel_error();
-        unsafe { c_context_delete(self.inner, &mut err); }
+        unsafe { c_context_destroy(self.inner, &mut err); }
         handle_kernel_error(err).unwrap();
+        println!("dropped context.");
     }
 }
 
@@ -344,11 +346,12 @@ pub struct ValidationInterfaceWrapper {
 impl ValidationInterfaceWrapper {
     pub fn new(vi_callbacks: Box<ValidationInterfaceCallbackHolder>) -> ValidationInterfaceWrapper {
         let vi_pointer = Box::into_raw(vi_callbacks);
-        let inner = unsafe {
-            c_create_validation_interface(ValidationInterfaceCallbacks {
+        let mut inner = std::ptr::null_mut();
+        unsafe {
+            c_validation_interface_create(ValidationInterfaceCallbacks {
                 user_data: vi_pointer as *mut c_void,
                 block_checked: Some(vi_block_checked_wrapper),
-            })
+            }, &mut inner)
         };
 
         let vi_callbacks = unsafe { Box::from_raw(vi_pointer) };
@@ -361,14 +364,14 @@ impl ValidationInterfaceWrapper {
 
 pub fn register_validation_interface(vi: &ValidationInterfaceWrapper, context: &Context) -> Result<(), KernelError> {
     let mut err = make_kernel_error();
-    unsafe { c_register_validation_interface(context.inner, vi.inner, &mut err); }
+    unsafe { c_validation_interface_register(context.inner, vi.inner, &mut err); }
     handle_kernel_error(err)?;
     Ok(())
 }
 
 pub fn unregister_validation_interface(vi: &ValidationInterfaceWrapper, context: &Context) -> Result<(), KernelError> {
     let mut err = make_kernel_error();
-    unsafe { c_unregister_validation_interface(context.inner, vi.inner, &mut err); }
+    unsafe { c_validation_interface_unregister(context.inner, vi.inner, &mut err); }
     handle_kernel_error(err)?;
     Ok(())
 } 
@@ -376,8 +379,9 @@ pub fn unregister_validation_interface(vi: &ValidationInterfaceWrapper, context:
 impl Drop for ValidationInterfaceWrapper {
     fn drop(&mut self) {
         let mut err = make_kernel_error();
-        unsafe { c_destroy_validation_interface(self.inner, &mut err); }
+        unsafe { c_validation_interface_destroy(self.inner, &mut err); }
         handle_kernel_error(err).unwrap();
+        println!("dropped validation interface wrapper.");
     }
 }
 
@@ -457,10 +461,11 @@ impl TryFrom<&str> for Block {
     fn try_from(block_str: &str) -> Result<Self, Self::Error> {
         let mut err = make_kernel_error();
         let string = CString::new(block_str).unwrap();
-        unsafe {
-        let block = Block {
-            inner: c_block_from_str(string.as_ptr().cast::<i8>(), &mut err),
+        let mut block = Block {
+            inner: std::ptr::null_mut(),
         };
+        unsafe {
+        c_block_from_str(string.as_ptr().cast::<i8>(), &mut block.inner, &mut err);
         handle_kernel_error(err)?;
         Ok(block)
         }
@@ -469,7 +474,8 @@ impl TryFrom<&str> for Block {
 
 impl Drop for Block {
     fn drop(&mut self) {
-        unsafe { c_block_delete(self.inner)};
+        unsafe { c_block_destroy(self.inner)};
+        println!("dropped block.");
     }
 }
 
@@ -529,8 +535,9 @@ impl Iterator for CoinsCursor {
 impl Drop for CoinsCursor {
     fn drop(&mut self) {
         let mut err = make_kernel_error();
-        unsafe { c_coins_cursor_delete(self.inner, &mut err) };
+        unsafe { c_coins_cursor_destroy(self.inner, &mut err) };
         handle_kernel_error(err).unwrap();
+        println!("dropped coins cursor.");
     }
 }
 
@@ -554,17 +561,25 @@ pub struct CTransactionRef {
 }
 
 impl CTransactionRef {
+    pub fn is_coinbase(&self) -> Result<bool, KernelError> {
+        let mut err = make_kernel_error();
+        let is_coinbase = unsafe { c_transaction_ref_is_coinbase(self.inner, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(is_coinbase)
+    }
+
     pub fn get_output_script_pubkey_by_index(&self, index: u64) -> Result<Vec<u8>, KernelError> {
         let mut err = make_kernel_error();
         let output = unsafe { c_get_output_by_index(self.inner, &mut err, index)};
         handle_kernel_error(err)?;
-        let script_pubkey = unsafe { c_get_script_pubkey(output, &mut err)};
+        let mut script_pubkey: *mut ByteArray = std::ptr::null_mut();
+        unsafe { c_get_script_pubkey(output, &mut script_pubkey, &mut err)};
         handle_kernel_error(err)?;
         let res = unsafe {std::slice::from_raw_parts(
             (*script_pubkey).data,
             (*script_pubkey).len.try_into().unwrap(),
         ).to_vec()};
-        unsafe { c_delete_byte_array(script_pubkey)};
+        unsafe { c_byte_array_destroy(script_pubkey)};
         Ok(res)
     }
 
@@ -572,13 +587,14 @@ impl CTransactionRef {
         let mut err = make_kernel_error();
         let input = unsafe { c_get_input_by_index(self.inner, &mut err, index)};
         handle_kernel_error(err)?;
-        let script_sig = unsafe { c_get_script_sig(input, &mut err)};
+        let mut script_sig: *mut ByteArray = std::ptr::null_mut();
+        unsafe { c_get_script_sig(input, &mut script_sig, &mut err)};
         handle_kernel_error(err)?;
         let res = unsafe {std::slice::from_raw_parts(
             (*script_sig).data,
             (*script_sig).len.try_into().unwrap(),
         ).to_vec()};
-        unsafe { c_delete_byte_array(script_sig)};
+        unsafe { c_byte_array_destroy(script_sig)};
         Ok(res)
     }
 
@@ -586,15 +602,17 @@ impl CTransactionRef {
         let mut err = make_kernel_error();
         let input= unsafe { c_get_input_by_index(self.inner, &mut err, index)};
         handle_kernel_error(err)?;
-        let tx_in_witness = unsafe {c_get_tx_in_witness(input, &mut err)};
+        let mut tx_in_witness: *mut C_TxInWitness = std::ptr::null_mut();
+        unsafe {c_get_tx_in_witness(input, &mut tx_in_witness, &mut err)};
         handle_kernel_error(err)?;
-        let witness = unsafe {c_get_witness(tx_in_witness, &mut err)};
+        let mut witness: *mut ByteArray = std::ptr::null_mut();
+        unsafe {c_get_witness(tx_in_witness, &mut witness, &mut err)};
         let res = unsafe {std::slice::from_raw_parts(
             (*witness).data,
             (*witness).len.try_into().unwrap(),
         ).to_vec()};
-        unsafe { c_delete_byte_array(witness)};
-        unsafe { c_delete_tx_in_witness(tx_in_witness, &mut err)};
+        unsafe { c_byte_array_destroy(witness)};
+        unsafe { c_tx_in_witness_destroy(tx_in_witness, &mut err)};
         handle_kernel_error(err)?;
         Ok(res)
     }
@@ -653,13 +671,14 @@ impl CTxUndo {
         handle_kernel_error(err)?;
         let prev_out = unsafe { c_get_prevout(coin, &mut err)};
         handle_kernel_error(err)?;
-        let script_pubkey = unsafe { c_get_script_pubkey(prev_out, &mut err)};
+        let mut script_pubkey: *mut ByteArray = std::ptr::null_mut();
+        unsafe { c_get_script_pubkey(prev_out, &mut script_pubkey, &mut err)};
         handle_kernel_error(err)?;
         let res = unsafe { std::slice::from_raw_parts(
             (*script_pubkey).data,
             (*script_pubkey).len.try_into().unwrap(),
         )}.to_vec();
-        unsafe {c_delete_byte_array(script_pubkey)};
+        unsafe {c_byte_array_destroy(script_pubkey)};
         Ok(res)
     }
 }
@@ -668,8 +687,8 @@ impl<'a> ChainstateManager<'a> {
     pub fn new(data_dir: &str, reindex: bool, context: &'a Context) -> Result<Self, KernelError> {
         let c_data_dir = CString::new(data_dir)?;
         let mut err = make_kernel_error();
-        let inner =
-            unsafe { c_chainstate_manager_create(c_data_dir.as_ptr().cast::<i8>(), reindex, context.inner, &mut err) };
+        let mut inner: *mut C_ChainstateManager = std::ptr::null_mut();
+        unsafe { c_chainstate_manager_create(c_data_dir.as_ptr().cast::<i8>(), reindex, context.inner, &mut inner, &mut err) };
         handle_kernel_error(err)?;
         Ok(Self { inner, context })
     }
@@ -699,11 +718,10 @@ impl<'a> ChainstateManager<'a> {
 
     pub fn chainstate_coins_cursor(&self) -> Result<CoinsCursor, KernelError> {
         let mut err = make_kernel_error();
-        let coins_cursor = unsafe {
-            CoinsCursor {
-                inner: c_chainstate_coins_cursor(self.inner, &mut err),
-            }
+        let mut coins_cursor = CoinsCursor {
+            inner: std::ptr::null_mut(),
         };
+        unsafe { c_chainstate_coins_cursor_create(self.inner, &mut coins_cursor.inner, &mut err)};
         handle_kernel_error(err)?;
         Ok(coins_cursor)
     }
@@ -752,9 +770,10 @@ impl<'a> Drop for ChainstateManager<'a> {
     fn drop(&mut self) {
         let mut err = make_kernel_error();
         unsafe {
-            c_chainstate_manager_delete(self.inner, self.context.inner, &mut err);
+            c_chainstate_manager_destroy(self.inner, self.context.inner, &mut err);
         }
         handle_kernel_error(err).unwrap();
+        println!("dropped chainman.");
     }
 }
 
