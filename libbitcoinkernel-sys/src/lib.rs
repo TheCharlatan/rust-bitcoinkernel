@@ -9,7 +9,7 @@ use std::fmt;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-unsafe fn cast_string(c_str: *const i8) -> String {
+unsafe fn cast_string(c_str: *const c_char) -> String {
     if !c_str.is_null() {
         std::ffi::CStr::from_ptr(c_str)
             .to_string_lossy()
@@ -103,7 +103,7 @@ unsafe extern "C" fn kn_header_tip_wrapper(
 
 unsafe extern "C" fn kn_progress_wrapper(
     user_data: *mut c_void,
-    title: *const i8,
+    title: *const c_char,
     progress_percent: i32,
     resume_possible: bool,
 ) {
@@ -111,19 +111,19 @@ unsafe extern "C" fn kn_progress_wrapper(
     (holder.kn_progress)(cast_string(title), progress_percent, resume_possible);
 }
 
-unsafe extern "C" fn kn_warning_wrapper(user_data: *mut c_void, warning: *const i8) {
+unsafe extern "C" fn kn_warning_wrapper(user_data: *mut c_void, warning: *const c_char) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
     (holder.kn_warning)(cast_string(warning));
 }
 
-unsafe extern "C" fn kn_flush_error_wrapper(user_data: *mut c_void, message: *const i8) {
+unsafe extern "C" fn kn_flush_error_wrapper(user_data: *mut c_void, message: *const c_char) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
     (holder.kn_flush_error)(cast_string(message));
 }
 
 unsafe extern "C" fn kn_fatal_error_wrapper(
     user_data: *mut c_void,
-    message: *const i8,
+    message: *const c_char,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
     (holder.kn_fatal_error)(cast_string(message));
