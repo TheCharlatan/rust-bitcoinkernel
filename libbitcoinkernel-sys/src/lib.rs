@@ -558,6 +558,40 @@ pub struct CTransactionRef {
     inner: *const C_TransactionRef,
     pub n_ins: usize,
     pub n_outs: usize,
+    is_owned: bool,
+}
+
+impl TryFrom<&str> for CTransactionRef {
+    type Error = KernelError;
+
+    fn try_from(tx_str: &str) -> Result<Self, Self::Error> {
+        let mut err = make_kernel_error();
+        let string = CString::new(tx_str).unwrap();
+        let mut inner = std::ptr::null_mut();
+        unsafe {
+        c_transaction_ref_from_str(string.as_ptr().cast::<i8>(), &mut inner, &mut err);
+        handle_kernel_error(err)?;
+        let n_ins = c_get_transaction_input_size(inner, &mut err);
+        handle_kernel_error(err)?;
+        let n_outs = c_get_transaction_output_size(inner, &mut err);
+        handle_kernel_error(err)?;
+        Ok(CTransactionRef {
+            inner,
+            n_ins,
+            n_outs,
+            is_owned: true,
+        })
+        }
+    }
+}
+
+impl Drop for CTransactionRef {
+    fn drop(&mut self) {
+        if self.is_owned {
+            let mut err = make_kernel_error();
+            unsafe { c_transaction_ref_destroy(self.inner, &mut err)}
+        }
+    }
 }
 
 impl CTransactionRef {
@@ -635,7 +669,8 @@ impl CBlock {
         Ok(CTransactionRef {
             inner: transaction_ref,
             n_ins,
-            n_outs
+            n_outs,
+            is_owned: false,
         })
     }
 }
@@ -709,6 +744,18 @@ impl<'a> ChainstateManager<'a> {
         Ok(())
     }
 
+    pub fn validate_transaction(
+        &self,
+        transaction: &CTransactionRef,
+        test_accept: bool,
+    ) -> Result<(), KernelError> {
+        let mut err = make_kernel_error();
+        let mut result: *mut C_MempoolAcceptResult = std::ptr::null_mut();
+        unsafe { c_process_transaction(self.inner, transaction.inner, test_accept, &mut result, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(())
+    }
+
     pub fn import_blocks(&self) -> Result<(), KernelError> {
         let mut err = make_kernel_error();
         unsafe { c_import_blocks(self.inner, &mut err)}
@@ -744,6 +791,13 @@ impl<'a> ChainstateManager<'a> {
             return Err(KernelError::InvalidPointer("Block index is null, indicating we are at the end of the chain".to_string()));
         }
         Ok(block_index)
+    }
+
+    pub fn flush(&self) -> Result<(), KernelError> {
+        let mut err = make_kernel_error();
+        unsafe {c_chainstate_manager_flush(self.inner, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(())
     }
 
     pub fn read_block_data(&self, block_index: &BlockIndex) -> Result<(CBlock, CBlockUndo), KernelError> {
