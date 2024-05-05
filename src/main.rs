@@ -1,10 +1,7 @@
 extern crate libbitcoinkernel_sys;
 
 use libbitcoinkernel_sys::{
-    execute_event, register_validation_interface, set_logging_callback,
-    unregister_validation_interface, Block, ChainType, ChainstateManager, ContextBuilder, Event,
-    KernelNotificationInterfaceCallbackHolder, TaskRunnerCallbackHolder,
-    ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
+    execute_event, init_script_validation_caches, register_validation_interface, set_logging_callback, unregister_validation_interface, Block, ChainType, ChainstateManager, ContextBuilder, Event, KernelNotificationInterfaceCallbackHolder, TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper
 };
 
 use env_logger::Builder;
@@ -110,6 +107,7 @@ fn main() {
     runtime(queue.clone());
 
     setup_logging();
+    init_script_validation_caches().unwrap();
 
     let context = ContextBuilder::new()
         .chain_type(ChainType::REGTEST)

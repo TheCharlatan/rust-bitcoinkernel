@@ -177,7 +177,7 @@ pub struct ContextBuilder {
 pub fn make_kernel_error() -> kernel_error {
     kernel_error {
         code: kernel_error_code_kernel_ERR_OK,
-        message: std::ptr::null_mut(),
+        message: [0; 256],
     }
 }
 
@@ -298,16 +298,17 @@ impl fmt::Display for KernelError {
     }
 }
 
-fn handle_kernel_error(error: kernel_error) -> Result<(), KernelError> {
+fn handle_kernel_error(mut error: kernel_error) -> Result<(), KernelError> {
     unsafe {
+    let message = CStr::from_ptr(error.message.as_mut_ptr()).to_string_lossy().into_owned();
     match error.code {
-        kernel_error_code_kernel_ERR_INVALID_POINTER => Err(KernelError::InvalidPointer(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_code_kernel_ERR_LOGGING_FAILED => Err(KernelError::LoggingFailed(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_code_kernel_ERR_UNKNOWN_OPTION => Err(KernelError::UnknownOption(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_code_kernel_ERR_INVALID_CONTEXT => Err(KernelError::InvalidContext(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_code_kernel_ERR_SIGNATURE_CACHE_INIT => Err(KernelError::SignatureCacheInit(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_code_kernel_ERR_SCRIPT_EXECUTION_CACHE_INIT => Err(KernelError::ScriptExecutionCacheInit(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
-        kernel_error_code_kernel_ERR_INTERNAL => Err(KernelError::Internal(CStr::from_ptr(error.message).to_string_lossy().into_owned())),
+        kernel_error_code_kernel_ERR_INVALID_POINTER => Err(KernelError::InvalidPointer(message)),
+        kernel_error_code_kernel_ERR_LOGGING_FAILED => Err(KernelError::LoggingFailed(message)),
+        kernel_error_code_kernel_ERR_UNKNOWN_OPTION => Err(KernelError::UnknownOption(message)),
+        kernel_error_code_kernel_ERR_INVALID_CONTEXT => Err(KernelError::InvalidContext(message)),
+        kernel_error_code_kernel_ERR_SIGNATURE_CACHE_INIT => Err(KernelError::SignatureCacheInit(message)),
+        kernel_error_code_kernel_ERR_SCRIPT_EXECUTION_CACHE_INIT => Err(KernelError::ScriptExecutionCacheInit(message)),
+        kernel_error_code_kernel_ERR_INTERNAL => Err(KernelError::Internal(message)),
         _ => Ok(())
     }
     }
@@ -731,17 +732,17 @@ impl<'a> ChainstateManager<'a> {
     pub fn validate_block(
         &self,
         block: &Block,
-    ) -> Result<(), KernelError> {
+    ) -> Result<bool, KernelError> {
         let mut err = make_kernel_error();
-        unsafe {
+        let accepted = unsafe {
             c_chainstate_manager_validate_block(
                 self.inner,
                 block.inner,
                 &mut err,
-            );
+            )
         };
         handle_kernel_error(err)?;
-        Ok(())
+        Ok(accepted)
     }
 
     pub fn validate_transaction(
@@ -867,4 +868,11 @@ where
     unsafe { c_set_logging_callback_and_start_logging(Some(log_callback), &mut err) };
     handle_kernel_error(err)?;
     Ok(())
+}
+
+pub fn init_script_validation_caches() -> Result<bool, KernelError> {
+    let mut err = make_kernel_error();
+    let res = unsafe { c_init_script_validation_caches(&mut err)};
+    handle_kernel_error(err)?;
+    Ok(res)
 }
