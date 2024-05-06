@@ -242,7 +242,7 @@ mod tests {
         struct Input {
             prevout: Vec<u8>,
             script_sig: Vec<u8>,
-            witness: Vec<u8>,
+            witness: Vec<Vec<u8>>,
         }
 
         #[derive(Debug)]

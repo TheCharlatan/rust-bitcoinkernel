@@ -319,7 +319,6 @@ impl Drop for Context {
         let mut err = make_kernel_error();
         unsafe { c_context_destroy(self.inner, &mut err); }
         handle_kernel_error(err).unwrap();
-        println!("dropped context.");
     }
 }
 
@@ -382,7 +381,6 @@ impl Drop for ValidationInterfaceWrapper {
         let mut err = make_kernel_error();
         unsafe { c_validation_interface_destroy(self.inner, &mut err); }
         handle_kernel_error(err).unwrap();
-        println!("dropped validation interface wrapper.");
     }
 }
 
@@ -476,7 +474,6 @@ impl TryFrom<&str> for Block {
 impl Drop for Block {
     fn drop(&mut self) {
         unsafe { c_block_destroy(self.inner)};
-        println!("dropped block.");
     }
 }
 
@@ -538,7 +535,6 @@ impl Drop for CoinsCursor {
         let mut err = make_kernel_error();
         unsafe { c_coins_cursor_destroy(self.inner, &mut err) };
         handle_kernel_error(err).unwrap();
-        println!("dropped coins cursor.");
     }
 }
 
@@ -633,20 +629,25 @@ impl CTransactionRef {
         Ok(res)
     }
 
-    pub fn get_input_witness_by_index(&self, index: u64) -> Result<Vec<u8>, KernelError> {
+    pub fn get_input_witness_by_index(&self, index: u64) -> Result<Vec<Vec<u8>>, KernelError> {
         let mut err = make_kernel_error();
         let input= unsafe { c_get_input_by_index(self.inner, &mut err, index)};
         handle_kernel_error(err)?;
-        let mut tx_in_witness: *mut C_TxInWitness = std::ptr::null_mut();
+        let mut tx_in_witness: *mut TxInWitness = std::ptr::null_mut();
         unsafe {c_get_tx_in_witness(input, &mut tx_in_witness, &mut err)};
         handle_kernel_error(err)?;
-        let mut witness: *mut ByteArray = std::ptr::null_mut();
-        unsafe {c_get_witness(tx_in_witness, &mut witness, &mut err)};
-        let res = unsafe {std::slice::from_raw_parts(
-            (*witness).data,
-            (*witness).len.try_into().unwrap(),
-        ).to_vec()};
-        unsafe { c_byte_array_destroy(witness)};
+        let witness = unsafe {&*tx_in_witness};
+        let mut res: Vec<Vec<u8>> = Vec::with_capacity(witness.len as usize);
+        for i in 0..witness.len {
+            unsafe {
+            let bytes = *witness.data.add(i as usize);
+            let slice = std::slice::from_raw_parts(
+                bytes.data,
+                bytes.len.try_into().unwrap(),
+            ).to_vec();
+            res.push(slice);
+            }
+        }
         unsafe { c_tx_in_witness_destroy(tx_in_witness, &mut err)};
         handle_kernel_error(err)?;
         Ok(res)
@@ -828,7 +829,6 @@ impl<'a> Drop for ChainstateManager<'a> {
             c_chainstate_manager_destroy(self.inner, self.context.inner, &mut err);
         }
         handle_kernel_error(err).unwrap();
-        println!("dropped chainman.");
     }
 }
 
