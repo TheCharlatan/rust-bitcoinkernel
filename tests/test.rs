@@ -237,6 +237,70 @@ mod tests {
     }
 
     #[test]
+    fn test_scan_tx() {
+        #[derive(Debug)]
+        struct Input {
+            prevout: Vec<u8>,
+            script_sig: Vec<u8>,
+            witness: Vec<u8>,
+        }
+
+        #[derive(Debug)]
+        struct ScanTxHelper {
+            ins: Vec<Input>,
+            outs: Vec<Vec<u8>>,
+        }
+
+        let (context, validation_interface, data_dir) = testing_setup(true);
+        let block_data = read_block_data();
+        let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
+
+        for block_hex in block_data.iter() {
+            let block = Block::try_from(block_hex.as_str()).unwrap();
+            chainman.validate_block(&block).unwrap();
+        }
+        chainman.flush().unwrap();
+
+        let mut block_index_res = chainman.get_genesis_block_index();
+        block_index_res = chainman.get_next_block_index(block_index_res.unwrap());
+        let mut txs: Vec<ScanTxHelper> = vec![];
+        while let Ok(ref block_index) = block_index_res {
+            let (block, block_undo) = chainman.read_block_data(block_index).unwrap();
+            for i_tx in 0..block.n_txs.try_into().unwrap() {
+                let mut scan_tx = ScanTxHelper {
+                    ins: vec![],
+                    outs: vec![],
+                };
+                let tx = block.get_transaction_by_index(i_tx).unwrap();
+                // skip the coinbase transaction
+                if tx.is_coinbase().unwrap() {
+                    continue;
+                }
+                let tx_undo = block_undo.get_txundo_by_index(i_tx - 1).unwrap();
+                for i_in in 0..tx.n_ins.try_into().unwrap() {
+                    scan_tx.ins.push(Input {
+                        prevout: tx_undo.get_output_script_pubkey_by_index(i_in).unwrap(),
+                        witness: tx.get_input_witness_by_index(i_in).unwrap(),
+                        script_sig: tx.get_input_script_sig_by_index(i_in).unwrap(),
+                    });
+                }
+                for i_out in 0..tx.n_outs.try_into().unwrap() {
+                    scan_tx
+                        .outs
+                        .push(tx.get_output_script_pubkey_by_index(i_out).unwrap());
+                }
+                txs.push(scan_tx);
+            }
+            block_index_res = chainman.get_next_block_index(block_index_res.unwrap());
+        }
+        log::info!("scanned txs: {:02x?}", txs);
+        // Now use the txs for further scanning
+        log::info!("scanned txs!\n\n");
+        (context.tr_callbacks.tr_flush)();
+        unregister_validation_interface(&validation_interface, &context).unwrap();
+    }
+
+    #[test]
     fn test_process_data() {
         let (context, validation_interface, data_dir) = testing_setup(true);
         let block_data = read_block_data();
