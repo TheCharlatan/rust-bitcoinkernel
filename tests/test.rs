@@ -183,8 +183,8 @@ mod tests {
             size += std::mem::size_of_val(&out_point) + std::mem::size_of_val(&coin);
             iter += 1;
         }
-        assert_eq!(iter, 228);
-        assert_eq!(size, 17328);
+        assert_eq!(iter, 229);
+        assert_eq!(size, 17404);
     }
 
     #[test]
@@ -250,6 +250,15 @@ mod tests {
             ins: Vec<Input>,
             outs: Vec<Vec<u8>>,
         }
+
+        // silent payment txid:
+        // 4282b1727f0ebb0c035e8306c2c09764b5b637d63ae5249f7d0d1968a1554231
+        // silent payment tx:
+        // 02000000000102bbbd77f0d8c5cbc2ccc39f0501828ad4ac3a6a933393876cae5a7e49bd5341230100000000fdffffff94e299c837e0e00644b9123d80c052159443907f663e746be7fe1e6c32c3ee9b0100000000fdffffff0218e0f50500000000225120d7bf24e13daf4d6ce0ac7a34ecefb4122f070a1561e8659d4071c52edb7c1cb300e1f505000000002251207ef15780916ae0f29a0bd34e48e1a0e817e7731b82f3009cfa89c87602cf1b2b02473044022014680d9a963868b03d25f84bd81af87e127f9d7990166dad5e1dd71be8797e3402205f79713b4faaff7184fb25d0976a37970f8d6b23f95d4041180a35aa291fc8dc012102a9dfaeeebad1f7ebca371a6f02e63a8b0de287c1b0608edc259c60583a03496e0247304402201f09ecdb89f311c3ad8b6d89a040a5796f83c9db2597962969392a3d9a5be46d022052243418a89831ca0e5ddd7ae575d787178126d8495f890414ab8b4d2a1b19d80121035368c752d3ee31d9570180a1ba285659af106f9430811ec58e3b86cf26c208f100000000
+        // silent payment to address:
+        // sprt1qqw7zfpjcuwvq4zd3d4aealxq3d669s3kcde4wgr3zl5ugxs40twv2qccgvszutt7p796yg4h926kdnty66wxrfew26gu2gk5h5hcg4s2jqyascfz
+        // keys:
+        // 3081d302010104206d87b87889341032b6509470233601a722834808def6454450bf42a9af22d263a08185308182020101302c06072a8648ce3d0101022100fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f300604010004010704210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798022100fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141020101a124032200031843202e2d7e0f8ba222b72ab566cd64d69c61a72e5691c522d4bd2f84560a90, scan key: 3081d30201010420b700f356a63cbab8da1fb7b3e5cbbfbb4e56d83c8b7271d0bc6f92882f70aa85a08185308182020101302c06072a8648ce3d0101022100fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f300604010004010704210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798022100fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141020101a12403220003bc248658e3980a89b16d7b9efcc08b75a2c236c37357207117e9c41a157adcc5
 
         let (context, validation_interface, data_dir) = testing_setup(true);
         let block_data = read_block_data();
