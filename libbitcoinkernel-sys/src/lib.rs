@@ -629,26 +629,43 @@ impl CTransactionRef {
         Ok(res)
     }
 
+    pub fn get_input_prevout_by_index(&self, index: u64) -> Result<(Vec<u8>, u32), KernelError> {
+        let mut err = make_kernel_error();
+        let input = unsafe { c_get_input_by_index(self.inner, &mut err, index)};
+        let mut raw_tx_id: *mut ByteArray = std::ptr::null_mut();
+        unsafe { c_get_prevout_hash(input, &mut raw_tx_id, &mut err)};
+        handle_kernel_error(err)?;
+        let tx_id = unsafe {std::slice::from_raw_parts(
+            (*raw_tx_id).data,
+            (*raw_tx_id).len.try_into().unwrap(),
+        ).to_vec()};
+        unsafe { c_byte_array_destroy(raw_tx_id)};
+        let n = unsafe { c_get_prevout_n(input, &mut err)};
+        handle_kernel_error(err)?;
+        Ok((tx_id, n))
+    }
+
     pub fn get_input_witness_by_index(&self, index: u64) -> Result<Vec<Vec<u8>>, KernelError> {
         let mut err = make_kernel_error();
-        let input= unsafe { c_get_input_by_index(self.inner, &mut err, index)};
+        let input = unsafe { c_get_input_by_index(self.inner, &mut err, index)};
         handle_kernel_error(err)?;
         let mut tx_in_witness: *mut TxInWitness = std::ptr::null_mut();
+        println!("getting the witness for the selected input");
         unsafe {c_get_tx_in_witness(input, &mut tx_in_witness, &mut err)};
         handle_kernel_error(err)?;
-        let witness = unsafe {&*tx_in_witness};
-        let mut res: Vec<Vec<u8>> = Vec::with_capacity(witness.len as usize);
-        for i in 0..witness.len {
-            unsafe {
-            let bytes = *witness.data.add(i as usize);
+        let mut res: Vec<Vec<u8>> = unsafe { Vec::with_capacity((*tx_in_witness).len as usize)};
+        println!("we have the witness, now have to process it.");
+        unsafe {
+        for i in 0..(*tx_in_witness).len {
+            let bytes = (*tx_in_witness).data.add(i as usize);
             let slice = std::slice::from_raw_parts(
-                bytes.data,
-                bytes.len.try_into().unwrap(),
+                (*bytes).data,
+                (*bytes).len.try_into().unwrap(),
             ).to_vec();
             res.push(slice);
-            }
         }
-        unsafe { c_tx_in_witness_destroy(tx_in_witness, &mut err)};
+        c_tx_in_witness_destroy(tx_in_witness, &mut err);
+        }
         handle_kernel_error(err)?;
         Ok(res)
     }

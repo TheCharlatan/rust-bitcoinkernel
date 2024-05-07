@@ -3,6 +3,14 @@ name = "rust-bitcoinkernel"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+silentpayments = "0.1"
+bitcoin = "0.31"
+secp256k1 = "0.28"
+env_logger = "0.11"
+log = "0.4"
+libbitcoinkernel-sys = { path = "libbitcoinkernel-sys" }
+
 [dev-dependencies]
 env_logger = "0.11"
 log = "0.4"

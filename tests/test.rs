@@ -2,7 +2,10 @@
 mod tests {
     use env_logger::Builder;
     use libbitcoinkernel_sys::{
-        execute_event, init_script_validation_caches, register_validation_interface, set_logging_callback, unregister_validation_interface, Block, ChainType, ChainstateManager, Context, ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper
+        execute_event, init_script_validation_caches, register_validation_interface,
+        set_logging_callback, unregister_validation_interface, Block, ChainType, ChainstateManager,
+        Context, ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder,
+        TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
     };
     use log::LevelFilter;
     use std::collections::VecDeque;
@@ -58,8 +61,12 @@ mod tests {
             tr_insert: Box::new(move |event| {
                 execute_event(event);
             }),
-            tr_flush: Box::new(|| { return; }),
-            tr_size: Box::new(|| { return 0; }),
+            tr_flush: Box::new(|| {
+                return;
+            }),
+            tr_size: Box::new(|| {
+                return 0;
+            }),
         }
     }
 
@@ -123,11 +130,13 @@ mod tests {
             }))
             .unwrap();
         if let Some(queue) = queue {
-            builder = builder.tr_callbacks(Box::new(threaded_taskrunner(queue.clone())))
-            .unwrap();
+            builder = builder
+                .tr_callbacks(Box::new(threaded_taskrunner(queue.clone())))
+                .unwrap();
         } else {
-            builder = builder.tr_callbacks(Box::new(immediate_taskrunner()))
-            .unwrap();
+            builder = builder
+                .tr_callbacks(Box::new(immediate_taskrunner()))
+                .unwrap();
         }
         builder.build().unwrap()
     }
