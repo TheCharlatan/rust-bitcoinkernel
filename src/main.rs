@@ -4,10 +4,8 @@ use bitcoin::hashes::Hash;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
 use env_logger::Builder;
 use libbitcoinkernel_sys::{
-    execute_event, init_script_validation_caches, register_validation_interface,
-    set_logging_callback, unregister_validation_interface, ChainType, ChainstateManager,
-    Context, ContextBuilder, KernelNotificationInterfaceCallbackHolder,
-    TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
+    init_script_validation_caches, set_logging_callback, ChainType, ChainstateManager, Context,
+    ContextBuilder, KernelNotificationInterfaceCallbackHolder,
 };
 use log::LevelFilter;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
@@ -29,20 +27,6 @@ fn setup_logging() {
     set_logging_callback(callback).unwrap();
 }
 
-fn immediate_taskrunner() -> TaskRunnerCallbackHolder {
-    TaskRunnerCallbackHolder {
-        tr_insert: Box::new(move |event| {
-            execute_event(event);
-        }),
-        tr_flush: Box::new(|| {
-            return;
-        }),
-        tr_size: Box::new(|| {
-            return 0;
-        }),
-    }
-}
-
 fn create_context() -> Context {
     ContextBuilder::new()
         .chain_type(ChainType::REGTEST)
@@ -56,19 +40,8 @@ fn create_context() -> Context {
             kn_fatal_error: Box::new(|_message| {}),
         }))
         .unwrap()
-        .tr_callbacks(Box::new(immediate_taskrunner()))
-        .unwrap()
         .build()
         .unwrap()
-}
-
-fn setup_validation_interface(context: &Context) -> ValidationInterfaceWrapper {
-    let validation_interface =
-        ValidationInterfaceWrapper::new(Box::new(ValidationInterfaceCallbackHolder {
-            block_checked: Box::new(|| {}),
-        }));
-    register_validation_interface(&validation_interface, &context).unwrap();
-    validation_interface
 }
 
 fn vec_to_hex_string(data: &Vec<u8>) -> String {
@@ -100,7 +73,11 @@ impl fmt::Display for Input {
         for witness_elem in self.witness.iter() {
             write!(f, "witness: {}, ", vec_to_hex_string(&witness_elem))?;
         }
-        write!(f, "prevout txid: {}, ", bitcoin::Txid::from_slice(&self.prevout_data.0).unwrap())?;
+        write!(
+            f,
+            "prevout txid: {}, ",
+            bitcoin::Txid::from_slice(&self.prevout_data.0).unwrap()
+        )?;
         write!(f, "prevout n: {}, ", self.prevout_data.1)
     }
 }
@@ -160,7 +137,9 @@ fn scan_tx(receiver: &Receiver, secret_scan_key: &SecretKey, scan_tx_helper: Sca
         .ins
         .iter()
         .map(|input| {
-            let txid = bitcoin::Txid::from_slice(&input.prevout_data.0).unwrap().to_string();
+            let txid = bitcoin::Txid::from_slice(&input.prevout_data.0)
+                .unwrap()
+                .to_string();
             (txid, input.prevout_data.1)
         })
         .collect();
@@ -235,12 +214,9 @@ fn main() {
     setup_logging();
     init_script_validation_caches().unwrap();
     let context = create_context();
-    let validation_interface = setup_validation_interface(&context);
-    let chainman = ChainstateManager::new("/home/drgrid/.bitcoin/regtest", false, &context).unwrap();
+    let chainman =
+        ChainstateManager::new("/home/drgrid/.bitcoin/regtest", false, &context).unwrap();
     chainman.import_blocks().unwrap();
 
     scan_txs(&chainman);
-
-    (context.tr_callbacks.tr_flush)();
-    unregister_validation_interface(&validation_interface, &context).unwrap();
 }

@@ -164,7 +164,7 @@ unsafe extern "C" fn tr_size_wrapper(user_data: *mut c_void) -> usize {
 
 pub struct Context {
     inner: *mut C_Context,
-    pub tr_callbacks: Box<TaskRunnerCallbackHolder>,
+    pub tr_callbacks: Option<Box<TaskRunnerCallbackHolder>>,
     pub kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
 }
 
@@ -195,15 +195,12 @@ impl ContextBuilder {
         let mut inner = std::ptr::null_mut();
         unsafe { c_context_create(self.inner, &mut inner, &mut err) };
         handle_kernel_error(err)?;
-        if self.tr_callbacks.is_none() {
-            return Err(KernelError::MissingCallbacks("Missing TaskRunner callbacks.".to_string()));
-        }
         if self.kn_callbacks.is_none() {
             return Err(KernelError::MissingCallbacks("Missing KernelNotificationInterface callbacks.".to_string()));
         }
         Ok(Context {
             inner,
-            tr_callbacks: self.tr_callbacks.unwrap(),
+            tr_callbacks: self.tr_callbacks,
             kn_callbacks: self.kn_callbacks.unwrap(),
         })
     }
