@@ -4,7 +4,7 @@ use bitcoin::hashes::Hash;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
 use env_logger::Builder;
 use libbitcoinkernel_sys::{
-    init_script_validation_caches, set_logging_callback, ChainType, ChainstateManager, Context,
+    set_logging_callback, ChainType, ChainstateManager, Context,
     ContextBuilder, KernelNotificationInterfaceCallbackHolder,
 };
 use log::LevelFilter;
@@ -212,11 +212,9 @@ fn scan_txs(chainman: &ChainstateManager) {
 
 fn main() {
     setup_logging();
-    init_script_validation_caches().unwrap();
     let context = create_context();
     let chainman =
         ChainstateManager::new("/home/drgrid/.bitcoin/regtest", false, &context).unwrap();
     chainman.import_blocks().unwrap();
-
     scan_txs(&chainman);
 }
