@@ -18,6 +18,12 @@ mod tests {
     static START: Once = Once::new();
     type Queue = Arc<(Mutex<VecDeque<Event>>, Condvar)>;
 
+    enum TaskRunnerType {
+        Threaded,
+        Immediate,
+        None,
+    }
+
     fn setup_logging() {
         let mut builder = Builder::from_default_env();
         builder.filter(None, LevelFilter::Info).init();
@@ -152,19 +158,30 @@ mod tests {
         validation_interface
     }
 
-    fn testing_setup(threaded: bool) -> (Context, ValidationInterfaceWrapper, String) {
+    fn testing_setup(task_runner_type: TaskRunnerType) -> (Context, Option<ValidationInterfaceWrapper>, String) {
         START.call_once(|| {
             setup_logging();
             init_script_validation_caches().unwrap();
         });
-        let context = if threaded {
-            let queue = Arc::new((Mutex::new(VecDeque::<Event>::new()), Condvar::new()));
-            runtime(queue.clone());
-            create_context(Some(queue.clone()))
-        } else {
-            create_context(None)
+        let (context, validation_interface) = match task_runner_type {
+            TaskRunnerType::Threaded => {
+                let queue = Arc::new((Mutex::new(VecDeque::<Event>::new()), Condvar::new()));
+                runtime(queue.clone());
+                let context = create_context(Some(queue.clone()));
+                let validation_interface = setup_validation_interface(&context);
+                (context, Some(validation_interface))
+            },
+            TaskRunnerType::Immediate => {
+                let context = create_context(None);
+                let validation_interface = setup_validation_interface(&context);
+                (context, Some(validation_interface))
+            }
+            TaskRunnerType::None => {
+                let context = create_context(None);
+                (context, None)
+            }
         };
-        let validation_interface = setup_validation_interface(&context);
+
         let temp_dir = TempDir::new("test_chainman_regtest").unwrap();
         let data_dir = temp_dir.path();
         (
@@ -198,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_reindex() {
-        let (context, validation_interface, data_dir) = testing_setup(true);
+        let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Threaded);
         {
             let block_data = read_block_data();
             let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
@@ -213,12 +230,12 @@ mod tests {
         let chainman = ChainstateManager::new(data_dir.as_str(), true, &context).unwrap();
         chainman.import_blocks().unwrap();
         check_coins_integrity(&chainman);
-        unregister_validation_interface(&validation_interface, &context).unwrap();
+        unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
     }
 
     #[test]
     fn test_invalid_block() {
-        let (context, validation_interface, data_dir) = testing_setup(true);
+        let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Threaded);
         for _ in 0..10 {
             let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
 
@@ -240,7 +257,7 @@ mod tests {
             let res = chainman.validate_block(&block_1);
             assert!(!res.unwrap());
         }
-        unregister_validation_interface(&validation_interface, &context).unwrap();
+        unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
     }
 
     #[test]
@@ -258,7 +275,7 @@ mod tests {
             outs: Vec<Vec<u8>>,
         }
 
-        let (context, validation_interface, data_dir) = testing_setup(true);
+        let (context, _, data_dir) = testing_setup(TaskRunnerType::None);
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
 
@@ -303,12 +320,11 @@ mod tests {
         log::info!("scanned txs: {:02x?}", txs);
         // Now use the txs for further scanning
         log::info!("scanned txs!\n\n");
-        unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
     #[test]
     fn test_process_data() {
-        let (context, validation_interface, data_dir) = testing_setup(true);
+        let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Immediate);
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
 
@@ -322,6 +338,6 @@ mod tests {
         // And after flushing it should be fine again
         assert!(chainman.chainstate_coins_cursor().is_ok());
 
-        unregister_validation_interface(&validation_interface, &context).unwrap();
+        unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
     }
 }
