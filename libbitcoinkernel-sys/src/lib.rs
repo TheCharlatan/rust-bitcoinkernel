@@ -3,6 +3,7 @@
 #![allow(non_snake_case)]
 
 use std::ffi::{CStr, CString, NulError};
+use std::marker::PhantomData;
 use std::os::raw::{c_char, c_void};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::fmt;
@@ -535,11 +536,12 @@ impl Drop for CoinsCursor {
     }
 }
 
-pub struct BlockIndex {
+pub struct BlockIndex<'a> {
     inner: *mut C_BlockIndex,
+    _marker: PhantomData<&'a ChainstateManager<'a>>,
 }
 
-impl BlockIndex {
+impl BlockIndex<'_> {
     pub fn block_height(&self) -> Result<i32, KernelError> {
         let mut err = make_kernel_error();
         let height = unsafe { c_get_block_height(self.inner, &mut err)};
@@ -706,16 +708,18 @@ impl CBlockUndo {
         Ok(CTxUndo {
             inner: tx_undo,
             n_out,
+            _marker: PhantomData,
         })
     }
 }
 
-pub struct CTxUndo {
+pub struct CTxUndo<'a> {
     inner: *mut C_TxUndo,
     pub n_out: usize,
+    _marker: PhantomData<&'a CBlockUndo>,
 }
 
-impl CTxUndo {
+impl CTxUndo<'_> {
     pub fn get_output_script_pubkey_by_index(&self, index: u64) -> Result<Vec<u8>, KernelError> {
         let mut err = make_kernel_error();
         let coin = unsafe { c_get_coin_by_index(self.inner, &mut err, index)};
@@ -793,13 +797,14 @@ impl<'a> ChainstateManager<'a> {
         let mut err = make_kernel_error();
         let block_index = unsafe { BlockIndex {
                 inner: c_get_genesis_block_index(self.inner, &mut err),
+                _marker: PhantomData,
             }
         };
         handle_kernel_error(err)?;
         Ok(block_index)
     }
 
-    pub fn get_next_block_index(&self, mut block_index: BlockIndex) -> Result<BlockIndex, KernelError> {
+    pub fn get_next_block_index<'b>(&'b self, mut block_index: BlockIndex<'b>) -> Result<BlockIndex<'b>, KernelError> {
         let mut err = make_kernel_error();
         block_index.inner = unsafe {c_get_next_block_index(self.inner, &mut err, block_index.inner)};
         handle_kernel_error(err)?;
