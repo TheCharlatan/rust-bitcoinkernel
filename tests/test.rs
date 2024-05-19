@@ -2,7 +2,7 @@
 mod tests {
     use env_logger::Builder;
     use libbitcoinkernel_sys::{
-        execute_event, init_script_validation_caches, register_validation_interface,
+        execute_event, register_validation_interface,
         set_logging_callback, unregister_validation_interface, Block, ChainType, ChainstateManager,
         Context, ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder,
         TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
@@ -161,7 +161,6 @@ mod tests {
     fn testing_setup(task_runner_type: TaskRunnerType) -> (Context, Option<ValidationInterfaceWrapper>, String) {
         START.call_once(|| {
             setup_logging();
-            init_script_validation_caches().unwrap();
         });
         let (context, validation_interface) = match task_runner_type {
             TaskRunnerType::Threaded => {
@@ -339,5 +338,16 @@ mod tests {
         assert!(chainman.chainstate_coins_cursor().is_ok());
 
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
+    }
+
+    #[test]
+    fn test_validate_any() {
+        let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Immediate);
+        let block_data = read_block_data();
+        let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
+        chainman.import_blocks().unwrap();
+        unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
+        let block_2 = Block::try_from(block_data[1].clone().as_str()).unwrap();
+        chainman.validate_block(&block_2).unwrap();
     }
 }

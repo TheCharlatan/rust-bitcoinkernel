@@ -267,8 +267,6 @@ pub enum KernelError {
     LoggingFailed(String),
     UnknownOption(String),
     InvalidContext(String),
-    SignatureCacheInit(String),
-    ScriptExecutionCacheInit(String),
     MissingCallbacks(String),
     Internal(String),
     CStringCreationFailed(String),
@@ -287,8 +285,6 @@ impl fmt::Display for KernelError {
             KernelError::LoggingFailed(msg) => write!(f, "{}", msg),
             KernelError::UnknownOption(msg) => write!(f, "{}", msg),
             KernelError::InvalidContext(msg) => write!(f, "{}", msg),
-            KernelError::SignatureCacheInit(msg) => write!(f, "{}", msg),
-            KernelError::ScriptExecutionCacheInit(msg) => write!(f, "{}", msg),
             KernelError::MissingCallbacks(msg) => write!(f, "{}", msg),
             KernelError::Internal(msg) => write!(f, "{}", msg),
             KernelError::CStringCreationFailed(msg) => write!(f, "{}", msg),
@@ -304,8 +300,6 @@ fn handle_kernel_error(mut error: kernel_error) -> Result<(), KernelError> {
         kernel_error_code_kernel_ERR_LOGGING_FAILED => Err(KernelError::LoggingFailed(message)),
         kernel_error_code_kernel_ERR_UNKNOWN_OPTION => Err(KernelError::UnknownOption(message)),
         kernel_error_code_kernel_ERR_INVALID_CONTEXT => Err(KernelError::InvalidContext(message)),
-        kernel_error_code_kernel_ERR_SIGNATURE_CACHE_INIT => Err(KernelError::SignatureCacheInit(message)),
-        kernel_error_code_kernel_ERR_SCRIPT_EXECUTION_CACHE_INIT => Err(KernelError::ScriptExecutionCacheInit(message)),
         kernel_error_code_kernel_ERR_INTERNAL => Err(KernelError::Internal(message)),
         _ => Ok(())
     }
@@ -887,11 +881,4 @@ where
     unsafe { c_set_logging_callback_and_start_logging(Some(log_callback), &mut err) };
     handle_kernel_error(err)?;
     Ok(())
-}
-
-pub fn init_script_validation_caches() -> Result<bool, KernelError> {
-    let mut err = make_kernel_error();
-    let res = unsafe { c_init_script_validation_caches(&mut err)};
-    handle_kernel_error(err)?;
-    Ok(res)
 }
