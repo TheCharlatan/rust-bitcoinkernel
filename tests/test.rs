@@ -2,9 +2,9 @@
 mod tests {
     use env_logger::Builder;
     use libbitcoinkernel_sys::{
-        execute_event, register_validation_interface,
-        set_logging_callback, unregister_validation_interface, Block, ChainType, ChainstateManager,
-        Context, ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder,
+        execute_event, register_validation_interface, set_logging_callback,
+        unregister_validation_interface, Block, ChainType, ChainstateManager, Context,
+        ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder,
         TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
     };
     use log::LevelFilter;
@@ -158,7 +158,9 @@ mod tests {
         validation_interface
     }
 
-    fn testing_setup(task_runner_type: TaskRunnerType) -> (Context, Option<ValidationInterfaceWrapper>, String) {
+    fn testing_setup(
+        task_runner_type: TaskRunnerType,
+    ) -> (Context, Option<ValidationInterfaceWrapper>, String) {
         START.call_once(|| {
             setup_logging();
         });
@@ -169,7 +171,7 @@ mod tests {
                 let context = create_context(Some(queue.clone()));
                 let validation_interface = setup_validation_interface(&context);
                 (context, Some(validation_interface))
-            },
+            }
             TaskRunnerType::Immediate => {
                 let context = create_context(None);
                 let validation_interface = setup_validation_interface(&context);

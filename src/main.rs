@@ -4,8 +4,8 @@ use bitcoin::hashes::Hash;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
 use env_logger::Builder;
 use libbitcoinkernel_sys::{
-    set_logging_callback, ChainType, ChainstateManager, Context,
-    ContextBuilder, KernelNotificationInterfaceCallbackHolder,
+    set_logging_callback, ChainType, ChainstateManager, Context, ContextBuilder,
+    KernelNotificationInterfaceCallbackHolder,
 };
 use log::LevelFilter;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
