@@ -1,11 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use bitcoin::consensus::deserialize;
     use env_logger::Builder;
     use libbitcoinkernel_sys::{
-        execute_event, register_validation_interface, set_logging_callback,
-        unregister_validation_interface, Block, ChainType, ChainstateManager, Context,
-        ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder,
-        TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
+        execute_event, register_validation_interface, set_logging_callback, unregister_validation_interface, Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper
     };
     use log::LevelFilter;
     use std::collections::VecDeque;
@@ -46,7 +44,7 @@ mod tests {
                     queue = cvar.wait(queue).unwrap();
                 }
                 let event = queue.pop_front().unwrap();
-                execute_event(event);
+                execute_event(event).unwrap();
                 log::trace!("executed runtime event!");
             }
         });
@@ -57,7 +55,7 @@ mod tests {
         let (lock, _) = &*queue;
         let mut queue = lock.lock().unwrap();
         while let Some(event) = queue.pop_front() {
-            execute_event(event);
+            execute_event(event).unwrap();
         }
         log::trace!("Processing queue emptied.");
     }
@@ -65,7 +63,7 @@ mod tests {
     fn immediate_taskrunner() -> TaskRunnerCallbackHolder {
         TaskRunnerCallbackHolder {
             tr_insert: Box::new(move |event| {
-                execute_event(event);
+                execute_event(event).unwrap();
             }),
             tr_flush: Box::new(|| {
                 return;
@@ -111,19 +109,6 @@ mod tests {
             .chain_type(ChainType::REGTEST)
             .unwrap()
             .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
-                kn_block_tip: Box::new(|_state| {
-                    log::info!("Processed new block!");
-                }),
-                kn_header_tip: Box::new(|_state, height, timestamp, presync| {
-                    log::info!(
-                        "Processed new header: {height}, at {timestamp}, presyncing {presync}"
-                    );
-                }),
-                kn_progress: Box::new(|title, progress, resume_possible| {
-                    log::info!(
-                        "Made progress {title}, {progress}, resume possible: {resume_possible}"
-                    );
-                }),
                 kn_warning: Box::new(|warning| {
                     log::info!("Received warning: {warning}");
                 }),
@@ -202,43 +187,44 @@ mod tests {
         lines
     }
 
-    fn check_coins_integrity(chainman: &ChainstateManager) {
-        let cursor = chainman.chainstate_coins_cursor().unwrap();
-        let mut iter = 0;
-        let mut size = 0;
-        for (out_point, coin) in cursor {
-            size += std::mem::size_of_val(&out_point) + std::mem::size_of_val(&coin);
-            iter += 1;
-        }
-        assert_eq!(iter, 229);
-        assert_eq!(size, 17404);
-    }
 
     #[test]
     fn test_reindex() {
         let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Threaded);
+        let blocks_dir = data_dir.clone() + "/blocks";
         {
             let block_data = read_block_data();
-            let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
+
+            let chainman = ChainstateManager::new(
+                ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
+                BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+                &context).unwrap();
+            chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
             for block_hex in block_data.iter() {
                 let block = Block::try_from(block_hex.as_str()).unwrap();
-                chainman.validate_block(&block).unwrap();
+                chainman.process_block(&block).unwrap();
             }
-            chainman.flush().unwrap();
-            check_coins_integrity(&chainman);
         }
 
-        let chainman = ChainstateManager::new(data_dir.as_str(), true, &context).unwrap();
+        let chainman = ChainstateManager::new(
+            ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
+            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            &context).unwrap();
+        chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
         chainman.import_blocks().unwrap();
-        check_coins_integrity(&chainman);
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
     }
 
     #[test]
     fn test_invalid_block() {
         let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Threaded);
+        let blocks_dir = data_dir.clone() + "/blocks";
         for _ in 0..10 {
-            let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
+            let chainman = ChainstateManager::new(
+                ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
+                BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+                &context).unwrap();
+            chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
 
             // Not a block
             let block = Block::try_from("deadbeef");
@@ -255,7 +241,7 @@ mod tests {
                 1e73a82cbf2342c858eeac00000000",
             )
             .unwrap();
-            let res = chainman.validate_block(&block_1);
+            let res = chainman.process_block(&block_1);
             assert!(!res.unwrap());
         }
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
@@ -277,67 +263,67 @@ mod tests {
         }
 
         let (context, _, data_dir) = testing_setup(TaskRunnerType::None);
+        let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
-        let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
+        let chainman = ChainstateManager::new(
+            ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
+            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            &context).unwrap();
+        chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
 
         for block_hex in block_data.iter() {
             let block = Block::try_from(block_hex.as_str()).unwrap();
-            chainman.validate_block(&block).unwrap();
+            chainman.process_block(&block).unwrap();
         }
-        chainman.flush().unwrap();
 
-        let mut block_index_res = chainman.get_genesis_block_index();
-        block_index_res = chainman.get_next_block_index(block_index_res.unwrap());
-        let mut txs: Vec<ScanTxHelper> = vec![];
-        while let Ok(ref block_index) = block_index_res {
-            let (block, block_undo) = chainman.read_block_data(block_index).unwrap();
-            for i_tx in 0..block.n_txs.try_into().unwrap() {
-                let mut scan_tx = ScanTxHelper {
-                    ins: vec![],
-                    outs: vec![],
-                };
-                let tx = block.get_transaction_by_index(i_tx).unwrap();
-                // skip the coinbase transaction
-                if tx.is_coinbase().unwrap() {
-                    continue;
-                }
-                let tx_undo = block_undo.get_txundo_by_index(i_tx - 1).unwrap();
-                for i_in in 0..tx.n_ins.try_into().unwrap() {
-                    scan_tx.ins.push(Input {
-                        prevout: tx_undo.get_output_script_pubkey_by_index(i_in).unwrap(),
-                        witness: tx.get_input_witness_by_index(i_in).unwrap(),
-                        script_sig: tx.get_input_script_sig_by_index(i_in).unwrap(),
-                    });
-                }
-                for i_out in 0..tx.n_outs.try_into().unwrap() {
-                    scan_tx
-                        .outs
-                        .push(tx.get_output_script_pubkey_by_index(i_out).unwrap());
-                }
-                txs.push(scan_tx);
+        let block_index_tip = chainman.get_block_index_tip().unwrap();
+        let raw_block_tip: Vec<u8> = chainman.read_block_data(&block_index_tip).unwrap().into();
+        let undo_tip = chainman.read_undo_data(&block_index_tip).unwrap();
+        let block_tip: bitcoin::Block = deserialize(&raw_block_tip).unwrap();
+        // Should be the same size minus the coinbase transaction
+        assert_eq!(block_tip.txdata.len() - 1, undo_tip.n_tx_undo);
+
+        let block_index_tip_prev = chainman.get_previous_block_index(block_index_tip).unwrap();
+        let raw_block: Vec<u8> = chainman.read_block_data(&block_index_tip_prev).unwrap().into();
+        let undo = chainman.read_undo_data(&block_index_tip_prev).unwrap();
+        let block: bitcoin::Block = deserialize(&raw_block).unwrap();
+        // Should be the same size minus the coinbase transaction
+        assert_eq!(block.txdata.len() - 1, undo.n_tx_undo);
+
+        for i in 0..(block.txdata.len()-1) {
+            let transaction_undo_size: u64 = undo.get_get_transaction_undo_size(i.try_into().unwrap()).unwrap();
+            let transaction_input_size: u64 = block.txdata[i+1].input.len().try_into().unwrap();
+            assert_eq!(transaction_input_size, transaction_undo_size);
+            let mut helper = ScanTxHelper {
+                ins: vec![],
+                outs: block.txdata[i+1].output.iter().map(|output| { output.script_pubkey.to_bytes()}).collect(),
+            };
+            for j in 0..transaction_input_size {
+                helper.ins.push(Input {
+                    prevout: undo.get_prevout_by_index(i as u64, j).unwrap().script_pubkey,
+                    script_sig: block.txdata[i+1].input[j as usize].script_sig.to_bytes(),
+                    witness: block.txdata[i+1].input[j as usize].witness.to_vec(),
+                });
             }
-            block_index_res = chainman.get_next_block_index(block_index_res.unwrap());
+            println!("helper: {:?}", helper);
         }
-        log::info!("scanned txs: {:02x?}", txs);
-        // Now use the txs for further scanning
-        log::info!("scanned txs!\n\n");
     }
 
     #[test]
     fn test_process_data() {
         let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Immediate);
+        let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
-        let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
+        let chainman = ChainstateManager::new(
+            ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
+            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            &context).unwrap();
+        chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
 
         for block_hex in block_data.iter() {
             let block = Block::try_from(block_hex.as_str()).unwrap();
-            chainman.validate_block(&block).unwrap();
+            chainman.process_block(&block).unwrap();
         }
-        // Not flushing after validating should not give us a valid cursor.
-        assert!(chainman.chainstate_coins_cursor().is_err());
-        chainman.flush().unwrap();
-        // And after flushing it should be fine again
-        assert!(chainman.chainstate_coins_cursor().is_ok());
 
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
     }
@@ -345,11 +331,17 @@ mod tests {
     #[test]
     fn test_validate_any() {
         let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Immediate);
+        let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
-        let chainman = ChainstateManager::new(data_dir.as_str(), false, &context).unwrap();
+        let chainman = ChainstateManager::new(
+            ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
+            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            &context).unwrap();
+        chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
+
         chainman.import_blocks().unwrap();
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
         let block_2 = Block::try_from(block_data[1].clone().as_str()).unwrap();
-        chainman.validate_block(&block_2).unwrap();
+        chainman.process_block(&block_2).unwrap();
     }
 }

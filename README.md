@@ -8,7 +8,7 @@ library exposing Bitcoin Core's validation engine.
 
 ## Building
 
-To build this library, first build the kernel library on my ffiPoC branch. It
+To build this library, first build the kernel library on my kernelApi branch. It
 produces a C-compatible header that is used by this project to create the FFI.
 
 ```

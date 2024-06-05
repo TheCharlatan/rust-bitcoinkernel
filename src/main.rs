@@ -1,11 +1,11 @@
 use std::fmt;
 
+use bitcoin::consensus::deserialize;
 use bitcoin::hashes::Hash;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
 use env_logger::Builder;
 use libbitcoinkernel_sys::{
-    set_logging_callback, ChainType, ChainstateManager, Context, ContextBuilder,
-    KernelNotificationInterfaceCallbackHolder,
+    set_logging_callback, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelNotificationInterfaceCallbackHolder
 };
 use log::LevelFilter;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
@@ -32,9 +32,6 @@ fn create_context() -> Context {
         .chain_type(ChainType::REGTEST)
         .unwrap()
         .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
-            kn_block_tip: Box::new(|_state| {}),
-            kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
-            kn_progress: Box::new(|_title, _progress, _resume_possible| {}),
             kn_warning: Box::new(|_warning| {}),
             kn_flush_error: Box::new(|_message| {}),
             kn_fatal_error: Box::new(|_message| {}),
@@ -163,49 +160,39 @@ fn scan_tx(receiver: &Receiver, secret_scan_key: &SecretKey, scan_tx_helper: Sca
 
 fn scan_txs(chainman: &ChainstateManager) {
     let (receiver, secret_scan_key) = parse_keys();
-    let mut block_index_res = chainman.get_genesis_block_index();
-    block_index_res = chainman.get_next_block_index(block_index_res.unwrap());
+    let mut block_index_res = chainman.get_block_index_tip();
+    block_index_res = chainman.get_previous_block_index(block_index_res.unwrap());
     let mut n_blocks = 0;
     while let Ok(ref block_index) = block_index_res {
         n_blocks += 1;
-        let (block, block_undo) = chainman.read_block_data(block_index).unwrap();
-        for i_tx in 0..block.n_txs.try_into().unwrap() {
-            if n_blocks < 206 {
-                continue;
-            }
 
+        let undo = chainman.read_undo_data(&block_index).unwrap();
+        let raw_block: Vec<u8> = chainman.read_block_data(&block_index).unwrap().into();
+        let block: bitcoin::Block = deserialize(&raw_block).unwrap();
+        // Should be the same size minus the coinbase transaction
+        assert_eq!(block.txdata.len() - 1, undo.n_tx_undo);
+
+        for i in 0..(block.txdata.len()-1) {
+            let transaction_undo_size: u64 = undo.get_get_transaction_undo_size(i.try_into().unwrap()).unwrap();
+            let transaction_input_size: u64 = block.txdata[i+1].input.len().try_into().unwrap();
+            assert_eq!(transaction_input_size, transaction_undo_size);
             let mut scan_tx_helper = ScanTxHelper {
                 ins: vec![],
-                outs: vec![],
+                outs: block.txdata[i+1].output.iter().map(|output| { output.script_pubkey.to_bytes()}).collect(),
             };
-            let tx = block.get_transaction_by_index(i_tx).unwrap();
-            // skip the coinbase transaction
-            if tx.is_coinbase().unwrap() {
-                continue;
-            }
-            let tx_undo = block_undo.get_txundo_by_index(i_tx - 1).unwrap();
-            for i_in in 0..tx.n_ins.try_into().unwrap() {
-                let prevout = tx_undo.get_output_script_pubkey_by_index(i_in).unwrap();
-                let witness = tx.get_input_witness_by_index(i_in).unwrap();
-                let script_sig = tx.get_input_script_sig_by_index(i_in).unwrap();
-                let prevout_data = tx.get_input_prevout_by_index(i_in).unwrap();
-
+            for j in 0..transaction_input_size {
                 scan_tx_helper.ins.push(Input {
-                    prevout,
-                    witness,
-                    script_sig,
-                    prevout_data,
+                    prevout: undo.get_prevout_by_index(i as u64, j).unwrap().script_pubkey,
+                    script_sig: block.txdata[i+1].input[j as usize].script_sig.to_bytes(),
+                    witness: block.txdata[i+1].input[j as usize].witness.to_vec(),
+                    prevout_data: (block.txdata[i+1].input[j as usize].previous_output.txid.to_byte_array().to_vec(),
+                                  block.txdata[i+1].input[j as usize].previous_output.vout),
                 });
             }
-            for i_out in 0..tx.n_outs.try_into().unwrap() {
-                scan_tx_helper
-                    .outs
-                    .push(tx.get_output_script_pubkey_by_index(i_out).unwrap());
-            }
-            log::info!("{}", scan_tx_helper);
             scan_tx(&receiver, &secret_scan_key, scan_tx_helper.clone());
+            println!("helper: {:?}", scan_tx_helper);
         }
-        block_index_res = chainman.get_next_block_index(block_index_res.unwrap());
+        block_index_res = chainman.get_previous_block_index(block_index_res.unwrap());
     }
     log::info!("scanned txs!");
 }
@@ -213,8 +200,13 @@ fn scan_txs(chainman: &ChainstateManager) {
 fn main() {
     setup_logging();
     let context = create_context();
-    let chainman =
-        ChainstateManager::new("/home/drgrid/.bitcoin/regtest", false, &context).unwrap();
+    let data_dir = "/home/drgrid/.bitcoin/regtest".to_string();
+    let blocks_dir = data_dir.clone() + "/blocks";
+    let chainman = ChainstateManager::new(
+        ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
+        BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+        &context).unwrap();
+    chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
     chainman.import_blocks().unwrap();
     scan_txs(&chainman);
 }
