@@ -6,9 +6,79 @@ use std::ffi::{CStr, CString, NulError};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_void};
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::fmt;
+use std::{fmt, ptr};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+pub const VERIFY_NONE: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_NONE;
+pub const VERIFY_P2SH: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_P2SH;
+pub const VERIFY_DERSIG: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_DERSIG;
+pub const VERIFY_NULLDUMMY: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_NULLDUMMY;
+pub const VERIFY_CHECKLOCKTIMEVERIFY: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_CHECKLOCKTIMEVERIFY; 
+pub const VERIFY_CHECKSEQUENCEVERIFY: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_CHECKSEQUENCEVERIFY;
+pub const VERIFY_WITNESS: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_WITNESS;
+pub const VERIFY_TAPROOT: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_TAPROOT;
+
+pub const VERIFY_ALL_PRE_TAPROOT: u32 = VERIFY_P2SH
+    | VERIFY_DERSIG
+    | VERIFY_NULLDUMMY
+    | VERIFY_CHECKLOCKTIMEVERIFY
+    | VERIFY_CHECKSEQUENCEVERIFY
+    | VERIFY_WITNESS;
+
+pub struct Utxo<'a> {
+    value: i64,
+    script_pubkey: &'a [u8],
+}
+
+pub fn verify(
+    script_pubkey: &[u8],
+    amount: Option<i64>,
+    tx_to: &[u8],
+    input_index: u32,
+    flags: Option<u32>,
+    spent_outputs: Option<&[Utxo]>,
+) -> Result<(), KernelError> {
+    let kernel_flags = if let Some(flag) = flags {
+        flag
+    } else {
+        kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_ALL
+    };
+    let mut err = make_kernel_error();
+    let kernel_amount = if let Some(a) = amount {
+        a
+    } else {
+        0
+    };
+    let kernel_spent_outputs = spent_outputs.map(|utxos| {
+        let res: Vec<kernel_TransactionOutput> = utxos.iter().map(|utxo| {
+            kernel_TransactionOutput {
+                value: utxo.value,
+                script_pubkey: utxo.script_pubkey.as_ptr(), 
+                script_pubkey_len: utxo.script_pubkey.len() as u64,
+            }
+        }).collect();
+        res
+    });
+
+    let ret = unsafe {kernel_verify_script_with_spent_outputs(script_pubkey.as_ptr(),
+                                            script_pubkey.len() as u64, 
+                                            kernel_amount,
+                                            tx_to.as_ptr(),
+                                            tx_to.len() as u64,
+                                            kernel_spent_outputs.map(|utxos| utxos.as_ptr()).unwrap_or(ptr::null()),
+                                            spent_outputs.map(|utxos| utxos.len() as u32).unwrap_or(0),
+                                            input_index,
+                                            kernel_flags,
+                                            &mut err) };
+    handle_kernel_error(err)?;
+
+    if ret!=1 {
+        Err(KernelError::Internal("Failed script verification.".to_string()))
+    } else {
+        Ok(())
+    }
+}
 
 unsafe fn cast_string(c_str: *const c_char) -> String {
     if !c_str.is_null() {
@@ -385,8 +455,8 @@ impl From<kernel_TransactionOutput> for TxOut {
             value: c.value,
             script_pubkey: unsafe {
                 std::slice::from_raw_parts(
-                    c.script_pubkey.data,
-                    c.script_pubkey.size.try_into().unwrap(),
+                    c.script_pubkey,
+                    c.script_pubkey_len.try_into().unwrap(),
                 )
             }
             .to_vec(),
@@ -486,8 +556,8 @@ impl BlockUndo {
         Ok(TxOut {
             value: unsafe{ (*prev_out).value},
             script_pubkey: unsafe{ std::slice::from_raw_parts(
-                (*prev_out).script_pubkey.data,
-                (*prev_out).script_pubkey.size.try_into().unwrap(),
+                (*prev_out).script_pubkey,
+                (*prev_out).script_pubkey_len.try_into().unwrap(),
             ).to_vec()},
         })
     }

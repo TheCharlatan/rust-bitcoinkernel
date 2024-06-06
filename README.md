@@ -32,3 +32,9 @@ PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig cargo b
 At the moment `PKG_CONFIG_PATH` has to be set no matter if you installed the
 bitcoin kernel library in a system path, or user path.
 
+And similarly for running it:
+
+```
+LD_LIBRARY_PATH=/home/drgrid/bitcoin/test_install/lib cargo run
+```
+
