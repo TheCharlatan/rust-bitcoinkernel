@@ -441,7 +441,29 @@ impl Drop for Block {
 
 pub struct BlockIndex<'a> {
     inner: *mut kernel_BlockIndex,
-    _marker: PhantomData<&'a ChainstateManager<'a>>,
+    marker: PhantomData<ChainstateManager<'a>>,
+}
+
+impl <'a> BlockIndex<'a> {
+    pub fn prev(self) -> Result<BlockIndex<'a>, KernelError> {
+        let mut err = make_kernel_error();
+        let inner = unsafe {kernel_get_previous_block_index(self.inner, &mut err)};
+        handle_kernel_error(err)?;
+        if inner == std::ptr::null_mut() {
+            return Err(KernelError::InvalidPointer("Block index is null, indicating we are at the end of the chain".to_string()));
+        }
+        unsafe {kernel_block_index_destroy(self.inner)};
+        Ok(BlockIndex{
+            inner,
+            marker: self.marker,
+        })
+    }
+}
+
+impl <'a> Drop for BlockIndex<'a> {
+    fn drop(&mut self) {
+        unsafe { kernel_block_index_destroy(self.inner)};
+    }
 }
 
 pub struct BlockUndo {
@@ -602,20 +624,53 @@ impl<'a> ChainstateManager<'a> {
         let mut err = make_kernel_error();
         let block_index = unsafe { BlockIndex {
                 inner: kernel_get_block_index_from_tip(self.inner, &mut err),
-                _marker: PhantomData,
+                marker: PhantomData,
             }
         };
         handle_kernel_error(err)?;
         Ok(block_index)
     }
 
-    pub fn get_previous_block_index<'b>(&'b self, mut block_index: BlockIndex<'b>) -> Result<BlockIndex<'b>, KernelError> {
+    pub fn get_block_index_genesis(&self) -> Result<BlockIndex, KernelError> {
         let mut err = make_kernel_error();
-        block_index.inner = unsafe {kernel_get_previous_block_index(block_index.inner, &mut err)};
+        let block_index = unsafe { BlockIndex {
+            inner: kernel_get_block_index_from_genesis(self.inner, &mut err),
+            marker: PhantomData,
+        }};
         handle_kernel_error(err)?;
-        if block_index.inner == std::ptr::null_mut() {
-            return Err(KernelError::InvalidPointer("Block index is null, indicating we are at the end of the chain".to_string()));
-        }
+        Ok(block_index)
+    }
+
+    pub fn get_block_index_by_height(&self, block_height: i32) -> Result<BlockIndex, KernelError> {
+        let mut err = make_kernel_error();
+        let block_index = unsafe { BlockIndex {
+            inner: kernel_get_block_index_by_height(self.inner, block_height, &mut err),
+            marker: PhantomData,
+        }};
+        handle_kernel_error(err)?;
+        Ok(block_index)
+    }
+
+    pub fn get_block_index_by_hash(&self, hash: [u8; 32]) -> Result<BlockIndex, KernelError> {
+        let mut err = make_kernel_error();
+        let mut block_hash = kernel_BlockHash {
+            hash,
+        };
+        let block_index = unsafe { BlockIndex {
+            inner: kernel_get_block_index_by_hash(self.inner, &mut block_hash, &mut err),
+            marker: PhantomData,
+        }};
+        handle_kernel_error(err)?;
+        Ok(block_index)
+    }
+
+    pub fn get_next_block_index(&self, block_index: BlockIndex) -> Result<BlockIndex, KernelError> {
+        let mut err = make_kernel_error();
+        let block_index = unsafe { BlockIndex {
+            inner: kernel_get_next_block_index(block_index.inner, self.inner, &mut err),
+            marker: PhantomData,
+        }};
+        handle_kernel_error(err)?;
         Ok(block_index)
     }
 

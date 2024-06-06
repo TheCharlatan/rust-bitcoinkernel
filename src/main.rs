@@ -161,11 +161,7 @@ fn scan_tx(receiver: &Receiver, secret_scan_key: &SecretKey, scan_tx_helper: Sca
 fn scan_txs(chainman: &ChainstateManager) {
     let (receiver, secret_scan_key) = parse_keys();
     let mut block_index_res = chainman.get_block_index_tip();
-    block_index_res = chainman.get_previous_block_index(block_index_res.unwrap());
-    let mut n_blocks = 0;
     while let Ok(ref block_index) = block_index_res {
-        n_blocks += 1;
-
         let undo = chainman.read_undo_data(&block_index).unwrap();
         let raw_block: Vec<u8> = chainman.read_block_data(&block_index).unwrap().into();
         let block: bitcoin::Block = deserialize(&raw_block).unwrap();
@@ -192,7 +188,7 @@ fn scan_txs(chainman: &ChainstateManager) {
             scan_tx(&receiver, &secret_scan_key, scan_tx_helper.clone());
             println!("helper: {:?}", scan_tx_helper);
         }
-        block_index_res = chainman.get_previous_block_index(block_index_res.unwrap());
+        block_index_res = block_index_res.unwrap().prev();
     }
     log::info!("scanned txs!");
 }

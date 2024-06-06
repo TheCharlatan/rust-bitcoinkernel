@@ -283,7 +283,7 @@ mod tests {
         // Should be the same size minus the coinbase transaction
         assert_eq!(block_tip.txdata.len() - 1, undo_tip.n_tx_undo);
 
-        let block_index_tip_prev = chainman.get_previous_block_index(block_index_tip).unwrap();
+        let block_index_tip_prev = block_index_tip.prev().unwrap();
         let raw_block: Vec<u8> = chainman.read_block_data(&block_index_tip_prev).unwrap().into();
         let undo = chainman.read_undo_data(&block_index_tip_prev).unwrap();
         let block: bitcoin::Block = deserialize(&raw_block).unwrap();
