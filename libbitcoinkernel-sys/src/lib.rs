@@ -55,19 +55,19 @@ pub fn verify(
             kernel_TransactionOutput {
                 value: utxo.value,
                 script_pubkey: utxo.script_pubkey.as_ptr(), 
-                script_pubkey_len: utxo.script_pubkey.len() as u64,
+                script_pubkey_len: utxo.script_pubkey.len(),
             }
         }).collect();
         res
     });
 
     let ret = unsafe {kernel_verify_script_with_spent_outputs(script_pubkey.as_ptr(),
-                                            script_pubkey.len() as u64, 
+                                            script_pubkey.len(), 
                                             kernel_amount,
                                             tx_to.as_ptr(),
-                                            tx_to.len() as u64,
+                                            tx_to.len(),
                                             kernel_spent_outputs.map(|utxos| utxos.as_ptr()).unwrap_or(ptr::null()),
-                                            spent_outputs.map(|utxos| utxos.len() as u32).unwrap_or(0),
+                                            spent_outputs.map(|utxos| utxos.len()).unwrap_or(0),
                                             input_index,
                                             kernel_flags,
                                             &mut err) };
