@@ -5,7 +5,9 @@ use bitcoin::hashes::Hash;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
 use env_logger::Builder;
 use libbitcoinkernel_sys::{
-    set_logging_callback, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelNotificationInterfaceCallbackHolder
+    BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
+    ChainstateManagerOptions, Context, ContextBuilder, KernelError,
+    KernelNotificationInterfaceCallbackHolder, LogCallback, Logger,
 };
 use log::LevelFilter;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
@@ -14,7 +16,7 @@ use silentpayments::utils::receiving::{
     calculate_shared_secret, calculate_tweak_data, get_pubkey_from_input,
 };
 
-fn setup_logging() {
+fn setup_logging() -> Result<Logger, KernelError> {
     let mut builder = Builder::from_default_env();
     builder.filter(None, LevelFilter::Info).init();
 
@@ -24,7 +26,7 @@ fn setup_logging() {
             "{}", message.strip_suffix("\r\n").or_else(|| message.strip_suffix('\n')).unwrap_or(message));
     };
 
-    set_logging_callback(callback).unwrap();
+    Logger::new(LogCallback::new(callback))
 }
 
 fn create_context() -> Context {
@@ -168,21 +170,36 @@ fn scan_txs(chainman: &ChainstateManager) {
         // Should be the same size minus the coinbase transaction
         assert_eq!(block.txdata.len() - 1, undo.n_tx_undo);
 
-        for i in 0..(block.txdata.len()-1) {
-            let transaction_undo_size: u64 = undo.get_get_transaction_undo_size(i.try_into().unwrap()).unwrap();
-            let transaction_input_size: u64 = block.txdata[i+1].input.len().try_into().unwrap();
+        for i in 0..(block.txdata.len() - 1) {
+            let transaction_undo_size: u64 = undo
+                .get_get_transaction_undo_size(i.try_into().unwrap())
+                .unwrap();
+            let transaction_input_size: u64 = block.txdata[i + 1].input.len().try_into().unwrap();
             assert_eq!(transaction_input_size, transaction_undo_size);
             let mut scan_tx_helper = ScanTxHelper {
                 ins: vec![],
-                outs: block.txdata[i+1].output.iter().map(|output| { output.script_pubkey.to_bytes()}).collect(),
+                outs: block.txdata[i + 1]
+                    .output
+                    .iter()
+                    .map(|output| output.script_pubkey.to_bytes())
+                    .collect(),
             };
             for j in 0..transaction_input_size {
                 scan_tx_helper.ins.push(Input {
-                    prevout: undo.get_prevout_by_index(i as u64, j).unwrap().script_pubkey,
-                    script_sig: block.txdata[i+1].input[j as usize].script_sig.to_bytes(),
-                    witness: block.txdata[i+1].input[j as usize].witness.to_vec(),
-                    prevout_data: (block.txdata[i+1].input[j as usize].previous_output.txid.to_byte_array().to_vec(),
-                                  block.txdata[i+1].input[j as usize].previous_output.vout),
+                    prevout: undo
+                        .get_prevout_by_index(i as u64, j)
+                        .unwrap()
+                        .script_pubkey,
+                    script_sig: block.txdata[i + 1].input[j as usize].script_sig.to_bytes(),
+                    witness: block.txdata[i + 1].input[j as usize].witness.to_vec(),
+                    prevout_data: (
+                        block.txdata[i + 1].input[j as usize]
+                            .previous_output
+                            .txid
+                            .to_byte_array()
+                            .to_vec(),
+                        block.txdata[i + 1].input[j as usize].previous_output.vout,
+                    ),
                 });
             }
             scan_tx(&receiver, &secret_scan_key, scan_tx_helper.clone());
@@ -194,15 +211,19 @@ fn scan_txs(chainman: &ChainstateManager) {
 }
 
 fn main() {
-    setup_logging();
+    let _ = setup_logging().unwrap();
     let context = create_context();
     let data_dir = "/home/drgrid/.bitcoin/regtest".to_string();
     let blocks_dir = data_dir.clone() + "/blocks";
     let chainman = ChainstateManager::new(
         ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
         BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-        &context).unwrap();
-    chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
+        &context,
+    )
+    .unwrap();
+    chainman
+        .load_chainstate(ChainstateLoadOptions::new())
+        .unwrap();
     chainman.import_blocks().unwrap();
     scan_txs(&chainman);
 }

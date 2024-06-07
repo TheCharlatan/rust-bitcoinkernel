@@ -3,7 +3,11 @@ mod tests {
     use bitcoin::consensus::deserialize;
     use env_logger::Builder;
     use libbitcoinkernel_sys::{
-        execute_event, register_validation_interface, set_logging_callback, unregister_validation_interface, verify, Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, TaskRunnerCallbackHolder, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT
+        execute_event, register_validation_interface, unregister_validation_interface, verify,
+        Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
+        ChainstateManagerOptions, Context, ContextBuilder, Event, KernelError,
+        KernelNotificationInterfaceCallbackHolder, LogCallback, Logger, TaskRunnerCallbackHolder,
+        ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT,
     };
     use log::LevelFilter;
     use std::collections::VecDeque;
@@ -14,6 +18,8 @@ mod tests {
     use tempdir::TempDir;
 
     static START: Once = Once::new();
+    static mut GLOBAL_LOG_CALLBACK_HOLDER: Option<Logger> = None;
+
     type Queue = Arc<(Mutex<VecDeque<Event>>, Condvar)>;
 
     enum TaskRunnerType {
@@ -32,7 +38,9 @@ mod tests {
                 "{}", message.strip_suffix("\r\n").or_else(|| message.strip_suffix('\n')).unwrap_or(message));
         };
 
-        set_logging_callback(callback).unwrap();
+        unsafe {
+            GLOBAL_LOG_CALLBACK_HOLDER = Some(Logger::new(LogCallback::new(callback)).unwrap())
+        };
     }
 
     fn runtime(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
@@ -187,7 +195,6 @@ mod tests {
         lines
     }
 
-
     #[test]
     fn test_reindex() {
         let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Threaded);
@@ -198,8 +205,12 @@ mod tests {
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
                 BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-                &context).unwrap();
-            chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
+                &context,
+            )
+            .unwrap();
+            chainman
+                .load_chainstate(ChainstateLoadOptions::new())
+                .unwrap();
             for block_hex in block_data.iter() {
                 let block = Block::try_from(block_hex.as_str()).unwrap();
                 chainman.process_block(&block).unwrap();
@@ -209,8 +220,12 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-            &context).unwrap();
-        chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
+            &context,
+        )
+        .unwrap();
+        chainman
+            .load_chainstate(ChainstateLoadOptions::new())
+            .unwrap();
         chainman.import_blocks().unwrap();
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
     }
@@ -223,8 +238,12 @@ mod tests {
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
                 BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-                &context).unwrap();
-            chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
+                &context,
+            )
+            .unwrap();
+            chainman
+                .load_chainstate(ChainstateLoadOptions::new())
+                .unwrap();
 
             // Not a block
             let block = Block::try_from("deadbeef");
@@ -268,8 +287,12 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-            &context).unwrap();
-        chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
+            &context,
+        )
+        .unwrap();
+        chainman
+            .load_chainstate(ChainstateLoadOptions::new())
+            .unwrap();
 
         for block_hex in block_data.iter() {
             let block = Block::try_from(block_hex.as_str()).unwrap();
@@ -284,25 +307,37 @@ mod tests {
         assert_eq!(block_tip.txdata.len() - 1, undo_tip.n_tx_undo);
 
         let block_index_tip_prev = block_index_tip.prev().unwrap();
-        let raw_block: Vec<u8> = chainman.read_block_data(&block_index_tip_prev).unwrap().into();
+        let raw_block: Vec<u8> = chainman
+            .read_block_data(&block_index_tip_prev)
+            .unwrap()
+            .into();
         let undo = chainman.read_undo_data(&block_index_tip_prev).unwrap();
         let block: bitcoin::Block = deserialize(&raw_block).unwrap();
         // Should be the same size minus the coinbase transaction
         assert_eq!(block.txdata.len() - 1, undo.n_tx_undo);
 
-        for i in 0..(block.txdata.len()-1) {
-            let transaction_undo_size: u64 = undo.get_get_transaction_undo_size(i.try_into().unwrap()).unwrap();
-            let transaction_input_size: u64 = block.txdata[i+1].input.len().try_into().unwrap();
+        for i in 0..(block.txdata.len() - 1) {
+            let transaction_undo_size: u64 = undo
+                .get_get_transaction_undo_size(i.try_into().unwrap())
+                .unwrap();
+            let transaction_input_size: u64 = block.txdata[i + 1].input.len().try_into().unwrap();
             assert_eq!(transaction_input_size, transaction_undo_size);
             let mut helper = ScanTxHelper {
                 ins: vec![],
-                outs: block.txdata[i+1].output.iter().map(|output| { output.script_pubkey.to_bytes()}).collect(),
+                outs: block.txdata[i + 1]
+                    .output
+                    .iter()
+                    .map(|output| output.script_pubkey.to_bytes())
+                    .collect(),
             };
             for j in 0..transaction_input_size {
                 helper.ins.push(Input {
-                    prevout: undo.get_prevout_by_index(i as u64, j).unwrap().script_pubkey,
-                    script_sig: block.txdata[i+1].input[j as usize].script_sig.to_bytes(),
-                    witness: block.txdata[i+1].input[j as usize].witness.to_vec(),
+                    prevout: undo
+                        .get_prevout_by_index(i as u64, j)
+                        .unwrap()
+                        .script_pubkey,
+                    script_sig: block.txdata[i + 1].input[j as usize].script_sig.to_bytes(),
+                    witness: block.txdata[i + 1].input[j as usize].witness.to_vec(),
                 });
             }
             println!("helper: {:?}", helper);
@@ -317,8 +352,12 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-            &context).unwrap();
-        chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
+            &context,
+        )
+        .unwrap();
+        chainman
+            .load_chainstate(ChainstateLoadOptions::new())
+            .unwrap();
 
         for block_hex in block_data.iter() {
             let block = Block::try_from(block_hex.as_str()).unwrap();
@@ -336,8 +375,12 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-            &context).unwrap();
-        chainman.load_chainstate(ChainstateLoadOptions::new()).unwrap();
+            &context,
+        )
+        .unwrap();
+        chainman
+            .load_chainstate(ChainstateLoadOptions::new())
+            .unwrap();
 
         chainman.import_blocks().unwrap();
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
@@ -389,7 +432,12 @@ mod tests {
         ).is_err());
     }
 
-    fn verify_test(spent: &str, spending: &str, amount: i64, input: u32) -> Result<(), KernelError> {
+    fn verify_test(
+        spent: &str,
+        spending: &str,
+        amount: i64,
+        input: u32,
+    ) -> Result<(), KernelError> {
         verify(
             hex::decode(spent).unwrap().as_slice(),
             Some(amount),
