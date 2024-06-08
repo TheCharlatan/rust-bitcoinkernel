@@ -220,6 +220,23 @@ pub struct Context {
     pub kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
 }
 
+impl Context {
+    pub fn interrupt(&self) -> Result<(), KernelError> {
+        let mut err = make_kernel_error();
+        unsafe {kernel_context_interrupt(self.inner, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(())
+    }
+}
+
+impl Drop for Context {
+    fn drop(&mut self) {
+        unsafe {
+            kernel_context_destroy(self.inner);
+        }
+    }
+}
+
 pub struct ContextBuilder {
     inner: *mut kernel_ContextOptions,
     pub tr_callbacks: Option<Box<TaskRunnerCallbackHolder>>,
@@ -412,14 +429,6 @@ fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
             kernel_ErrorCode_kernel_ERROR_OUT_OF_BOUNDS => Err(KernelError::OutOfBounds(message)),
             kernel_ErrorCode_kernel_ERROR_INTERNAL => Err(KernelError::Internal(message)),
             _ => Ok(()),
-        }
-    }
-}
-
-impl Drop for Context {
-    fn drop(&mut self) {
-        unsafe {
-            kernel_context_destroy(self.inner);
         }
     }
 }
