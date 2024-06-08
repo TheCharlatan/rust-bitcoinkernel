@@ -678,7 +678,7 @@ impl BlockManagerOptions {
         Ok(Self { inner })
     }
 
-    pub fn set_reindex(&self, reindex: bool) -> Result<(), KernelError> {
+    pub fn set_reindex(self, reindex: bool) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
             let kernel_reindex = Box::into_raw(Box::new(reindex));
@@ -691,7 +691,7 @@ impl BlockManagerOptions {
             drop(Box::from_raw(kernel_reindex));
         }
         handle_kernel_error(err)?;
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -714,7 +714,7 @@ impl ChainstateLoadOptions {
         }
     }
 
-    pub fn set_reindex(&self, reindex: bool) -> Result<(), KernelError> {
+    pub fn set_reindex(self, reindex: bool) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
             let kernel_reindex = Box::into_raw(Box::new(reindex));
@@ -727,10 +727,10 @@ impl ChainstateLoadOptions {
             drop(Box::from_raw(kernel_reindex));
         }
         handle_kernel_error(err)?;
-        Ok(())
+        Ok(self)
     }
 
-    pub fn set_reindex_chainstate(&self, reindex_chainstate: bool) -> Result<(), KernelError> {
+    pub fn set_reindex_chainstate(self, reindex_chainstate: bool) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
             let kernel_reindex_chainstate = Box::into_raw(Box::new(reindex_chainstate));
@@ -743,7 +743,7 @@ impl ChainstateLoadOptions {
             drop(Box::from_raw(kernel_reindex_chainstate));
         }
         handle_kernel_error(err)?;
-        Ok(())
+        Ok(self)
     }
 }
 

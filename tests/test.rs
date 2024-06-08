@@ -219,12 +219,15 @@ mod tests {
 
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            BlockManagerOptions::new(&context, &blocks_dir)
+                .unwrap()
+                .set_reindex(true)
+                .unwrap(),
             &context,
         )
         .unwrap();
         chainman
-            .load_chainstate(ChainstateLoadOptions::new())
+            .load_chainstate(ChainstateLoadOptions::new().set_reindex(true).unwrap())
             .unwrap();
         chainman.import_blocks().unwrap();
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
