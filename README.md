@@ -15,7 +15,7 @@ produces a C-compatible header that is used by this project to create the FFI.
 git clone https://github.com/TheCharlatan/bitcoin
 git checkout ffiPoC
 ./autogen.sh
-./configure --with-experimental-kernel-lib --prefix ~/bitcoin/install_dir
+./configure --with-experimental-kernel-lib --enable-shared --prefix ~/bitcoin/install_dir
 make install -j 24
 ```
 
