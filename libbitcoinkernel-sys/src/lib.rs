@@ -313,6 +313,7 @@ impl ContextBuilder {
                 "Missing KernelNotificationInterface callbacks.".to_string(),
             ));
         }
+        unsafe { kernel_context_options_destroy(self.inner) };
         Ok(Context {
             inner,
             tr_callbacks: self.tr_callbacks,
@@ -328,17 +329,19 @@ impl ContextBuilder {
         let mut err = make_kernel_error();
 
         unsafe {
+            let cbs_pointer = Box::into_raw(Box::new(kernel_TaskRunnerCallbacks {
+                user_data: tr_pointer as *mut c_void,
+                insert: Some(tr_insert_wrapper),
+                flush: Some(tr_flush_wrapper),
+                size: Some(tr_size_wrapper),
+            }));
             kernel_context_options_set(
                 self.inner,
                 kernel_ContextOptionType_kernel_TASK_RUNNER_CALLBACKS_OPTION,
-                Box::into_raw(Box::new(kernel_TaskRunnerCallbacks {
-                    user_data: tr_pointer as *mut c_void,
-                    insert: Some(tr_insert_wrapper),
-                    flush: Some(tr_flush_wrapper),
-                    size: Some(tr_size_wrapper),
-                })) as *mut c_void,
+                cbs_pointer as *mut c_void,
                 &mut err,
-            )
+            );
+            drop(Box::from_raw(cbs_pointer));
         };
         handle_kernel_error(err)?;
         self.tr_callbacks = unsafe { Some(Box::from_raw(tr_pointer)) };
@@ -352,20 +355,22 @@ impl ContextBuilder {
         let kn_pointer = Box::into_raw(kn_callbacks);
         let mut err = make_kernel_error();
         unsafe {
+            let cbs_pointer = Box::into_raw(Box::new(kernel_NotificationInterfaceCallbacks {
+                user_data: kn_pointer as *mut c_void,
+                block_tip: Some(kn_block_tip_wrapper),
+                header_tip: Some(kn_header_tip_wrapper),
+                progress: Some(kn_progress_wrapper),
+                warning: Some(kn_warning_wrapper),
+                flush_error: Some(kn_flush_error_wrapper),
+                fatal_error: Some(kn_fatal_error_wrapper),
+            }));
             kernel_context_options_set(
                 self.inner,
                 kernel_ContextOptionType_kernel_NOTIFICATION_INTERFACE_CALLBACKS_OPTION,
-                Box::into_raw(Box::new(kernel_NotificationInterfaceCallbacks {
-                    user_data: kn_pointer as *mut c_void,
-                    block_tip: Some(kn_block_tip_wrapper),
-                    header_tip: Some(kn_header_tip_wrapper),
-                    progress: Some(kn_progress_wrapper),
-                    warning: Some(kn_warning_wrapper),
-                    flush_error: Some(kn_flush_error_wrapper),
-                    fatal_error: Some(kn_fatal_error_wrapper),
-                })) as *mut c_void,
+                cbs_pointer as *mut c_void,
                 &mut err,
-            )
+            );
+            drop(Box::from_raw(cbs_pointer));
         };
         handle_kernel_error(err)?;
         self.kn_callbacks = unsafe { Some(Box::from_raw(kn_pointer)) };
@@ -574,6 +579,7 @@ pub struct Event {
 pub fn execute_event(event: Event) -> Result<(), KernelError> {
     let mut err = make_kernel_error();
     unsafe { kernel_execute_event_and_destroy(event.inner.load(Ordering::SeqCst), &mut err) };
+    handle_kernel_error(err)?;
     Ok(())
 }
 
@@ -585,10 +591,12 @@ impl Into<Vec<u8>> for Block {
     fn into(self) -> Vec<u8> {
         let mut err = make_kernel_error();
         let raw_block = unsafe { kernel_copy_block_data(self.inner, &mut err) };
-        unsafe {
+        let vec = unsafe {
             std::slice::from_raw_parts((*raw_block).data, (*raw_block).size.try_into().unwrap())
         }
-        .to_vec()
+        .to_vec();
+        unsafe {kernel_byte_array_destroy(raw_block)};
+        vec
     }
 }
 
@@ -598,7 +606,7 @@ impl TryFrom<&str> for Block {
     fn try_from(block_str: &str) -> Result<Self, Self::Error> {
         let mut err = make_kernel_error();
         let string = CString::new(block_str).unwrap();
-        let inner = unsafe { kernel_block_from_string(string.as_ptr().cast::<i8>(), &mut err) };
+        let inner = unsafe { kernel_block_from_string(string.as_ptr(), &mut err) };
         handle_kernel_error(err)?;
         Ok(Block { inner })
     }

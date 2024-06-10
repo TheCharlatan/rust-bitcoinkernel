@@ -243,6 +243,7 @@ mod tests {
             .load_chainstate(ChainstateLoadOptions::new().set_reindex(true).unwrap())
             .unwrap();
         chainman.import_blocks().unwrap();
+        drop(chainman);
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
     }
 
