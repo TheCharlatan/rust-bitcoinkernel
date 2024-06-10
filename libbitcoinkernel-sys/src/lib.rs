@@ -595,7 +595,7 @@ impl Into<Vec<u8>> for Block {
             std::slice::from_raw_parts((*raw_block).data, (*raw_block).size.try_into().unwrap())
         }
         .to_vec();
-        unsafe {kernel_byte_array_destroy(raw_block)};
+        unsafe { kernel_byte_array_destroy(raw_block) };
         vec
     }
 }
@@ -886,7 +886,7 @@ impl<'a> ChainstateManager<'a> {
         let mut err = make_kernel_error();
         let block_index = unsafe {
             BlockIndex {
-                inner: kernel_get_block_index_from_tip(self.inner, &mut err),
+                inner: kernel_get_block_index_from_tip(self.context.inner, self.inner, &mut err),
                 marker: PhantomData,
             }
         };
@@ -898,7 +898,11 @@ impl<'a> ChainstateManager<'a> {
         let mut err = make_kernel_error();
         let block_index = unsafe {
             BlockIndex {
-                inner: kernel_get_block_index_from_genesis(self.inner, &mut err),
+                inner: kernel_get_block_index_from_genesis(
+                    self.context.inner,
+                    self.inner,
+                    &mut err,
+                ),
                 marker: PhantomData,
             }
         };
@@ -910,7 +914,12 @@ impl<'a> ChainstateManager<'a> {
         let mut err = make_kernel_error();
         let block_index = unsafe {
             BlockIndex {
-                inner: kernel_get_block_index_by_height(self.inner, block_height, &mut err),
+                inner: kernel_get_block_index_by_height(
+                    self.context.inner,
+                    self.inner,
+                    block_height,
+                    &mut err,
+                ),
                 marker: PhantomData,
             }
         };
@@ -923,7 +932,12 @@ impl<'a> ChainstateManager<'a> {
         let mut block_hash = kernel_BlockHash { hash };
         let block_index = unsafe {
             BlockIndex {
-                inner: kernel_get_block_index_by_hash(self.inner, &mut block_hash, &mut err),
+                inner: kernel_get_block_index_by_hash(
+                    self.context.inner,
+                    self.inner,
+                    &mut block_hash,
+                    &mut err,
+                ),
                 marker: PhantomData,
             }
         };
@@ -935,7 +949,12 @@ impl<'a> ChainstateManager<'a> {
         let mut err = make_kernel_error();
         let block_index = unsafe {
             BlockIndex {
-                inner: kernel_get_next_block_index(block_index.inner, self.inner, &mut err),
+                inner: kernel_get_next_block_index(
+                    self.context.inner,
+                    block_index.inner,
+                    self.inner,
+                    &mut err,
+                ),
                 marker: PhantomData,
             }
         };
