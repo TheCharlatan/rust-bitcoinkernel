@@ -103,6 +103,17 @@ pub enum SynchronizationState {
     POST_INIT,
 }
 
+impl From<kernel_SynchronizationState> for SynchronizationState {
+    fn from(state: kernel_SynchronizationState) -> SynchronizationState {
+        match state {
+            kernel_SynchronizationState_kernel_INIT_DOWNLOAD => SynchronizationState::INIT_DOWNLOAD,
+            kernel_SynchronizationState_kernel_INIT_REINDEX => SynchronizationState::INIT_REINDEX,
+            kernel_SynchronizationState_kernel_POST_INIT => SynchronizationState::POST_INIT,
+            _ => panic!("Unexpected Synchronization state"),
+        }
+    }
+}
+
 pub enum ChainType {
     MAINNET,
     TESTNET,
@@ -121,8 +132,8 @@ impl From<ChainType> for kernel_ChainType {
     }
 }
 
-pub trait KNBlockTipFn: Fn(SynchronizationState) {}
-impl<F: Fn(SynchronizationState)> KNBlockTipFn for F {}
+pub trait KNBlockTipFn: Fn(SynchronizationState, *mut kernel_BlockIndex) {}
+impl<F: Fn(SynchronizationState, *mut kernel_BlockIndex)> KNBlockTipFn for F {}
 
 pub trait KNHeaderTipFn: Fn(SynchronizationState, i64, i64, bool) {}
 impl<F: Fn(SynchronizationState, i64, i64, bool)> KNHeaderTipFn for F {}
@@ -140,9 +151,42 @@ pub trait KNFatalErrorFn: Fn(String) {}
 impl<F: Fn(String)> KNFatalErrorFn for F {}
 
 pub struct KernelNotificationInterfaceCallbackHolder {
+    pub kn_block_tip: Box<dyn KNBlockTipFn>,
+    pub kn_header_tip: Box<dyn KNHeaderTipFn>,
+    pub kn_progress: Box<dyn KNProgressFn>,
     pub kn_warning: Box<dyn KNWarningFn>,
     pub kn_flush_error: Box<dyn KNFlushErrorFn>,
     pub kn_fatal_error: Box<dyn KNFatalErrorFn>,
+}
+
+unsafe extern "C" fn kn_block_tip_wrapper(
+    user_data: *mut c_void,
+    state: kernel_SynchronizationState,
+    block_index: *mut kernel_BlockIndex,
+) {
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    (holder.kn_block_tip)(state.into(), block_index);
+}
+
+unsafe extern "C" fn kn_header_tip_wrapper(
+    user_data: *mut c_void,
+    state: kernel_SynchronizationState,
+    height: i64,
+    timestamp: i64,
+    presync: bool,
+) {
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    (holder.kn_header_tip)(state.into(), height, timestamp, presync);
+}
+
+unsafe extern "C" fn kn_progress_wrapper(
+    user_data: *mut c_void,
+    title: *const c_char,
+    progress_percent: i32,
+    resume_possible: bool,
+) {
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    (holder.kn_progress)(cast_string(title), progress_percent, resume_possible);
 }
 
 unsafe extern "C" fn kn_warning_wrapper(user_data: *mut c_void, warning: *const c_char) {
@@ -223,7 +267,7 @@ pub struct Context {
 impl Context {
     pub fn interrupt(&self) -> Result<(), KernelError> {
         let mut err = make_kernel_error();
-        unsafe {kernel_context_interrupt(self.inner, &mut err)};
+        unsafe { kernel_context_interrupt(self.inner, &mut err) };
         handle_kernel_error(err)?;
         Ok(())
     }
@@ -252,13 +296,11 @@ pub fn make_kernel_error() -> kernel_Error {
 
 impl ContextBuilder {
     pub fn new() -> ContextBuilder {
-        println!("context builder");
         let context = ContextBuilder {
             inner: unsafe { kernel_context_options_create() },
             tr_callbacks: None,
             kn_callbacks: None,
         };
-        println!("made a new context builder");
         context
     }
 
@@ -315,6 +357,9 @@ impl ContextBuilder {
                 kernel_ContextOptionType_kernel_NOTIFICATION_INTERFACE_CALLBACKS_OPTION,
                 Box::into_raw(Box::new(kernel_NotificationInterfaceCallbacks {
                     user_data: kn_pointer as *mut c_void,
+                    block_tip: Some(kn_block_tip_wrapper),
+                    header_tip: Some(kn_header_tip_wrapper),
+                    progress: Some(kn_progress_wrapper),
                     warning: Some(kn_warning_wrapper),
                     flush_error: Some(kn_flush_error_wrapper),
                     fatal_error: Some(kn_fatal_error_wrapper),

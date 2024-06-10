@@ -34,6 +34,9 @@ fn create_context() -> Context {
         .chain_type(ChainType::REGTEST)
         .unwrap()
         .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
+            kn_block_tip: Box::new(|_state, _block_index| {}),
+            kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
+            kn_progress: Box::new(|_title, _progress, _resume_possible| {}),
             kn_warning: Box::new(|_warning| {}),
             kn_flush_error: Box::new(|_message| {}),
             kn_fatal_error: Box::new(|_message| {}),

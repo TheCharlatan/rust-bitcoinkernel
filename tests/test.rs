@@ -117,6 +117,19 @@ mod tests {
             .chain_type(ChainType::REGTEST)
             .unwrap()
             .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
+                kn_block_tip: Box::new(|_state, _block_tip| {
+                    log::info!("Received block tip.");
+                }),
+                kn_header_tip: Box::new(|_state, height, timestamp, _presync| {
+                    log::info!(
+                        "Received header tip at height {} and time {}",
+                        height,
+                        timestamp
+                    );
+                }),
+                kn_progress: Box::new(|_state, progress, _resume_possible| {
+                    log::info!("Made progress: {}", progress);
+                }),
                 kn_warning: Box::new(|warning| {
                     log::info!("Received warning: {warning}");
                 }),
