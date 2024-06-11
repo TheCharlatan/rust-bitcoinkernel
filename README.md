@@ -35,6 +35,6 @@ bitcoin kernel library in a system path, or user path.
 And similarly for running it:
 
 ```
-LD_LIBRARY_PATH=/home/drgrid/bitcoin/test_install/lib cargo run
+PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig LD_LIBRARY_PATH=/home/drgrid/bitcoin/test_install/lib cargo run
 ```
 
