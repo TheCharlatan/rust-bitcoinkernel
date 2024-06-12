@@ -2,7 +2,7 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let pkg_config_path = "/home/drgrid/bitcoin/test_install/lib/pkgconfig";
+    let pkg_config_path = "/usr/local/lib/pkgconfig";
     if env::var("PKG_CONFIG_PATH").is_err() {
         env::set_var("PKG_CONFIG_PATH", pkg_config_path);
     }

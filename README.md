@@ -23,7 +23,8 @@ This will install the library in `$HOME/bitcoin/install_dir`. Change the value
 after `--prefix` to control where the library will be installed or leave it
 unchanged to install it system-wide.
 
-Then, to compile `rust-bitcoinkernel`:
+Then, to compile `rust-bitcoinkernel` (add the `PKG_CONFIG_PATH` if
+libbitcoinkernel is not installed in `/usr/local`):
 
 ```
 PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig cargo b
@@ -32,9 +33,10 @@ PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig cargo b
 At the moment `PKG_CONFIG_PATH` has to be set no matter if you installed the
 bitcoin kernel library in a system path, or user path.
 
-And similarly for running it:
+And similarly for running it (env variables only required if not installed in
+`/usr/local`:
 
 ```
-PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig LD_LIBRARY_PATH=/home/drgrid/bitcoin/test_install/lib cargo run
+PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig LD_LIBRARY_PATH=/path/to/bitcoin/install_dir/lib cargo run
 ```
 
