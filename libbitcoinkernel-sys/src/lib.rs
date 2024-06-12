@@ -29,8 +29,8 @@ pub const VERIFY_ALL_PRE_TAPROOT: u32 = VERIFY_P2SH
     | VERIFY_WITNESS;
 
 pub struct Utxo<'a> {
-    value: i64,
-    script_pubkey: &'a [u8],
+    pub value: i64,
+    pub script_pubkey: &'a [u8],
 }
 
 pub fn verify(
