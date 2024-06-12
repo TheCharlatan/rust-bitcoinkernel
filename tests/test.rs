@@ -232,10 +232,7 @@ mod tests {
 
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            BlockManagerOptions::new(&context, &blocks_dir)
-                .unwrap()
-                .set_reindex(true)
-                .unwrap(),
+            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
             &context,
         )
         .unwrap();

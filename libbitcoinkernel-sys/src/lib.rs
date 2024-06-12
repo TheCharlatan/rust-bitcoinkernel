@@ -739,22 +739,6 @@ impl BlockManagerOptions {
         handle_kernel_error(err)?;
         Ok(Self { inner })
     }
-
-    pub fn set_reindex(self, reindex: bool) -> Result<Self, KernelError> {
-        let mut err = make_kernel_error();
-        unsafe {
-            let kernel_reindex = Box::into_raw(Box::new(reindex));
-            kernel_block_manager_options_set(
-                self.inner,
-                kernel_BlockManagerOptionType_kernel_REINDEX_BLOCK_MANAGER_OPTION,
-                kernel_reindex as *mut c_void,
-                &mut err,
-            );
-            drop(Box::from_raw(kernel_reindex));
-        }
-        handle_kernel_error(err)?;
-        Ok(self)
-    }
 }
 
 impl Drop for BlockManagerOptions {
@@ -782,7 +766,14 @@ impl ChainstateLoadOptions {
             let kernel_reindex = Box::into_raw(Box::new(reindex));
             kernel_chainstate_load_options_set(
                 self.inner,
-                kernel_ChainstateLoadOptionType_kernel_REINDEX_CHAINSTATE_LOAD_OPTION,
+                kernel_ChainstateLoadOptionType_kernel_WIPE_BLOCK_TREE_DB_CHAINSTATE_LOAD_OPTION,
+                kernel_reindex as *mut c_void,
+                &mut err,
+            );
+            handle_kernel_error(err)?;
+            kernel_chainstate_load_options_set(
+                self.inner,
+                kernel_ChainstateLoadOptionType_kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,
                 kernel_reindex as *mut c_void,
                 &mut err,
             );
@@ -792,13 +783,13 @@ impl ChainstateLoadOptions {
         Ok(self)
     }
 
-    pub fn set_reindex_chainstate(self, reindex_chainstate: bool) -> Result<Self, KernelError> {
+    pub fn set_wipe_chainstate_db(self, reindex_chainstate: bool) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
             let kernel_reindex_chainstate = Box::into_raw(Box::new(reindex_chainstate));
             kernel_chainstate_load_options_set(
                 self.inner,
-                kernel_ChainstateLoadOptionType_kernel_REINDEX_CHAINSTATE_CHAINSTATE_LOAD_OPTION,
+                kernel_ChainstateLoadOptionType_kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,
                 kernel_reindex_chainstate as *mut c_void,
                 &mut err,
             );

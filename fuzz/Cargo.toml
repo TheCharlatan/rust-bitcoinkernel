@@ -15,7 +15,7 @@ path = "../libbitcoinkernel-sys"
 
 [[bin]]
 name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+path = "fuzz_targets/fuzz_target_chainman.rs"
 test = false
 doc = false
 bench = false

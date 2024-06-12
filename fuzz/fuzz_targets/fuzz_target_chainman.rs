@@ -28,7 +28,6 @@ fn create_context() -> Context {
 fuzz_target!(|data: &[u8]| {
     let context = create_context();
     if let Ok(s) = std::str::from_utf8(data) {
-
         // Sanitize the input string by removing dots and slashes
         let sanitized_string: String = s.chars().filter(|c| *c != '.' && *c != '/').collect();
 
@@ -50,15 +49,14 @@ fuzz_target!(|data: &[u8]| {
             Ok(opts) => opts,
             Err(_) => return,
         };
-        let chainman = match ChainstateManager::new(
-            chainman_opts,
-            blockman_opts,
-            &context,
-        ) {
+        let chainman = match ChainstateManager::new(chainman_opts, blockman_opts, &context) {
             Ok(chainman) => chainman,
             Err(_) => return,
         };
-        if chainman.load_chainstate(ChainstateLoadOptions::new()).is_err() {
+        if chainman
+            .load_chainstate(ChainstateLoadOptions::new())
+            .is_err()
+        {
             return;
         }
     }
