@@ -4,15 +4,17 @@ mod tests {
     use env_logger::Builder;
     use libbitcoinkernel_sys::{
         execute_event, register_validation_interface, unregister_validation_interface, verify,
-        Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
-        ChainstateManagerOptions, Context, ContextBuilder, Event, KernelError,
+        Block, BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions,
+        ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, Event, KernelError,
         KernelNotificationInterfaceCallbackHolder, LogCallback, Logger, TaskRunnerCallbackHolder,
-        ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT,
+        TxOut, Utxo, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
+        VERIFY_ALL_PRE_TAPROOT,
     };
     use log::LevelFilter;
     use std::collections::VecDeque;
     use std::fs::File;
     use std::io::{BufRead, BufReader};
+    use std::rc::Rc;
     use std::sync::{Arc, Condvar, Mutex, Once};
     use std::thread;
     use tempdir::TempDir;
@@ -460,5 +462,28 @@ mod tests {
             Some(VERIFY_ALL_PRE_TAPROOT),
             None,
         )
+    }
+
+    #[test]
+    fn test_traits() {
+        fn is_sync<T: Sync>() {}
+        fn is_send<T: Send>() {}
+        is_sync::<ChainParams>(); // compiles only if true
+        is_send::<ChainParams>();
+        is_sync::<Utxo>();
+        is_send::<Utxo>();
+        is_sync::<TxOut>();
+        is_send::<TxOut>();
+        is_sync::<Context>();
+        is_send::<Context>();
+        is_sync::<Block>();
+        is_send::<Block>();
+        is_sync::<BlockUndo>();
+        is_send::<BlockUndo>();
+        is_sync::<ChainstateManager>();
+        is_send::<ChainstateManager>();
+
+        // is_sync::<Rc<u8>>(); // won't compile, kept as a failure case.
+        // is_send::<Rc<u8>>(); // won't compile, kept as a failure case.
     }
 }

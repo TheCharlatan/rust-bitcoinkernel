@@ -241,6 +241,9 @@ pub struct ChainParams {
     inner: *const kernel_ChainParameters,
 }
 
+unsafe impl Send for ChainParams {}
+unsafe impl Sync for ChainParams {}
+
 impl ChainParams {
     pub fn new(chain_type: ChainType) -> ChainParams {
         let kernel_chain_type = chain_type.into();
@@ -263,6 +266,9 @@ pub struct Context {
     pub tr_callbacks: Option<Box<TaskRunnerCallbackHolder>>,
     pub kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
 }
+
+unsafe impl Send for Context {}
+unsafe impl Sync for Context {}
 
 impl Context {
     pub fn interrupt(&self) -> Result<(), KernelError> {
@@ -587,6 +593,9 @@ pub struct Block {
     inner: *mut kernel_Block,
 }
 
+unsafe impl Send for Block {}
+unsafe impl Sync for Block {}
+
 impl Into<Vec<u8>> for Block {
     fn into(self) -> Vec<u8> {
         let mut err = make_kernel_error();
@@ -623,6 +632,9 @@ pub struct BlockIndex<'a> {
     marker: PhantomData<ChainstateManager<'a>>,
 }
 
+unsafe impl Send for BlockIndex<'_> {}
+unsafe impl Sync for BlockIndex<'_> {}
+
 impl<'a> BlockIndex<'a> {
     pub fn prev(self) -> Result<BlockIndex<'a>, KernelError> {
         let mut err = make_kernel_error();
@@ -651,6 +663,8 @@ pub struct BlockUndo {
     inner: *mut kernel_BlockUndo,
     pub n_tx_undo: usize,
 }
+unsafe impl Send for BlockUndo {}
+unsafe impl Sync for BlockUndo {}
 
 impl BlockUndo {
     pub fn get_get_transaction_undo_size(
@@ -810,6 +824,9 @@ pub struct ChainstateManager<'a> {
     inner: *mut kernel_ChainstateManager,
     context: &'a Context,
 }
+
+unsafe impl Send for ChainstateManager<'_> {}
+unsafe impl Sync for ChainstateManager<'_> {}
 
 impl<'a> ChainstateManager<'a> {
     pub fn new(
