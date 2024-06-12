@@ -4,8 +4,8 @@ use libfuzzer_sys::fuzz_target;
 
 use libbitcoinkernel_sys::{
     BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
-    ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-    KernelNotificationInterfaceCallbackHolder, LogCallback, Logger,
+    ChainstateManagerOptions, Context, ContextBuilder,
+    KernelNotificationInterfaceCallbackHolder,
 };
 
 fn create_context() -> Context {

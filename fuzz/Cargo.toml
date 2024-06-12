@@ -9,12 +9,13 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+arbitrary = { version = "1.1", features = ["derive"] }
 
 [dependencies.libbitcoinkernel-sys]
 path = "../libbitcoinkernel-sys"
 
 [[bin]]
-name = "fuzz_target_1"
+name = "fuzz_target_chainman"
 path = "fuzz_targets/fuzz_target_chainman.rs"
 test = false
 doc = false
