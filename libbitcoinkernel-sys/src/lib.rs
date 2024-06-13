@@ -635,6 +635,10 @@ pub struct BlockIndex<'a> {
 unsafe impl Send for BlockIndex<'_> {}
 unsafe impl Sync for BlockIndex<'_> {}
 
+pub struct BlockIndexInfo {
+    pub height: i32,
+}
+
 impl<'a> BlockIndex<'a> {
     pub fn prev(self) -> Result<BlockIndex<'a>, KernelError> {
         let mut err = make_kernel_error();
@@ -649,6 +653,15 @@ impl<'a> BlockIndex<'a> {
         Ok(BlockIndex {
             inner,
             marker: self.marker,
+        })
+    }
+
+    pub fn info(self) -> Result<BlockIndexInfo, KernelError> {
+        let mut err = make_kernel_error();
+        let info = unsafe { kernel_get_block_index_info(self.inner, &mut err)};
+        handle_kernel_error(err)?;
+        Ok(BlockIndexInfo {
+            height: unsafe { (*info).height },
         })
     }
 }
