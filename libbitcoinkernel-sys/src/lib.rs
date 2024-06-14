@@ -635,6 +635,7 @@ pub struct BlockIndex<'a> {
 unsafe impl Send for BlockIndex<'_> {}
 unsafe impl Sync for BlockIndex<'_> {}
 
+#[derive(Debug, Clone)]
 pub struct BlockIndexInfo {
     pub height: i32,
 }
