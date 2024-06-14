@@ -657,7 +657,7 @@ impl<'a> BlockIndex<'a> {
         })
     }
 
-    pub fn info(self) -> Result<BlockIndexInfo, KernelError> {
+    pub fn info(&self) -> Result<BlockIndexInfo, KernelError> {
         let mut err = make_kernel_error();
         let info = unsafe { kernel_get_block_index_info(self.inner, &mut err)};
         handle_kernel_error(err)?;
