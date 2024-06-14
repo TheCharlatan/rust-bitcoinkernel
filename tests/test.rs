@@ -315,6 +315,13 @@ mod tests {
             chainman.process_block(&block).unwrap();
         }
 
+        let block_index_genesis = chainman.get_block_index_genesis().unwrap();
+        let info = block_index_genesis.info().unwrap();
+        assert_eq!(info.height, 0);
+        let block_index_1 = chainman.get_next_block_index(block_index_genesis).unwrap();
+        let info = block_index_1.info().unwrap();
+        assert_eq!(info.height, 1);
+
         let block_index_tip = chainman.get_block_index_tip().unwrap();
         let raw_block_tip: Vec<u8> = chainman.read_block_data(&block_index_tip).unwrap().into();
         let undo_tip = chainman.read_undo_data(&block_index_tip).unwrap();
