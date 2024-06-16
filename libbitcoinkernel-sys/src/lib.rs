@@ -1012,11 +1012,9 @@ impl<'a> ChainstateManager<'a> {
 
 impl<'a> Drop for ChainstateManager<'a> {
     fn drop(&mut self) {
-        let mut err = make_kernel_error();
         unsafe {
-            kernel_chainstate_manager_destroy(self.inner, self.context.inner, &mut err);
+            kernel_chainstate_manager_destroy(self.inner, self.context.inner);
         }
-        handle_kernel_error(err).unwrap();
     }
 }
 
