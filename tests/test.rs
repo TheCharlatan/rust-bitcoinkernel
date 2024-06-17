@@ -315,14 +315,14 @@ mod tests {
             chainman.process_block(&block).unwrap();
         }
 
-        let block_index_genesis = chainman.get_block_index_genesis().unwrap();
-        let info = block_index_genesis.info().unwrap();
+        let block_index_genesis = chainman.get_block_index_genesis();
+        let info = block_index_genesis.info();
         assert_eq!(info.height, 0);
         let block_index_1 = chainman.get_next_block_index(block_index_genesis).unwrap();
-        let info = block_index_1.info().unwrap();
+        let info = block_index_1.info();
         assert_eq!(info.height, 1);
 
-        let block_index_tip = chainman.get_block_index_tip().unwrap();
+        let block_index_tip = chainman.get_block_index_tip();
         let raw_block_tip: Vec<u8> = chainman.read_block_data(&block_index_tip).unwrap().into();
         let undo_tip = chainman.read_undo_data(&block_index_tip).unwrap();
         let block_tip: bitcoin::Block = deserialize(&raw_block_tip).unwrap();
@@ -340,9 +340,8 @@ mod tests {
         assert_eq!(block.txdata.len() - 1, undo.n_tx_undo);
 
         for i in 0..(block.txdata.len() - 1) {
-            let transaction_undo_size: u64 = undo
-                .get_get_transaction_undo_size(i.try_into().unwrap())
-                .unwrap();
+            let transaction_undo_size: u64 =
+                undo.get_get_transaction_undo_size(i.try_into().unwrap());
             let transaction_input_size: u64 = block.txdata[i + 1].input.len().try_into().unwrap();
             assert_eq!(transaction_input_size, transaction_undo_size);
             let mut helper = ScanTxHelper {

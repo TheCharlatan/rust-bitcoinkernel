@@ -271,11 +271,8 @@ unsafe impl Send for Context {}
 unsafe impl Sync for Context {}
 
 impl Context {
-    pub fn interrupt(&self) -> Result<(), KernelError> {
-        let mut err = make_kernel_error();
-        unsafe { kernel_context_interrupt(self.inner, &mut err) };
-        handle_kernel_error(err)?;
-        Ok(())
+    pub fn interrupt(&self) -> bool {
+        unsafe { kernel_context_interrupt(self.inner) }
     }
 }
 
@@ -470,9 +467,6 @@ fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
             kernel_ErrorCode_kernel_ERROR_SPENT_OUTPUTS_MISMATCH => {
                 Err(KernelError::SpentOutputsMismatch(message))
             }
-            kernel_ErrorCode_kernel_ERROR_INVALID_POINTER => {
-                Err(KernelError::InvalidPointer(message))
-            }
             kernel_ErrorCode_kernel_ERROR_LOGGING_FAILED => {
                 Err(KernelError::LoggingFailed(message))
             }
@@ -598,8 +592,7 @@ unsafe impl Sync for Block {}
 
 impl Into<Vec<u8>> for Block {
     fn into(self) -> Vec<u8> {
-        let mut err = make_kernel_error();
-        let raw_block = unsafe { kernel_copy_block_data(self.inner, &mut err) };
+        let raw_block = unsafe { kernel_copy_block_data(self.inner) };
         let vec = unsafe {
             std::slice::from_raw_parts((*raw_block).data, (*raw_block).size.try_into().unwrap())
         }
@@ -657,13 +650,11 @@ impl<'a> BlockIndex<'a> {
         })
     }
 
-    pub fn info(&self) -> Result<BlockIndexInfo, KernelError> {
-        let mut err = make_kernel_error();
-        let info = unsafe { kernel_get_block_index_info(self.inner, &mut err)};
-        handle_kernel_error(err)?;
-        Ok(BlockIndexInfo {
+    pub fn info(&self) -> BlockIndexInfo {
+        let info = unsafe { kernel_get_block_index_info(self.inner) };
+        BlockIndexInfo {
             height: unsafe { (*info).height },
-        })
+        }
     }
 }
 
@@ -681,15 +672,8 @@ unsafe impl Send for BlockUndo {}
 unsafe impl Sync for BlockUndo {}
 
 impl BlockUndo {
-    pub fn get_get_transaction_undo_size(
-        &self,
-        transaction_index: u64,
-    ) -> Result<u64, KernelError> {
-        let mut err = make_kernel_error();
-        let undo_size =
-            unsafe { kernel_get_transaction_undo_size(self.inner, transaction_index, &mut err) };
-        handle_kernel_error(err)?;
-        Ok(undo_size)
+    pub fn get_get_transaction_undo_size(&self, transaction_index: u64) -> u64 {
+        unsafe { kernel_get_transaction_undo_size(self.inner, transaction_index) }
     }
 
     pub fn get_prevout_by_index(
@@ -904,32 +888,18 @@ impl<'a> ChainstateManager<'a> {
         Ok(())
     }
 
-    pub fn get_block_index_tip(&self) -> Result<BlockIndex, KernelError> {
-        let mut err = make_kernel_error();
-        let block_index = unsafe {
-            BlockIndex {
-                inner: kernel_get_block_index_from_tip(self.context.inner, self.inner, &mut err),
-                marker: PhantomData,
-            }
-        };
-        handle_kernel_error(err)?;
-        Ok(block_index)
+    pub fn get_block_index_tip(&self) -> BlockIndex {
+        BlockIndex {
+            inner: unsafe { kernel_get_block_index_from_tip(self.context.inner, self.inner) },
+            marker: PhantomData,
+        }
     }
 
-    pub fn get_block_index_genesis(&self) -> Result<BlockIndex, KernelError> {
-        let mut err = make_kernel_error();
-        let block_index = unsafe {
-            BlockIndex {
-                inner: kernel_get_block_index_from_genesis(
-                    self.context.inner,
-                    self.inner,
-                    &mut err,
-                ),
-                marker: PhantomData,
-            }
-        };
-        handle_kernel_error(err)?;
-        Ok(block_index)
+    pub fn get_block_index_genesis(&self) -> BlockIndex {
+        BlockIndex {
+            inner: unsafe { kernel_get_block_index_from_genesis(self.context.inner, self.inner) },
+            marker: PhantomData,
+        }
     }
 
     pub fn get_block_index_by_height(&self, block_height: i32) -> Result<BlockIndex, KernelError> {
@@ -1003,9 +973,8 @@ impl<'a> ChainstateManager<'a> {
                 &mut err,
             )
         };
-        let n_tx_undo = unsafe { kernel_block_undo_size(inner, &mut err) }
-            .try_into()
-            .unwrap();
+        handle_kernel_error(err)?;
+        let n_tx_undo = unsafe { kernel_block_undo_size(inner) }.try_into().unwrap();
         Ok(BlockUndo { inner, n_tx_undo })
     }
 }
