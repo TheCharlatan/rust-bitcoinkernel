@@ -132,8 +132,11 @@ mod tests {
                 kn_progress: Box::new(|_state, progress, _resume_possible| {
                     log::info!("Made progress: {}", progress);
                 }),
-                kn_warning: Box::new(|warning| {
-                    log::info!("Received warning: {warning}");
+                kn_warning_set: Box::new(|_warning, message| {
+                    log::info!("Received warning: {message}");
+                }),
+                kn_warning_unset: Box::new(|_warning| {
+                    log::info!("Unsetting warning.");
                 }),
                 kn_flush_error: Box::new(|message| {
                     log::info!("Flush error! {message}");

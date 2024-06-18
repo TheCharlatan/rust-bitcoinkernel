@@ -114,6 +114,25 @@ impl From<kernel_SynchronizationState> for SynchronizationState {
     }
 }
 
+pub enum KernelWarning {
+    UNKNOWN_NEW_RULES_ACTIVATED,
+    LARGE_WORK_INVALID_CHAIN,
+}
+
+impl From<kernel_Warning> for KernelWarning {
+    fn from(warning: kernel_Warning) -> KernelWarning {
+        match warning {
+            kernel_Warning_kernel_UNKNOWN_NEW_RULES_ACTIVATED => {
+                KernelWarning::UNKNOWN_NEW_RULES_ACTIVATED
+            }
+            kernel_Warning_kernel_LARGE_WORK_INVALID_CHAIN => {
+                KernelWarning::LARGE_WORK_INVALID_CHAIN
+            }
+            _ => panic!("Unexpected kernel warning"),
+        }
+    }
+}
+
 pub enum ChainType {
     MAINNET,
     TESTNET,
@@ -141,8 +160,11 @@ impl<F: Fn(SynchronizationState, i64, i64, bool)> KNHeaderTipFn for F {}
 pub trait KNProgressFn: Fn(String, i32, bool) {}
 impl<F: Fn(String, i32, bool)> KNProgressFn for F {}
 
-pub trait KNWarningFn: Fn(String) {}
-impl<F: Fn(String)> KNWarningFn for F {}
+pub trait KNWarningSetFn: Fn(KernelWarning, String) {}
+impl<F: Fn(KernelWarning, String)> KNWarningSetFn for F {}
+
+pub trait KNWarningUnsetFn: Fn(KernelWarning) {}
+impl<F: Fn(KernelWarning)> KNWarningUnsetFn for F {}
 
 pub trait KNFlushErrorFn: Fn(String) {}
 impl<F: Fn(String)> KNFlushErrorFn for F {}
@@ -154,7 +176,8 @@ pub struct KernelNotificationInterfaceCallbackHolder {
     pub kn_block_tip: Box<dyn KNBlockTipFn>,
     pub kn_header_tip: Box<dyn KNHeaderTipFn>,
     pub kn_progress: Box<dyn KNProgressFn>,
-    pub kn_warning: Box<dyn KNWarningFn>,
+    pub kn_warning_set: Box<dyn KNWarningSetFn>,
+    pub kn_warning_unset: Box<dyn KNWarningUnsetFn>,
     pub kn_flush_error: Box<dyn KNFlushErrorFn>,
     pub kn_fatal_error: Box<dyn KNFatalErrorFn>,
 }
@@ -189,9 +212,18 @@ unsafe extern "C" fn kn_progress_wrapper(
     (holder.kn_progress)(cast_string(title), progress_percent, resume_possible);
 }
 
-unsafe extern "C" fn kn_warning_wrapper(user_data: *mut c_void, warning: *const c_char) {
+unsafe extern "C" fn kn_warning_set_wrapper(
+    user_data: *mut c_void,
+    warning: kernel_Warning,
+    message: *const c_char,
+) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
-    (holder.kn_warning)(cast_string(warning));
+    (holder.kn_warning_set)(warning.into(), cast_string(message));
+}
+
+unsafe extern "C" fn kn_warning_unset_wrapper(user_data: *mut c_void, warning: kernel_Warning) {
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    (holder.kn_warning_unset)(warning.into());
 }
 
 unsafe extern "C" fn kn_flush_error_wrapper(user_data: *mut c_void, message: *const c_char) {
@@ -363,7 +395,8 @@ impl ContextBuilder {
                 block_tip: Some(kn_block_tip_wrapper),
                 header_tip: Some(kn_header_tip_wrapper),
                 progress: Some(kn_progress_wrapper),
-                warning: Some(kn_warning_wrapper),
+                warning_set: Some(kn_warning_set_wrapper),
+                warning_unset: Some(kn_warning_unset_wrapper),
                 flush_error: Some(kn_flush_error_wrapper),
                 fatal_error: Some(kn_fatal_error_wrapper),
             }));
