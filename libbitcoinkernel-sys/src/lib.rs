@@ -434,13 +434,13 @@ pub enum KernelError {
     TxIndex(String),
     TxSizeMismatch(String),
     TxDeserialize(String),
-    AmountRequired(String),
     InvalidFlags(String),
     SpentOutputsRequired(String),
     SpentOutputsMismatch(String),
     InvalidPointer(String),
     LoggingFailed(String),
-    UnknownOption(String),
+    UnknownContextOption(String),
+    UnknownChainstateLoadOption(String),
     InvalidContext(String),
     MissingCallbacks(String),
     OutOfBounds(String),
@@ -460,13 +460,13 @@ impl fmt::Display for KernelError {
             KernelError::TxIndex(msg)
             | KernelError::TxSizeMismatch(msg)
             | KernelError::TxDeserialize(msg)
-            | KernelError::AmountRequired(msg)
             | KernelError::InvalidFlags(msg)
             | KernelError::SpentOutputsRequired(msg)
             | KernelError::SpentOutputsMismatch(msg)
             | KernelError::InvalidPointer(msg)
             | KernelError::LoggingFailed(msg)
-            | KernelError::UnknownOption(msg)
+            | KernelError::UnknownContextOption(msg)
+            | KernelError::UnknownChainstateLoadOption(msg)
             | KernelError::InvalidContext(msg)
             | KernelError::MissingCallbacks(msg)
             | KernelError::Internal(msg)
@@ -490,9 +490,6 @@ fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
             kernel_ErrorCode_kernel_ERROR_TX_DESERIALIZE => {
                 Err(KernelError::TxDeserialize(message))
             }
-            kernel_ErrorCode_kernel_ERROR_AMOUNT_REQUIRED => {
-                Err(KernelError::AmountRequired(message))
-            }
             kernel_ErrorCode_kernel_ERROR_INVALID_FLAGS => Err(KernelError::InvalidFlags(message)),
             kernel_ErrorCode_kernel_ERROR_SPENT_OUTPUTS_REQUIRED => {
                 Err(KernelError::SpentOutputsRequired(message))
@@ -503,8 +500,11 @@ fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
             kernel_ErrorCode_kernel_ERROR_LOGGING_FAILED => {
                 Err(KernelError::LoggingFailed(message))
             }
-            kernel_ErrorCode_kernel_ERROR_UNKNOWN_OPTION => {
-                Err(KernelError::UnknownOption(message))
+            kernel_ErrorCode_kernel_ERROR_UNKNOWN_CONTEXT_OPTION => {
+                Err(KernelError::UnknownContextOption(message))
+            }
+            kernel_ErrorCode_kernel_ERROR_UNKNOWN_CHAINSTATE_LOAD_OPTION => {
+                Err(KernelError::UnknownChainstateLoadOption(message))
             }
             kernel_ErrorCode_kernel_ERROR_INVALID_CONTEXT => {
                 Err(KernelError::InvalidContext(message))
@@ -685,9 +685,11 @@ impl<'a> BlockIndex<'a> {
 
     pub fn info(&self) -> BlockIndexInfo {
         let info = unsafe { kernel_get_block_index_info(self.inner) };
-        BlockIndexInfo {
+        let res = BlockIndexInfo {
             height: unsafe { (*info).height },
-        }
+        };
+        unsafe { kernel_block_index_info_destroy(info) };
+        return res;
     }
 }
 
@@ -719,7 +721,7 @@ impl BlockUndo {
             kernel_get_undo_output_by_index(self.inner, transaction_index, prevout_index, &mut err)
         };
         handle_kernel_error(err)?;
-        Ok(TxOut {
+        let res = TxOut {
             value: unsafe { (*prev_out).value },
             script_pubkey: unsafe {
                 std::slice::from_raw_parts(
@@ -728,7 +730,9 @@ impl BlockUndo {
                 )
                 .to_vec()
             },
-        })
+        };
+        unsafe { kernel_transaction_output_destroy(prev_out) };
+        Ok(res)
     }
 }
 

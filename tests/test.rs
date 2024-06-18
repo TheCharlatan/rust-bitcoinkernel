@@ -14,7 +14,6 @@ mod tests {
     use std::collections::VecDeque;
     use std::fs::File;
     use std::io::{BufRead, BufReader};
-    use std::rc::Rc;
     use std::sync::{Arc, Condvar, Mutex, Once};
     use std::thread;
     use tempdir::TempDir;
