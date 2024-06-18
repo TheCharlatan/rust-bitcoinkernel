@@ -61,7 +61,7 @@ pub fn verify(
     });
 
     let ret = unsafe {
-        kernel_verify_script_with_spent_outputs(
+        kernel_verify_script(
             script_pubkey.as_ptr(),
             script_pubkey.len(),
             kernel_amount,
