@@ -41,9 +41,9 @@ PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig LD_LIBRARY_PATH=/path
 
 Fuzzing is done with [cargo fuzz](https://github.com/rust-fuzz/cargo-fuzz).
 
-There are currently two supported fuzzing targets: `fuzz_target_chainman` and
-`fuzz_target_verify`. The `chainman` target requires the user to first mount a
-temporary ramdisk:
+There are currently three supported fuzzing targets: `fuzz_target_block`,
+`fuzz_target_chainman` and `fuzz_target_verify`. The `chainman` target requires
+the user to first mount a temporary ramdisk:
 
 ```bash
 sudo mkdir -p /mnt/tmp/kernel
