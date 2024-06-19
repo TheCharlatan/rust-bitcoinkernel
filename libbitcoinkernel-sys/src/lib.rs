@@ -3,10 +3,10 @@
 #![allow(non_snake_case)]
 
 use std::ffi::{CStr, CString, NulError};
+use std::fmt;
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_void};
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::{fmt, ptr};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -48,12 +48,14 @@ pub fn verify(
     };
     let mut err = make_kernel_error();
     let kernel_amount = if let Some(a) = amount { a } else { 0 };
-    let kernel_spent_outputs: Vec<kernel_TransactionOutput> = spent_outputs.iter().map(|utxo|
-        kernel_TransactionOutput {
-                value: utxo.value,
-                script_pubkey: utxo.script_pubkey.as_ptr(),
-                script_pubkey_len: utxo.script_pubkey.len(),
-        }).collect();
+    let kernel_spent_outputs: Vec<kernel_TransactionOutput> = spent_outputs
+        .iter()
+        .map(|utxo| kernel_TransactionOutput {
+            value: utxo.value,
+            script_pubkey: utxo.script_pubkey.as_ptr(),
+            script_pubkey_len: utxo.script_pubkey.len(),
+        })
+        .collect();
 
     let ret = unsafe {
         kernel_verify_script(

@@ -23,8 +23,10 @@ pub struct VerifyInput {
 
 fuzz_target!(|data: VerifyInput| {
     // Call the verify function with the fuzzed inputs
-    let spent_outputs: Vec<Utxo> = data.spent_outputs.iter().map(|utxo|
-        Utxo {
+    let spent_outputs: Vec<Utxo> = data
+        .spent_outputs
+        .iter()
+        .map(|utxo| Utxo {
             value: utxo.value,
             script_pubkey: &utxo.script_pubkey,
         })

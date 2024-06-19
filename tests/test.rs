@@ -4,11 +4,11 @@ mod tests {
     use env_logger::Builder;
     use libbitcoinkernel_sys::{
         execute_event, register_validation_interface, unregister_validation_interface, verify,
-        Block, BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions,
-        ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, Event, KernelError,
-        KernelNotificationInterfaceCallbackHolder, LogCallback, Logger, TaskRunnerCallbackHolder,
-        TxOut, Utxo, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
-        VERIFY_ALL_PRE_TAPROOT,
+        Block, BlockIndexInfo, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
+        ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
+        ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, LogCallback,
+        Logger, TaskRunnerCallbackHolder, TxOut, Utxo, ValidationInterfaceCallbackHolder,
+        ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT,
     };
     use log::LevelFilter;
     use std::collections::VecDeque;
@@ -491,6 +491,8 @@ mod tests {
         is_send::<BlockUndo>();
         is_sync::<ChainstateManager>();
         is_send::<ChainstateManager>();
+        is_sync::<BlockIndexInfo>();
+        is_send::<BlockIndexInfo>();
 
         // is_sync::<Rc<u8>>(); // won't compile, kept as a failure case.
         // is_send::<Rc<u8>>(); // won't compile, kept as a failure case.

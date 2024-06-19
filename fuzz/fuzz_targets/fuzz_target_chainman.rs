@@ -5,7 +5,7 @@ use libfuzzer_sys::fuzz_target;
 use arbitrary::Arbitrary;
 
 use libbitcoinkernel_sys::{
-    Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelNotificationInterfaceCallbackHolder
+    Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, LogCallback, Logger
 };
 
 fn create_context(chain_type: ChainType) -> Context {
@@ -24,6 +24,11 @@ fn create_context(chain_type: ChainType) -> Context {
         .unwrap()
         .build()
         .unwrap()
+}
+
+fn setup_logging() -> Result<Logger, KernelError> {
+    let callback = |_: &str| {};
+    Logger::new(LogCallback::new(callback))
 }
 
 #[derive(Debug, Arbitrary)]
@@ -49,25 +54,23 @@ impl Into<ChainType> for FuzzChainType {
 pub struct ChainstateManagerInput {
     pub data_dir: String,
     pub chain_type: FuzzChainType,
-    pub block: String,
+    pub blocks: Vec<String>,
     pub wipe_block_index: bool,
     pub wipe_chainstate_index: bool,
 }
 
 fuzz_target!(|data: ChainstateManagerInput| {
     let context = create_context(data.chain_type.into());
+    let _ = setup_logging().unwrap();
     // Sanitize the input string by removing dots and slashes
-    let sanitized_string: String = data.data_dir.chars().filter(|c| *c != '.' && *c != '/').collect();
+    let sanitized_string: String = data
+        .data_dir
+        .chars()
+        .filter(|c| *c != '.' && *c != '/')
+        .take(60)
+        .collect();
 
-    // Limit the length of the sanitized string to avoid excessively long paths
-    let max_length = 255; // Adjust as necessary
-    let limited_string = if sanitized_string.len() > max_length {
-        &sanitized_string[..max_length]
-    } else {
-        &sanitized_string
-    };
-
-    let data_dir = format!("/mnt/tmp/kernel/{}", limited_string);
+    let data_dir = format!("/mnt/tmp/kernel/{}", sanitized_string);
     let blocks_dir = format!("{}/blocks", data_dir);
     let chainman_opts = match ChainstateManagerOptions::new(&context, &data_dir) {
         Ok(opts) => opts,
@@ -77,8 +80,13 @@ fuzz_target!(|data: ChainstateManagerInput| {
     let blockman_opts = BlockManagerOptions::new(&context, &blocks_dir).unwrap();
     let chainman = ChainstateManager::new(chainman_opts, blockman_opts, &context).unwrap();
 
-    match chainman.load_chainstate(ChainstateLoadOptions::new().set_reindex(data.wipe_block_index).unwrap().set_wipe_chainstate_db(data.wipe_chainstate_index).unwrap())
-    {
+    match chainman.load_chainstate(
+        ChainstateLoadOptions::new()
+            .set_reindex(data.wipe_block_index)
+            .unwrap()
+            .set_wipe_chainstate_db(data.wipe_chainstate_index)
+            .unwrap(),
+    ) {
         Err(libbitcoinkernel_sys::KernelError::Internal(_)) => {}
         Err(err) => {
             let _ = std::fs::remove_dir_all(data_dir);
@@ -86,13 +94,15 @@ fuzz_target!(|data: ChainstateManagerInput| {
         }
         _ => {}
     }
-    if let Err(err) = chainman.import_blocks()
-    {
+    if let Err(err) = chainman.import_blocks() {
         let _ = std::fs::remove_dir_all(data_dir);
         panic!("this should never happen: {}", err);
     }
-    if let Ok(block) = Block::try_from(data.block.as_str()) {
-        let _ = chainman.process_block(&block);
+
+    for block in data.blocks {
+        if let Ok(block) = Block::try_from(block.as_str()) {
+            let _ = chainman.process_block(&block);
+        }
     }
     drop(chainman);
     let _ = std::fs::remove_dir_all(data_dir);
