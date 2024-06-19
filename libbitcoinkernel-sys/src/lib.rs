@@ -39,7 +39,7 @@ pub fn verify(
     tx_to: &[u8],
     input_index: u32,
     flags: Option<u32>,
-    spent_outputs: Option<&[Utxo]>,
+    spent_outputs: &[Utxo],
 ) -> Result<(), KernelError> {
     let kernel_flags = if let Some(flag) = flags {
         flag
@@ -48,17 +48,12 @@ pub fn verify(
     };
     let mut err = make_kernel_error();
     let kernel_amount = if let Some(a) = amount { a } else { 0 };
-    let kernel_spent_outputs = spent_outputs.map(|utxos| {
-        let res: Vec<kernel_TransactionOutput> = utxos
-            .iter()
-            .map(|utxo| kernel_TransactionOutput {
+    let kernel_spent_outputs: Vec<kernel_TransactionOutput> = spent_outputs.iter().map(|utxo|
+        kernel_TransactionOutput {
                 value: utxo.value,
                 script_pubkey: utxo.script_pubkey.as_ptr(),
                 script_pubkey_len: utxo.script_pubkey.len(),
-            })
-            .collect();
-        res
-    });
+        }).collect();
 
     let ret = unsafe {
         kernel_verify_script(
@@ -67,10 +62,8 @@ pub fn verify(
             kernel_amount,
             tx_to.as_ptr(),
             tx_to.len(),
-            kernel_spent_outputs
-                .map(|utxos| utxos.as_ptr())
-                .unwrap_or(ptr::null()),
-            spent_outputs.map(|utxos| utxos.len()).unwrap_or(0),
+            kernel_spent_outputs.as_ptr(),
+            spent_outputs.len(),
             input_index,
             kernel_flags,
             &mut err,
@@ -640,7 +633,10 @@ impl TryFrom<&str> for Block {
 
     fn try_from(block_str: &str) -> Result<Self, Self::Error> {
         let mut err = make_kernel_error();
-        let string = CString::new(block_str).unwrap();
+        let string = match CString::new(block_str) {
+            Ok(str) => str,
+            Err(err) => return Err(err.into()),
+        };
         let inner = unsafe { kernel_block_from_string(string.as_ptr(), &mut err) };
         handle_kernel_error(err)?;
         Ok(Block { inner })

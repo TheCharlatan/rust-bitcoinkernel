@@ -462,13 +462,14 @@ mod tests {
         amount: i64,
         input: u32,
     ) -> Result<(), KernelError> {
+        let outputs = vec![];
         verify(
             hex::decode(spent).unwrap().as_slice(),
             Some(amount),
             hex::decode(spending).unwrap().as_slice(),
             input,
             Some(VERIFY_ALL_PRE_TAPROOT),
-            None,
+            &outputs,
         )
     }
 

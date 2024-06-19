@@ -27,3 +27,10 @@ path = "fuzz_targets/fuzz_target_verify.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_target_block"
+path = "fuzz_targets/fuzz_target_block.rs"
+test = false
+doc = false
+bench = false
