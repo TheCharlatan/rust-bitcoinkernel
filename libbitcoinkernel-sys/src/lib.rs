@@ -57,6 +57,12 @@ pub fn verify(
         })
         .collect();
 
+    let spent_outputs_ptr = if kernel_spent_outputs.is_empty() {
+        std::ptr::null()
+    } else {
+        kernel_spent_outputs.as_ptr()
+    };
+
     let ret = unsafe {
         kernel_verify_script(
             script_pubkey.as_ptr(),
@@ -64,7 +70,7 @@ pub fn verify(
             kernel_amount,
             tx_to.as_ptr(),
             tx_to.len(),
-            kernel_spent_outputs.as_ptr(),
+            spent_outputs_ptr,
             spent_outputs.len(),
             input_index,
             kernel_flags,
