@@ -62,3 +62,25 @@ To get fuzzing run (in this case the `verify` target):
 LD_LIBRARY_PATH=/usr/local/lib cargo fuzz run fuzz_target_verify
 ```
 
+### Coverage
+
+Once fuzzed, a coverage report can be generated with (picking the `verify`
+target as an example):
+```
+LD_LIBRARY_PATH=/usr/local/lib RUSTFLAGS="-C instrument-coverage" cargo fuzz coverage fuzz_target_verify
+llvm-cov show \
+  -format=html \
+  -instr-profile=fuzz/coverage/fuzz_target_verify/coverage.profdata \
+  target/x86_64-unknown-linux-gnu/coverage/x86_64-unknown-linux-gnu/release/fuzz_target_verify \
+  -show-line-counts-or-regions \
+  -Xdemangler=rustfilt \
+  -output-dir=coverage_report \
+  -ignore-filename-regex="/rustc"
+```
+
+You may have to install the following tooling:
+```
+rustup component add llvm-tools-preview
+cargo install rustfilt
+```
+
