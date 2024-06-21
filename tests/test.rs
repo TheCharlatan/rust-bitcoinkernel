@@ -413,6 +413,24 @@ mod tests {
     }
 
     #[test]
+    fn test_logger() {
+        let callback = |message: &str| {
+            log::info!("kernel test: {}", message);
+        };
+        let logger_1 = Some(Logger::new(LogCallback::new(callback)).unwrap());
+        let logger_2 = Some(Logger::new(LogCallback::new(callback)).unwrap());
+        let logger_3 = Some(Logger::new(LogCallback::new(callback)).unwrap());
+
+        let (_, _, _) = testing_setup(TaskRunnerType::Immediate);
+
+        drop(logger_1);
+
+        drop(logger_2); 
+
+        drop(logger_3);    
+    }
+
+    #[test]
     fn script_verify_test() {
         // a random old-style transaction from the blockchain
         verify_test (
