@@ -1028,46 +1028,34 @@ impl<'a> Drop for ChainstateManager<'a> {
     }
 }
 
-unsafe extern "C" fn log_callback(user_data: *mut c_void, message: *const c_char) {
+pub trait Log {
+    fn log(&self, message: &str);
+}
+
+unsafe extern "C" fn log_callback<T: Log + 'static>(
+    user_data: *mut c_void,
+    message: *const c_char,
+) {
     let message = unsafe { CStr::from_ptr(message).to_string_lossy().into_owned() };
-    let callback = &*(user_data as *mut LogCallback);
-    callback.callback.as_ref()(&message);
+    let log = user_data as *mut T;
+    (*log).log(&message);
 }
 
-pub trait LogFn: Fn(&str) {}
-impl<F: Fn(&str)> LogFn for F {}
-pub struct LogCallback {
-    pub callback: Box<dyn LogFn>,
-}
-
-impl LogCallback {
-    pub fn new<F>(callback: F) -> LogCallback
-    where
-        F: LogFn + 'static,
-    {
-        LogCallback {
-            callback: Box::new(callback),
-        }
-    }
-}
-
-pub struct Logger {
-    callback_box: *mut LogCallback,
+pub struct Logger<T> {
+    log: T,
     inner: *mut kernel_LoggingConnection,
 }
 
-impl Drop for Logger {
+impl<T> Drop for Logger<T> {
     fn drop(&mut self) {
         unsafe {
             kernel_logging_connection_destroy(self.inner);
-            drop(Box::from_raw(self.callback_box));
         }
     }
 }
 
-impl Logger {
-    pub fn new(callback: LogCallback) -> Result<Logger, KernelError> {
-        let callback_box = Box::into_raw(Box::new(callback));
+impl<T: Log + 'static> Logger<T> {
+    pub fn new(mut log: T) -> Result<Logger<T>, KernelError> {
         let mut err = make_kernel_error();
         let options = kernel_LoggingOptions {
             log_timestamps: true,
@@ -1079,17 +1067,18 @@ impl Logger {
 
         let inner = unsafe {
             kernel_logging_connection_create(
-                Some(log_callback),
-                callback_box as *mut c_void,
+                Some(log_callback::<T>),
+                &mut log as *mut T as *mut c_void,
                 options,
                 &mut err,
             )
         };
 
         handle_kernel_error(err)?;
-        Ok(Logger {
-            callback_box,
-            inner,
-        })
+        Ok(Logger { log, inner })
+    }
+
+    pub fn log(&self, message: &str) {
+        self.log.log(message);
     }
 }

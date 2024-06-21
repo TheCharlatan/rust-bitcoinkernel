@@ -5,7 +5,9 @@ use libfuzzer_sys::fuzz_target;
 use arbitrary::Arbitrary;
 
 use libbitcoinkernel_sys::{
-    Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, LogCallback, Logger
+    Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
+    ChainstateManagerOptions, Context, ContextBuilder,
+    KernelNotificationInterfaceCallbackHolder,
 };
 
 fn create_context(chain_type: ChainType) -> Context {
@@ -24,11 +26,6 @@ fn create_context(chain_type: ChainType) -> Context {
         .unwrap()
         .build()
         .unwrap()
-}
-
-fn setup_logging() -> Result<Logger, KernelError> {
-    let callback = |_: &str| {};
-    Logger::new(LogCallback::new(callback))
 }
 
 #[derive(Debug, Arbitrary)]
@@ -61,7 +58,6 @@ pub struct ChainstateManagerInput {
 
 fuzz_target!(|data: ChainstateManagerInput| {
     let context = create_context(data.chain_type.into());
-    let _ = setup_logging().unwrap();
     // Sanitize the input string by removing dots and slashes
     let sanitized_string: String = data
         .data_dir

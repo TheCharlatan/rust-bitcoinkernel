@@ -7,7 +7,7 @@ use env_logger::Builder;
 use libbitcoinkernel_sys::{
     BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
     ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-    KernelNotificationInterfaceCallbackHolder, LogCallback, Logger,
+    KernelNotificationInterfaceCallbackHolder, Log, Logger,
 };
 use log::LevelFilter;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
@@ -16,17 +16,20 @@ use silentpayments::utils::receiving::{
     calculate_shared_secret, calculate_tweak_data, get_pubkey_from_input,
 };
 
-fn setup_logging() -> Result<Logger, KernelError> {
-    let mut builder = Builder::from_default_env();
-    builder.filter(None, LevelFilter::Info).init();
+struct MainLog {}
 
-    let callback = |message: &str| {
+impl Log for MainLog {
+    fn log(&self, message: &str) {
         log::info!(
             target: "libbitcoinkernel", 
             "{}", message.strip_suffix("\r\n").or_else(|| message.strip_suffix('\n')).unwrap_or(message));
-    };
+    }
+}
 
-    Logger::new(LogCallback::new(callback))
+fn setup_logging() -> Result<Logger<MainLog>, KernelError> {
+    let mut builder = Builder::from_default_env();
+    builder.filter(None, LevelFilter::Info).init();
+    Logger::new(MainLog {})
 }
 
 fn create_context() -> Context {

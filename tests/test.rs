@@ -1,16 +1,14 @@
 #[cfg(test)]
 mod tests {
     use bitcoin::consensus::deserialize;
-    use env_logger::Builder;
     use libbitcoinkernel_sys::{
         execute_event, register_validation_interface, unregister_validation_interface, verify,
         Block, BlockIndexInfo, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
         ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
-        ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, LogCallback,
-        Logger, TaskRunnerCallbackHolder, TxOut, Utxo, ValidationInterfaceCallbackHolder,
+        ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
+        TaskRunnerCallbackHolder, TxOut, Utxo, ValidationInterfaceCallbackHolder,
         ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT,
     };
-    use log::LevelFilter;
     use std::collections::VecDeque;
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -18,8 +16,18 @@ mod tests {
     use std::thread;
     use tempdir::TempDir;
 
+    struct TestLog {}
+
+    impl Log for TestLog {
+        fn log(&self, message: &str) {
+            log::info!(
+                target: "libbitcoinkernel", 
+                "{}", message.strip_suffix("\r\n").or_else(|| message.strip_suffix('\n')).unwrap_or(message));
+        }
+    }
+
     static START: Once = Once::new();
-    static mut GLOBAL_LOG_CALLBACK_HOLDER: Option<Logger> = None;
+    static mut GLOBAL_LOG_CALLBACK_HOLDER: Option<Logger<TestLog>> = None;
 
     type Queue = Arc<(Mutex<VecDeque<Event>>, Condvar)>;
 
@@ -30,18 +38,10 @@ mod tests {
     }
 
     fn setup_logging() {
-        let mut builder = Builder::from_default_env();
-        builder.filter(None, LevelFilter::Info).init();
+        let mut builder = env_logger::Builder::from_default_env();
+        builder.filter(None, log::LevelFilter::Info).init();
 
-        let callback = |message: &str| {
-            log::info!(
-                target: "libbitcoinkernel", 
-                "{}", message.strip_suffix("\r\n").or_else(|| message.strip_suffix('\n')).unwrap_or(message));
-        };
-
-        unsafe {
-            GLOBAL_LOG_CALLBACK_HOLDER = Some(Logger::new(LogCallback::new(callback)).unwrap())
-        };
+        unsafe { GLOBAL_LOG_CALLBACK_HOLDER = Some(Logger::new(TestLog {}).unwrap()) };
     }
 
     fn runtime(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
@@ -414,20 +414,17 @@ mod tests {
 
     #[test]
     fn test_logger() {
-        let callback = |message: &str| {
-            log::info!("kernel test: {}", message);
-        };
-        let logger_1 = Some(Logger::new(LogCallback::new(callback)).unwrap());
-        let logger_2 = Some(Logger::new(LogCallback::new(callback)).unwrap());
-        let logger_3 = Some(Logger::new(LogCallback::new(callback)).unwrap());
-
         let (_, _, _) = testing_setup(TaskRunnerType::Immediate);
+
+        let logger_1 = Some(Logger::new(TestLog {}).unwrap());
+        let logger_2 = Some(Logger::new(TestLog {}).unwrap());
+        let logger_3 = Some(Logger::new(TestLog {}).unwrap());
 
         drop(logger_1);
 
-        drop(logger_2); 
+        drop(logger_2);
 
-        drop(logger_3);    
+        drop(logger_3);
     }
 
     #[test]
