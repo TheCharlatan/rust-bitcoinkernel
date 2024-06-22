@@ -6,8 +6,7 @@ use arbitrary::Arbitrary;
 
 use libbitcoinkernel_sys::{
     Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
-    ChainstateManagerOptions, Context, ContextBuilder,
-    KernelNotificationInterfaceCallbackHolder,
+    ChainstateManagerOptions, Context, ContextBuilder, KernelNotificationInterfaceCallbackHolder,
 };
 
 fn create_context(chain_type: ChainType) -> Context {
@@ -51,7 +50,7 @@ impl Into<ChainType> for FuzzChainType {
 pub struct ChainstateManagerInput {
     pub data_dir: String,
     pub chain_type: FuzzChainType,
-    pub blocks: Vec<String>,
+    pub blocks: Vec<Vec<u8>>,
     pub wipe_block_index: bool,
     pub wipe_chainstate_index: bool,
 }
@@ -96,7 +95,7 @@ fuzz_target!(|data: ChainstateManagerInput| {
     }
 
     for block in data.blocks {
-        if let Ok(block) = Block::try_from(block.as_str()) {
+        if let Ok(block) = Block::try_from(block.as_slice()) {
             let _ = chainman.process_block(&block);
         }
     }

@@ -636,16 +636,12 @@ impl Into<Vec<u8>> for Block {
     }
 }
 
-impl TryFrom<&str> for Block {
+impl TryFrom<&[u8]> for Block {
     type Error = KernelError;
 
-    fn try_from(block_str: &str) -> Result<Self, Self::Error> {
+    fn try_from(raw_block: &[u8]) -> Result<Self, Self::Error> {
         let mut err = make_kernel_error();
-        let string = match CString::new(block_str) {
-            Ok(str) => str,
-            Err(err) => return Err(err.into()),
-        };
-        let inner = unsafe { kernel_block_from_string(string.as_ptr(), &mut err) };
+        let inner = unsafe { kernel_block_create(raw_block.as_ptr(), raw_block.len(), &mut err) };
         handle_kernel_error(err)?;
         Ok(Block { inner })
     }

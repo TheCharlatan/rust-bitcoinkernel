@@ -202,12 +202,12 @@ mod tests {
         )
     }
 
-    fn read_block_data() -> Vec<String> {
+    fn read_block_data() -> Vec<Vec<u8>> {
         let file = File::open("tests/block_data.txt").unwrap();
         let reader = BufReader::new(file);
         let mut lines = vec![];
         for line in reader.lines() {
-            lines.push(line.unwrap());
+            lines.push(hex::decode(line.unwrap()).unwrap().to_vec());
         }
         lines
     }
@@ -228,8 +228,8 @@ mod tests {
             chainman
                 .load_chainstate(ChainstateLoadOptions::new())
                 .unwrap();
-            for block_hex in block_data.iter() {
-                let block = Block::try_from(block_hex.as_str()).unwrap();
+            for raw_block in block_data.iter() {
+                let block = Block::try_from(raw_block.as_slice()).unwrap();
                 chainman.process_block(&block).unwrap();
             }
         }
@@ -264,18 +264,18 @@ mod tests {
                 .unwrap();
 
             // Not a block
-            let block = Block::try_from("deadbeef");
+            let block = Block::try_from(hex::decode("deadbeef").unwrap().as_slice());
             assert!(matches!(block, Err(KernelError::Internal(_))));
             drop(block);
 
             // Invalid block
-            let block_1 = Block::try_from(
+            let block_1 = Block::try_from(hex::decode(
                 "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd\
                 1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299\
                 0101000000010000000000000000000000000000000000000000000000000000000000000000ffff\
                 ffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec1\
                 1600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf62\
-                1e73a82cbf2342c858eeac00000000",
+                1e73a82cbf2342c858eeac00000000").unwrap().as_slice()
             )
             .unwrap();
             let res = chainman.process_block(&block_1);
@@ -312,8 +312,8 @@ mod tests {
             .load_chainstate(ChainstateLoadOptions::new())
             .unwrap();
 
-        for block_hex in block_data.iter() {
-            let block = Block::try_from(block_hex.as_str()).unwrap();
+        for raw_block in block_data.iter() {
+            let block = Block::try_from(raw_block.as_slice()).unwrap();
             chainman.process_block(&block).unwrap();
         }
 
@@ -383,8 +383,8 @@ mod tests {
             .load_chainstate(ChainstateLoadOptions::new())
             .unwrap();
 
-        for block_hex in block_data.iter() {
-            let block = Block::try_from(block_hex.as_str()).unwrap();
+        for raw_block in block_data.iter() {
+            let block = Block::try_from(raw_block.as_slice()).unwrap();
             chainman.process_block(&block).unwrap();
         }
 
@@ -408,7 +408,7 @@ mod tests {
 
         chainman.import_blocks().unwrap();
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
-        let block_2 = Block::try_from(block_data[1].clone().as_str()).unwrap();
+        let block_2 = Block::try_from(block_data[1].clone().as_slice()).unwrap();
         chainman.process_block(&block_2).unwrap();
     }
 
