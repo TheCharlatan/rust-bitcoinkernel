@@ -847,6 +847,38 @@ impl ChainstateLoadOptions {
         handle_kernel_error(err)?;
         Ok(self)
     }
+
+    pub fn set_chainstate_db_in_memory(self, chainstate_db_in_memory: bool) -> Result<Self, KernelError> {
+        let mut err = make_kernel_error();
+        unsafe {
+            let kernel_chainstate_db_in_memory = Box::into_raw(Box::new(chainstate_db_in_memory));
+            kernel_chainstate_load_options_set(
+                self.inner,
+                kernel_ChainstateLoadOptionType_kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
+                kernel_chainstate_db_in_memory as *mut c_void,
+                &mut err,
+            );
+            drop(Box::from_raw(kernel_chainstate_db_in_memory));
+        }
+        handle_kernel_error(err)?;
+        Ok(self)
+    }
+
+    pub fn set_block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Result<Self, KernelError> {
+        let mut err = make_kernel_error();
+        unsafe {
+            let kernel_block_tree_db_in_memory = Box::into_raw(Box::new(block_tree_db_in_memory));
+            kernel_chainstate_load_options_set(
+                self.inner,
+                kernel_ChainstateLoadOptionType_kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
+                kernel_block_tree_db_in_memory as *mut c_void,
+                &mut err,
+            );
+            drop(Box::from_raw(kernel_block_tree_db_in_memory));
+        }
+        handle_kernel_error(err)?;
+        Ok(self)
+    }
 }
 
 impl Drop for ChainstateLoadOptions {

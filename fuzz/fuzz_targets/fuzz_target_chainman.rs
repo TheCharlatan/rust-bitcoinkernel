@@ -53,6 +53,8 @@ pub struct ChainstateManagerInput {
     pub blocks: Vec<Vec<u8>>,
     pub wipe_block_index: bool,
     pub wipe_chainstate_index: bool,
+    pub block_tree_db_in_memory: bool,
+    pub chainstate_db_in_memory: bool,
 }
 
 fuzz_target!(|data: ChainstateManagerInput| {
@@ -80,6 +82,10 @@ fuzz_target!(|data: ChainstateManagerInput| {
             .set_reindex(data.wipe_block_index)
             .unwrap()
             .set_wipe_chainstate_db(data.wipe_chainstate_index)
+            .unwrap()
+            .set_block_tree_db_in_memory(data.block_tree_db_in_memory)
+            .unwrap()
+            .set_chainstate_db_in_memory(data.chainstate_db_in_memory)
             .unwrap(),
     ) {
         Err(libbitcoinkernel_sys::KernelError::Internal(_)) => {}
