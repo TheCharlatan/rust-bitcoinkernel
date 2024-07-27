@@ -848,7 +848,10 @@ impl ChainstateLoadOptions {
         Ok(self)
     }
 
-    pub fn set_chainstate_db_in_memory(self, chainstate_db_in_memory: bool) -> Result<Self, KernelError> {
+    pub fn set_chainstate_db_in_memory(
+        self,
+        chainstate_db_in_memory: bool,
+    ) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
             let kernel_chainstate_db_in_memory = Box::into_raw(Box::new(chainstate_db_in_memory));
@@ -864,7 +867,10 @@ impl ChainstateLoadOptions {
         Ok(self)
     }
 
-    pub fn set_block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Result<Self, KernelError> {
+    pub fn set_block_tree_db_in_memory(
+        self,
+        block_tree_db_in_memory: bool,
+    ) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
             let kernel_block_tree_db_in_memory = Box::into_raw(Box::new(block_tree_db_in_memory));
@@ -1079,6 +1085,12 @@ impl<T> Drop for Logger<T> {
         unsafe {
             kernel_logging_connection_destroy(self.inner);
         }
+    }
+}
+
+pub fn disable_logging() {
+    unsafe {
+        kernel_disable_logging();
     }
 }
 

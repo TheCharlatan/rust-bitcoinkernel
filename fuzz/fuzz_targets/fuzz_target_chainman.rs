@@ -1,12 +1,15 @@
 #![no_main]
 
+use std::sync::Once;
+
 use libfuzzer_sys::fuzz_target;
 
 use arbitrary::Arbitrary;
 
 use libbitcoinkernel_sys::{
-    Block, BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
-    ChainstateManagerOptions, Context, ContextBuilder, KernelNotificationInterfaceCallbackHolder,
+    disable_logging, Block, BlockManagerOptions, ChainType, ChainstateLoadOptions,
+    ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder,
+    KernelNotificationInterfaceCallbackHolder,
 };
 
 fn create_context(chain_type: ChainType) -> Context {
@@ -57,7 +60,13 @@ pub struct ChainstateManagerInput {
     pub chainstate_db_in_memory: bool,
 }
 
+static INIT: Once = Once::new();
+
 fuzz_target!(|data: ChainstateManagerInput| {
+    INIT.call_once(|| {
+        disable_logging();
+    });
+
     let context = create_context(data.chain_type.into());
     // Sanitize the input string by removing dots and slashes
     let sanitized_string: String = data
