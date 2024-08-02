@@ -501,12 +501,6 @@ fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
             kernel_ErrorCode_kernel_ERROR_LOGGING_FAILED => {
                 Err(KernelError::LoggingFailed(message))
             }
-            kernel_ErrorCode_kernel_ERROR_UNKNOWN_CONTEXT_OPTION => {
-                Err(KernelError::UnknownContextOption(message))
-            }
-            kernel_ErrorCode_kernel_ERROR_UNKNOWN_CHAINSTATE_LOAD_OPTION => {
-                Err(KernelError::UnknownChainstateLoadOption(message))
-            }
             kernel_ErrorCode_kernel_ERROR_INVALID_CONTEXT => {
                 Err(KernelError::InvalidContext(message))
             }
