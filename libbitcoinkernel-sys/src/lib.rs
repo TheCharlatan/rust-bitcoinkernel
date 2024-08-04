@@ -438,15 +438,18 @@ pub enum KernelError {
     TxSizeMismatch(String),
     TxDeserialize(String),
     InvalidFlags(String),
+    InvalidFlagsCombination(String),
     SpentOutputsRequired(String),
     SpentOutputsMismatch(String),
     InvalidPointer(String),
     LoggingFailed(String),
     UnknownContextOption(String),
-    UnknownChainstateLoadOption(String),
     InvalidContext(String),
+    InvalidContextOption(String),
     MissingCallbacks(String),
     OutOfBounds(String),
+    DuplicateBlock(String),
+    BlockWithoutCoinbase(String),
     Internal(String),
     CStringCreationFailed(String),
 }
@@ -464,15 +467,18 @@ impl fmt::Display for KernelError {
             | KernelError::TxSizeMismatch(msg)
             | KernelError::TxDeserialize(msg)
             | KernelError::InvalidFlags(msg)
+            | KernelError::InvalidFlagsCombination(msg)
             | KernelError::SpentOutputsRequired(msg)
             | KernelError::SpentOutputsMismatch(msg)
             | KernelError::InvalidPointer(msg)
             | KernelError::LoggingFailed(msg)
             | KernelError::UnknownContextOption(msg)
-            | KernelError::UnknownChainstateLoadOption(msg)
             | KernelError::InvalidContext(msg)
+            | KernelError::InvalidContextOption(msg)
             | KernelError::MissingCallbacks(msg)
             | KernelError::Internal(msg)
+            | KernelError::DuplicateBlock(msg)
+            | KernelError::BlockWithoutCoinbase(msg)
             | KernelError::OutOfBounds(msg) => write!(f, "{}", msg),
             KernelError::CStringCreationFailed(msg) => write!(f, "{}", msg),
         }
@@ -494,6 +500,7 @@ fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
                 Err(KernelError::TxDeserialize(message))
             }
             kernel_ErrorCode_kernel_ERROR_INVALID_FLAGS => Err(KernelError::InvalidFlags(message)),
+            kernel_ErrorCode_kernel_ERROR_INVALID_FLAGS_COMBINATION => Err(KernelError::InvalidFlagsCombination(message)),
             kernel_ErrorCode_kernel_ERROR_SPENT_OUTPUTS_REQUIRED => {
                 Err(KernelError::SpentOutputsRequired(message))
             }
@@ -506,6 +513,9 @@ fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
             kernel_ErrorCode_kernel_ERROR_INVALID_CONTEXT => {
                 Err(KernelError::InvalidContext(message))
             }
+            kernel_ErrorCode_kernel_ERROR_INVALID_CONTEXT_OPTION => Err(KernelError::InvalidContextOption(message)),
+            kernel_ErrorCode_kernel_ERROR_DUPLICATE_BLOCK => Err(KernelError::DuplicateBlock(message)),
+            kernel_ErrorCode_kernel_ERROR_BLOCK_WITHOUT_COINBASE => Err(KernelError::BlockWithoutCoinbase(message)),
             kernel_ErrorCode_kernel_ERROR_OUT_OF_BOUNDS => Err(KernelError::OutOfBounds(message)),
             kernel_ErrorCode_kernel_ERROR_INTERNAL => Err(KernelError::Internal(message)),
             _ => Ok(()),
@@ -806,37 +816,29 @@ impl ChainstateLoadOptions {
     }
 
     pub fn set_reindex(self, reindex: bool) -> Result<Self, KernelError> {
-        let mut err = make_kernel_error();
         unsafe {
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_WIPE_BLOCK_TREE_DB_CHAINSTATE_LOAD_OPTION,
                 reindex,
-                &mut err,
             );
-            handle_kernel_error(err)?;
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,
                 reindex,
-                &mut err,
             );
         }
-        handle_kernel_error(err)?;
         Ok(self)
     }
 
     pub fn set_wipe_chainstate_db(self, wipe_chainstate: bool) -> Result<Self, KernelError> {
-        let mut err = make_kernel_error();
         unsafe {
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,
                 wipe_chainstate,
-                &mut err,
             );
         }
-        handle_kernel_error(err)?;
         Ok(self)
     }
 
@@ -844,16 +846,13 @@ impl ChainstateLoadOptions {
         self,
         chainstate_db_in_memory: bool,
     ) -> Result<Self, KernelError> {
-        let mut err = make_kernel_error();
         unsafe {
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
                 chainstate_db_in_memory,
-                &mut err,
             );
         }
-        handle_kernel_error(err)?;
         Ok(self)
     }
 
@@ -861,16 +860,13 @@ impl ChainstateLoadOptions {
         self,
         block_tree_db_in_memory: bool,
     ) -> Result<Self, KernelError> {
-        let mut err = make_kernel_error();
         unsafe {
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
                 block_tree_db_in_memory,
-                &mut err,
             );
         }
-        handle_kernel_error(err)?;
         Ok(self)
     }
 }
