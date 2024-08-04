@@ -365,19 +365,20 @@ impl ContextBuilder {
         let mut err = make_kernel_error();
 
         unsafe {
-            let cbs_pointer = Box::into_raw(Box::new(kernel_TaskRunnerCallbacks {
+            let holder = kernel_TaskRunnerCallbacks {
                 user_data: tr_pointer as *mut c_void,
                 insert: Some(tr_insert_wrapper),
                 flush: Some(tr_flush_wrapper),
                 size: Some(tr_size_wrapper),
-            }));
+            };
+            let kernel_task_runner = kernel_task_runner_create(holder);
             kernel_context_options_set(
                 self.inner,
-                kernel_ContextOptionType_kernel_TASK_RUNNER_CALLBACKS_OPTION,
-                cbs_pointer as *mut c_void,
+                kernel_ContextOptionType_kernel_TASK_RUNNER_OPTION,
+                kernel_task_runner as *mut c_void,
                 &mut err,
             );
-            drop(Box::from_raw(cbs_pointer));
+            kernel_task_runner_destroy(kernel_task_runner);
         };
         handle_kernel_error(err)?;
         self.tr_callbacks = unsafe { Some(Box::from_raw(tr_pointer)) };
@@ -391,7 +392,7 @@ impl ContextBuilder {
         let kn_pointer = Box::into_raw(kn_callbacks);
         let mut err = make_kernel_error();
         unsafe {
-            let cbs_pointer = Box::into_raw(Box::new(kernel_NotificationInterfaceCallbacks {
+            let holder = kernel_NotificationInterfaceCallbacks {
                 user_data: kn_pointer as *mut c_void,
                 block_tip: Some(kn_block_tip_wrapper),
                 header_tip: Some(kn_header_tip_wrapper),
@@ -400,14 +401,15 @@ impl ContextBuilder {
                 warning_unset: Some(kn_warning_unset_wrapper),
                 flush_error: Some(kn_flush_error_wrapper),
                 fatal_error: Some(kn_fatal_error_wrapper),
-            }));
+            };
+            let kernel_notifications = kernel_notifications_create(holder);
             kernel_context_options_set(
                 self.inner,
-                kernel_ContextOptionType_kernel_NOTIFICATION_INTERFACE_CALLBACKS_OPTION,
-                cbs_pointer as *mut c_void,
+                kernel_ContextOptionType_kernel_NOTIFICATIONS_OPTION,
+                kernel_notifications as *mut c_void,
                 &mut err,
             );
-            drop(Box::from_raw(cbs_pointer));
+            kernel_notifications_destroy(kernel_notifications);
         };
         handle_kernel_error(err)?;
         self.kn_callbacks = unsafe { Some(Box::from_raw(kn_pointer)) };
@@ -806,37 +808,33 @@ impl ChainstateLoadOptions {
     pub fn set_reindex(self, reindex: bool) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
-            let kernel_reindex = Box::into_raw(Box::new(reindex));
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_WIPE_BLOCK_TREE_DB_CHAINSTATE_LOAD_OPTION,
-                kernel_reindex as *mut c_void,
+                reindex,
                 &mut err,
             );
             handle_kernel_error(err)?;
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,
-                kernel_reindex as *mut c_void,
+                reindex,
                 &mut err,
             );
-            drop(Box::from_raw(kernel_reindex));
         }
         handle_kernel_error(err)?;
         Ok(self)
     }
 
-    pub fn set_wipe_chainstate_db(self, reindex_chainstate: bool) -> Result<Self, KernelError> {
+    pub fn set_wipe_chainstate_db(self, wipe_chainstate: bool) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
-            let kernel_reindex_chainstate = Box::into_raw(Box::new(reindex_chainstate));
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,
-                kernel_reindex_chainstate as *mut c_void,
+                wipe_chainstate,
                 &mut err,
             );
-            drop(Box::from_raw(kernel_reindex_chainstate));
         }
         handle_kernel_error(err)?;
         Ok(self)
@@ -848,14 +846,12 @@ impl ChainstateLoadOptions {
     ) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
-            let kernel_chainstate_db_in_memory = Box::into_raw(Box::new(chainstate_db_in_memory));
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
-                kernel_chainstate_db_in_memory as *mut c_void,
+                chainstate_db_in_memory,
                 &mut err,
             );
-            drop(Box::from_raw(kernel_chainstate_db_in_memory));
         }
         handle_kernel_error(err)?;
         Ok(self)
@@ -867,14 +863,12 @@ impl ChainstateLoadOptions {
     ) -> Result<Self, KernelError> {
         let mut err = make_kernel_error();
         unsafe {
-            let kernel_block_tree_db_in_memory = Box::into_raw(Box::new(block_tree_db_in_memory));
             kernel_chainstate_load_options_set(
                 self.inner,
                 kernel_ChainstateLoadOptionType_kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
-                kernel_block_tree_db_in_memory as *mut c_void,
+                block_tree_db_in_memory,
                 &mut err,
             );
-            drop(Box::from_raw(kernel_block_tree_db_in_memory));
         }
         handle_kernel_error(err)?;
         Ok(self)
