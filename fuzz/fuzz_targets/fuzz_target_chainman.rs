@@ -76,7 +76,7 @@ fuzz_target!(|data: ChainstateManagerInput| {
         .take(60)
         .collect();
 
-    let data_dir = format!("/mnt/tmp/kernel/{}", sanitized_string);
+    let data_dir = format!("/tmp/rust_kernel_fuzz/{}", sanitized_string);
     let blocks_dir = format!("{}/blocks", data_dir);
     let chainman_opts = match ChainstateManagerOptions::new(&context, &data_dir) {
         Ok(opts) => opts,

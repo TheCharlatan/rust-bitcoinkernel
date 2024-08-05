@@ -42,24 +42,19 @@ PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig LD_LIBRARY_PATH=/path
 Fuzzing is done with [cargo fuzz](https://github.com/rust-fuzz/cargo-fuzz).
 
 There are currently three supported fuzzing targets: `fuzz_target_block`,
-`fuzz_target_chainman` and `fuzz_target_verify`. The `chainman` target requires
-the user to first mount a temporary ramdisk:
-
-```bash
-sudo mkdir -p /mnt/tmp/kernel
-sudo mount -t tmpfs -o size=4g tmpfs /mnt/tmp/kernel
-```
-
-Once done the user can unmount the ramdisk again with:
-
-```bash
-sudo umount /mnt/tmp/kernel
-```
+`fuzz_target_chainman` and `fuzz_target_verify`. The `chainman` target touches
+the filesystem in `/tmp`. If `/tmp` is not already a tmpfs, the user should
+create a tmpfs in `/tmp/rust_kernel_fuzz`.
 
 To get fuzzing run (in this case the `verify` target):
 
 ```bash
 LD_LIBRARY_PATH=/usr/local/lib cargo fuzz run fuzz_target_verify
+```
+
+Sanitizers can be turned on with e.g.
+```bash
+LD_LIBRARY_PATH=/usr/local/lib RUSTFLAGS="-Zsanitizer=address" cargo fuzz run fuzz_target_block
 ```
 
 ### Coverage
