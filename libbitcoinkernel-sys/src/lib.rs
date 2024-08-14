@@ -500,7 +500,9 @@ fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
                 Err(KernelError::TxDeserialize(message))
             }
             kernel_ErrorCode_kernel_ERROR_INVALID_FLAGS => Err(KernelError::InvalidFlags(message)),
-            kernel_ErrorCode_kernel_ERROR_INVALID_FLAGS_COMBINATION => Err(KernelError::InvalidFlagsCombination(message)),
+            kernel_ErrorCode_kernel_ERROR_INVALID_FLAGS_COMBINATION => {
+                Err(KernelError::InvalidFlagsCombination(message))
+            }
             kernel_ErrorCode_kernel_ERROR_SPENT_OUTPUTS_REQUIRED => {
                 Err(KernelError::SpentOutputsRequired(message))
             }
@@ -513,9 +515,15 @@ fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
             kernel_ErrorCode_kernel_ERROR_INVALID_CONTEXT => {
                 Err(KernelError::InvalidContext(message))
             }
-            kernel_ErrorCode_kernel_ERROR_INVALID_CONTEXT_OPTION => Err(KernelError::InvalidContextOption(message)),
-            kernel_ErrorCode_kernel_ERROR_DUPLICATE_BLOCK => Err(KernelError::DuplicateBlock(message)),
-            kernel_ErrorCode_kernel_ERROR_BLOCK_WITHOUT_COINBASE => Err(KernelError::BlockWithoutCoinbase(message)),
+            kernel_ErrorCode_kernel_ERROR_INVALID_CONTEXT_OPTION => {
+                Err(KernelError::InvalidContextOption(message))
+            }
+            kernel_ErrorCode_kernel_ERROR_DUPLICATE_BLOCK => {
+                Err(KernelError::DuplicateBlock(message))
+            }
+            kernel_ErrorCode_kernel_ERROR_BLOCK_WITHOUT_COINBASE => {
+                Err(KernelError::BlockWithoutCoinbase(message))
+            }
             kernel_ErrorCode_kernel_ERROR_OUT_OF_BOUNDS => Err(KernelError::OutOfBounds(message)),
             kernel_ErrorCode_kernel_ERROR_INTERNAL => Err(KernelError::Internal(message)),
             _ => Ok(()),
@@ -745,6 +753,99 @@ impl BlockUndo {
 impl Drop for BlockUndo {
     fn drop(&mut self) {
         unsafe { kernel_block_undo_destroy(self.inner) };
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OutPoint {
+    pub hash: [u8; 32],
+    pub n: u32,
+}
+
+impl From<kernel_OutPoint> for OutPoint {
+    fn from(c: kernel_OutPoint) -> OutPoint {
+        OutPoint {
+            hash: c.hash,
+            n: c.n,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Coin {
+    pub out: TxOut,
+    pub is_coinbase: bool,
+    pub confirmation_height: u32,
+}
+
+impl From<kernel_Coin> for Coin {
+    fn from(c: kernel_Coin) -> Coin {
+        Coin {
+            out: c.out.into(),
+            is_coinbase: c.is_coinbase != 0,
+            confirmation_height: c.confirmation_height,
+        }
+    }
+}
+
+pub struct CoinsCursor {
+    inner: *mut kernel_CoinsViewCursor,
+    iterating: bool,
+}
+
+impl CoinsCursor {
+    pub fn next_entry(&self) -> bool {
+        return unsafe { kernel_coins_cursor_next(self.inner) };
+    }
+
+    pub fn get_key(&self) -> Result<OutPoint, KernelError> {
+        let mut err = make_kernel_error();
+        let outpoint_ptr = unsafe { kernel_coins_cursor_get_key(self.inner, &mut err) };
+        handle_kernel_error(err)?;
+        let outpoint = unsafe { *outpoint_ptr }.into();
+        unsafe { kernel_out_point_destroy(outpoint_ptr) };
+        Ok(outpoint)
+    }
+
+    pub fn get_value(&self) -> Result<Coin, KernelError> {
+        let mut err = make_kernel_error();
+        let coin_ptr = unsafe { kernel_coins_cursor_get_value(self.inner, &mut err) };
+        handle_kernel_error(err)?;
+        let coin = unsafe { *coin_ptr }.into();
+        unsafe { kernel_coin_destroy(coin_ptr)};
+        Ok(coin)
+    }
+}
+
+impl Iterator for CoinsCursor {
+    type Item = (OutPoint, Coin);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if !self.iterating {
+            let val = if let (Some(key), Some(value)) = (self.get_key().ok(), self.get_value().ok())
+            {
+                Some((key, value))
+            } else {
+                None
+            };
+            self.iterating = true;
+            return val;
+        }
+        if !self.next_entry() {
+            None
+        } else {
+            if let (Some(key), Some(value)) = (self.get_key().ok(), self.get_value().ok()) {
+                Some((key, value))
+            } else {
+                None
+            }
+        }
+    }
+}
+
+impl Drop for CoinsCursor {
+    fn drop(&mut self) {
+        unsafe { kernel_coins_cursor_destroy(self.inner) };
     }
 }
 
@@ -1035,6 +1136,29 @@ impl<'a> ChainstateManager<'a> {
         handle_kernel_error(err)?;
         let n_tx_undo = unsafe { kernel_block_undo_size(inner) }.try_into().unwrap();
         Ok(BlockUndo { inner, n_tx_undo })
+    }
+
+    pub fn get_coins_cursor(&self) -> Result<CoinsCursor, KernelError> {
+        let mut err = make_kernel_error();
+        let inner = unsafe { kernel_chainstate_coins_cursor_create(self.inner, &mut err) };
+        handle_kernel_error(err)?;
+        Ok(CoinsCursor {
+            inner,
+            iterating: false,
+        })
+    }
+
+    pub fn get_coin(&self, point: OutPoint) -> Result<Coin, KernelError> {
+        let mut err = make_kernel_error();
+        let out_point = kernel_OutPoint {
+            hash: point.hash,
+            n: point.n,
+        };
+        let coin_ptr = unsafe { kernel_get_coin_by_out_point(self.inner, &out_point, &mut err) };
+        handle_kernel_error(err)?;
+        let coin = unsafe { *coin_ptr }.into();
+        unsafe { kernel_coin_destroy(coin_ptr)};
+        Ok(coin)
     }
 }
 

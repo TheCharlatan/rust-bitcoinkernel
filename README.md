@@ -8,12 +8,12 @@ library exposing Bitcoin Core's validation engine.
 
 ## Building
 
-To build this library, first build the kernel library on my kernelApi branch. It
+To build this library, first build the kernel library on my kernelApiChainstateIter branch. It
 produces a C-compatible header that is used by this project to create the FFI.
 
 ```bash
 git clone https://github.com/TheCharlatan/bitcoin
-git checkout kernelApi
+git checkout kernelApiChainstateIter
 ./autogen.sh
 ./configure --with-experimental-kernel-lib --enable-shared --prefix ~/bitcoin/install_dir
 make install -j 24
