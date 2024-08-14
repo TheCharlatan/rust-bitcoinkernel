@@ -9,8 +9,8 @@ library exposing Bitcoin Core's validation engine.
 ## Building
 
 The library statically compiles the Bitcoin Core libbitcoinkernel library as
-part of its build system. Currently it targets the kernelApi branch on the
-following fork: https://github.com/TheCharlatan/bitcoin/tree/kernelApi.
+part of its build system. Currently it targets the kernelApiNode branch on the
+following fork: https://github.com/TheCharlatan/bitcoin/tree/kernelApiNode.
 
 Bitcoin Core is vendored as a `git subtree` in this project. The subtree can
 be updated, or made to point at a different commit or branch in Bitcoin Core's

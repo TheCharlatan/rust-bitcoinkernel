@@ -283,6 +283,17 @@ mod tests {
             chainman.process_block(&block).unwrap();
         }
 
+        let cursor = chainman.get_coins_cursor().unwrap();
+        let mut iter = 0;
+        let mut size = 0;
+        for (out_point, output) in cursor {
+            size += std::mem::size_of_val(&out_point) + std::mem::size_of_val(&output.get_script_pubkey().get());
+            iter += 1;
+            println!("out_point: {:?}, coin: {:?}", out_point, output.get_script_pubkey().get());
+        }
+        assert_eq!(iter, 230);
+        assert_eq!(size, 13800);
+
         unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
