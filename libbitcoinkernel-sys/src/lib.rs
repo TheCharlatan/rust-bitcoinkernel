@@ -699,6 +699,82 @@ impl Drop for BlockUndo {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct OutPoint {
+    pub hash: [u8; 32],
+    pub n: u32,
+}
+
+impl From<kernel_OutPoint> for OutPoint {
+    fn from(c: kernel_OutPoint) -> OutPoint {
+        OutPoint {
+            hash: c.hash,
+            n: c.n,
+        }
+    }
+}
+
+pub struct CoinsCursor {
+    inner: *mut kernel_CoinsViewCursor,
+    iterating: bool,
+}
+
+impl CoinsCursor {
+    pub fn next_entry(&self) -> bool {
+        return unsafe { kernel_coins_cursor_next(self.inner) };
+    }
+
+    pub fn get_key(&self) -> Result<OutPoint, KernelError> {
+        let outpoint_ptr = unsafe { kernel_coins_cursor_get_key(self.inner) };
+        if outpoint_ptr.is_null() {
+            return Err(KernelError::Internal("Failed to get outpoint.".to_string()));
+        }
+        let outpoint = unsafe { *outpoint_ptr }.into();
+        unsafe { kernel_out_point_destroy(outpoint_ptr) };
+        Ok(outpoint)
+    }
+
+    pub fn get_value(&self) -> Result<TxOut, KernelError> {
+        let tx_out = unsafe { kernel_coins_cursor_get_value(self.inner) };
+        if tx_out.is_null() {
+            return Err(KernelError::Internal("Failed to get coin.".to_string()));
+        }
+        Ok(TxOut{ inner: tx_out })
+    }
+}
+
+impl Iterator for CoinsCursor {
+    type Item = (OutPoint, TxOut);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if !self.iterating {
+            let val = if let (Some(key), Some(value)) = (self.get_key().ok(), self.get_value().ok())
+            {
+                Some((key, value))
+            } else {
+                None
+            };
+            self.iterating = true;
+            return val;
+        }
+        if !self.next_entry() {
+            None
+        } else {
+            if let (Some(key), Some(value)) = (self.get_key().ok(), self.get_value().ok()) {
+                Some((key, value))
+            } else {
+                None
+            }
+        }
+    }
+}
+
+impl Drop for CoinsCursor {
+    fn drop(&mut self) {
+        unsafe { kernel_coins_cursor_destroy(self.inner) };
+    }
+}
+
 pub struct ChainstateManagerOptions {
     inner: *mut kernel_ChainstateManagerOptions,
 }
@@ -966,6 +1042,33 @@ impl<'a> ChainstateManager<'a> {
         }
         let n_tx_undo = unsafe { kernel_block_undo_size(inner) }.try_into().unwrap();
         Ok(BlockUndo { inner, n_tx_undo })
+    }
+
+    pub fn get_coins_cursor(&self) -> Result<CoinsCursor, KernelError> {
+        let inner = unsafe { kernel_chainstate_coins_cursor_create(self.inner) };
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to get coins cursor.".to_string(),
+            ));
+        }
+        Ok(CoinsCursor {
+            inner,
+            iterating: false,
+        })
+    }
+
+    pub fn get_output(&self, point: OutPoint) -> Result<TxOut, KernelError> {
+        let out_point = kernel_OutPoint {
+            hash: point.hash,
+            n: point.n,
+        };
+        let tx_out = unsafe { kernel_get_output_by_out_point(self.inner, &out_point) };
+        if tx_out.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to get coin by its outpoint.".to_string()
+            ));
+        }
+        Ok(TxOut{ inner: tx_out })
     }
 }
 
