@@ -435,6 +435,24 @@ impl ContextBuilder {
         Ok(self)
     }
 
+    pub fn with_mempool(self) -> Result<ContextBuilder, KernelError> {
+        let mempool = unsafe { kernel_mempool_options_create() };
+        let success = unsafe {
+            kernel_context_options_set(
+                self.inner,
+                kernel_ContextOptionType_kernel_MEMPOOL_OPTION,
+                mempool as *mut c_void,
+            )
+        };
+        unsafe { kernel_mempool_options_destroy(mempool) };
+        if !success {
+            return Err(KernelError::InvalidOptions(
+                "Failed to set mempool context option.".to_string(),
+            ));
+        }
+        Ok(self)
+    }
+
     pub fn chain_type(self, chain_type: ChainType) -> Result<ContextBuilder, KernelError> {
         let chain_params = ChainParams::new(chain_type);
         unsafe {
@@ -603,6 +621,49 @@ pub fn execute_event(event: Event) -> Result<(), KernelError> {
     Ok(())
 }
 
+pub struct Transaction {
+    inner: *mut kernel_Transaction,
+}
+
+unsafe impl Send for Transaction {}
+unsafe impl Sync for Transaction {}
+
+impl Into<Vec<u8>> for Transaction {
+    fn into(self) -> Vec<u8> {
+        let raw_transaction = unsafe { kernel_copy_transaction_data(self.inner) };
+        let vec = unsafe {
+            std::slice::from_raw_parts(
+                (*raw_transaction).data,
+                (*raw_transaction).size.try_into().unwrap(),
+            )
+        }
+        .to_vec();
+        unsafe { kernel_byte_array_destroy(raw_transaction) };
+        vec
+    }
+}
+
+impl TryFrom<&[u8]> for Transaction {
+    type Error = KernelError;
+
+    fn try_from(raw_transaction: &[u8]) -> Result<Self, Self::Error> {
+        let inner =
+            unsafe { kernel_transaction_create(raw_transaction.as_ptr(), raw_transaction.len()) };
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to decode raw transaction.".to_string(),
+            ));
+        }
+        Ok(Transaction { inner })
+    }
+}
+
+impl Drop for Transaction {
+    fn drop(&mut self) {
+        unsafe { kernel_transaction_destroy(self.inner) }
+    }
+}
+
 pub struct BlockHeader {
     inner: *mut kernel_BlockHeader,
 }
@@ -652,6 +713,20 @@ impl Block {
         BlockHeader {
             inner: unsafe { kernel_get_block_header(self.inner) },
         }
+    }
+
+    pub fn get_number_of_transaction(&self) -> usize {
+        unsafe { kernel_number_of_transactions_in_block(self.inner) }
+    }
+
+    pub fn get_transaction(&self, index: u64) -> Result<Transaction, KernelError> {
+        let inner = unsafe { kernel_get_transaction_by_index(self.inner, index) };
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Transaction could not be retrieved.".to_string(),
+            ));
+        }
+        Ok(Transaction { inner })
     }
 }
 
@@ -1076,6 +1151,17 @@ impl<'a> ChainstateManager<'a> {
         } else {
             Ok(())
         }
+    }
+
+    pub fn process_transaction(&self, transaction: &Transaction, test_accept: bool) -> bool {
+        return unsafe {
+            kernel_chainstate_manager_process_transaction(
+                self.context.inner,
+                self.inner,
+                transaction.inner,
+                test_accept,
+            )
+        };
     }
 
     pub fn import_blocks(&self) -> Result<(), KernelError> {
