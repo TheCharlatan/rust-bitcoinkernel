@@ -3,7 +3,7 @@ mod tests {
     use bitcoin::consensus::deserialize;
     use libbitcoinkernel_sys::{
         execute_event, register_validation_interface, unregister_validation_interface, verify,
-        Block, BlockIndexInfo, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
+        Block, BlockHeader, BlockIndexInfo, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
         ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
         ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
         ProcessBlockError, TaskRunnerCallbackHolder, TxOut, Utxo,
@@ -388,8 +388,17 @@ mod tests {
 
         for raw_block in block_data.iter() {
             let block = Block::try_from(raw_block.as_slice()).unwrap();
+            let header = block.get_header();
+            assert!(chainman.process_block_header(&header));
             chainman.process_block(&block).unwrap();
         }
+
+        let block = Block::try_from(block_data[0].as_slice()).unwrap();
+        let header_data: Vec<u8> = block.get_header().into();
+        let header_same: Vec<u8> = BlockHeader::try_from(header_data.as_slice())
+            .unwrap()
+            .into();
+        assert_eq!(header_data, header_same);
 
         let cursor = chainman.get_coins_cursor().unwrap();
         let mut iter = 0;
@@ -525,6 +534,8 @@ mod tests {
         is_send::<ChainstateManager>();
         is_sync::<BlockIndexInfo>();
         is_send::<BlockIndexInfo>();
+        is_sync::<BlockHeader>();
+        is_send::<BlockHeader>();
 
         // is_sync::<Rc<u8>>(); // won't compile, kept as a failure case.
         // is_send::<Rc<u8>>(); // won't compile, kept as a failure case.
