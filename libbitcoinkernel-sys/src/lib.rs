@@ -351,6 +351,13 @@ impl ContextBuilder {
         unsafe { kernel_context_options_set_chainparams(self.inner, chain_params.inner) };
         self
     }
+
+    pub fn with_mempool(self) -> ContextBuilder {
+        let mempool = unsafe { kernel_mempool_options_create() };
+        unsafe { kernel_context_options_set_mempool(self.inner, mempool)};
+        unsafe { kernel_mempool_options_destroy(mempool)};
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -559,6 +566,21 @@ pub struct Transaction {
 unsafe impl Send for Transaction {}
 unsafe impl Sync for Transaction {}
 
+impl Into<Vec<u8>> for Transaction {
+    fn into(self) -> Vec<u8> {
+        let raw_transaction = unsafe { kernel_copy_transaction_data(self.inner) };
+        let vec = unsafe {
+            std::slice::from_raw_parts(
+                (*raw_transaction).data,
+                (*raw_transaction).size.try_into().unwrap(),
+            )
+        }
+        .to_vec();
+        unsafe { kernel_byte_array_destroy(raw_transaction) };
+        vec
+    }
+}
+
 impl TryFrom<&[u8]> for Transaction {
     type Error = KernelError;
 
@@ -629,6 +651,20 @@ impl Block {
         BlockHeader {
             inner: unsafe { kernel_get_block_header(self.inner) },
         }
+    }
+
+    pub fn get_number_of_transaction(&self) -> usize {
+        unsafe { kernel_number_of_transactions_in_block(self.inner) }
+    }
+
+    pub fn get_transaction(&self, index: u64) -> Result<Transaction, KernelError> {
+        let inner = unsafe { kernel_get_transaction_by_index(self.inner, index) };
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Transaction could not be retrieved.".to_string(),
+            ));
+        }
+        Ok(Transaction { inner })
     }
 }
 
@@ -1008,6 +1044,17 @@ impl<'a> ChainstateManager<'a> {
         } else {
             Ok(())
         }
+    }
+
+    pub fn process_transaction(&self, transaction: &Transaction, test_accept: bool) -> bool {
+        return unsafe {
+            kernel_chainstate_manager_process_transaction(
+                self.context.inner,
+                self.inner,
+                transaction.inner,
+                test_accept,
+            )
+        };
     }
 
     pub fn import_blocks(&self) -> Result<(), KernelError> {

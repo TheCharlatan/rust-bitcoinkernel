@@ -285,12 +285,24 @@ mod tests {
             chainman.process_block(&block).unwrap();
         }
 
-        let block = Block::try_from(block_data[0].as_slice()).unwrap();
+        let block = Block::try_from(block_data[block_data.len() - 1].as_slice()).unwrap();
         let header_data: Vec<u8> = block.get_header().into();
         let header_same: Vec<u8> = BlockHeader::try_from(header_data.as_slice())
             .unwrap()
             .into();
         assert_eq!(header_data, header_same);
+        assert!(BlockHeader::try_from([0].as_slice()).is_err());
+
+        let transaction = block
+            .get_transaction(block.get_number_of_transaction() as u64 - 1)
+            .unwrap();
+        assert!(!chainman.process_transaction(&transaction, false));
+        let transaction_data: Vec<u8> = transaction.into();
+        let transaction_same: Vec<u8> = Transaction::try_from(transaction_data.as_slice())
+            .unwrap()
+            .into();
+        assert_eq!(transaction_data, transaction_same);
+        assert!(Transaction::try_from([0].as_slice()).is_err());
 
         let cursor = chainman.get_coins_cursor().unwrap();
         let mut iter = 0;
