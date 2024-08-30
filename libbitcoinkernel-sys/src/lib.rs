@@ -580,12 +580,57 @@ impl Drop for Transaction {
     }
 }
 
+pub struct BlockHeader {
+    inner: *mut kernel_BlockHeader,
+}
+
+unsafe impl Send for BlockHeader {}
+unsafe impl Sync for BlockHeader {}
+
+impl Into<Vec<u8>> for BlockHeader {
+    fn into(self) -> Vec<u8> {
+        let raw_header = unsafe { kernel_copy_block_header_data(self.inner) };
+        let vec = unsafe {
+            std::slice::from_raw_parts((*raw_header).data, (*raw_header).size.try_into().unwrap())
+        }
+        .to_vec();
+        unsafe { kernel_byte_array_destroy(raw_header) };
+        vec
+    }
+}
+
+impl TryFrom<&[u8]> for BlockHeader {
+    type Error = KernelError;
+
+    fn try_from(raw_block: &[u8]) -> Result<Self, Self::Error> {
+        let inner = unsafe { kernel_block_header_create(raw_block.as_ptr(), raw_block.len()) };
+        if inner.is_null() {
+            return Err(KernelError::Internal("Failed to decode block.".to_string()));
+        }
+        Ok(BlockHeader { inner })
+    }
+}
+
+impl Drop for BlockHeader {
+    fn drop(&mut self) {
+        unsafe { kernel_block_header_destroy(self.inner) };
+    }
+}
+
 pub struct Block {
     inner: *mut kernel_Block,
 }
 
 unsafe impl Send for Block {}
 unsafe impl Sync for Block {}
+
+impl Block {
+    pub fn get_header(&self) -> BlockHeader {
+        BlockHeader {
+            inner: unsafe { kernel_get_block_header(self.inner) },
+        }
+    }
+}
 
 impl Into<Vec<u8>> for Block {
     fn into(self) -> Vec<u8> {
@@ -739,7 +784,7 @@ impl CoinsCursor {
         if tx_out.is_null() {
             return Err(KernelError::Internal("Failed to get coin.".to_string()));
         }
-        Ok(TxOut{ inner: tx_out })
+        Ok(TxOut { inner: tx_out })
     }
 }
 
@@ -914,6 +959,16 @@ impl<'a> ChainstateManager<'a> {
         Ok(Self { inner, context })
     }
 
+    pub fn process_block_header(&self, header: &BlockHeader) -> bool {
+        return unsafe {
+            kernel_chainstate_manager_process_block_header(
+                self.context.inner,
+                self.inner,
+                header.inner,
+            )
+        };
+    }
+
     pub fn load_chainstate(&self, opts: ChainstateLoadOptions) -> Result<(), KernelError> {
         if !unsafe {
             kernel_chainstate_manager_load_chainstate(self.context.inner, opts.inner, self.inner)
@@ -1065,10 +1120,10 @@ impl<'a> ChainstateManager<'a> {
         let tx_out = unsafe { kernel_get_output_by_out_point(self.inner, &out_point) };
         if tx_out.is_null() {
             return Err(KernelError::Internal(
-                "Failed to get coin by its outpoint.".to_string()
+                "Failed to get coin by its outpoint.".to_string(),
             ));
         }
-        Ok(TxOut{ inner: tx_out })
+        Ok(TxOut { inner: tx_out })
     }
 }
 
