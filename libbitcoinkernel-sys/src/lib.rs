@@ -46,7 +46,7 @@ pub fn verify(
     } else {
         kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_ALL
     };
-    let mut err = make_kernel_error();
+    let mut status = kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_OK;
     let kernel_amount = if let Some(a) = amount { a } else { 0 };
     let kernel_spent_outputs: Vec<kernel_TransactionOutput> = spent_outputs
         .iter()
@@ -74,15 +74,36 @@ pub fn verify(
             spent_outputs.len(),
             input_index,
             kernel_flags,
-            &mut err,
+            &mut status,
         )
     };
-    handle_kernel_error(err)?;
 
-    if ret != 1 {
-        Err(KernelError::Internal(
-            "Failed script verification.".to_string(),
-        ))
+    if !ret {
+        let err = match status {
+            kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_TX_INPUT_INDEX => {
+                ScriptVerifyError::TxInputIndex
+            }
+            kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_TX_SIZE_MISMATCH => {
+                ScriptVerifyError::TxSizeMismatch
+            }
+            kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_TX_DESERIALIZE => {
+                ScriptVerifyError::TxDeserialize
+            }
+            kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_INVALID_FLAGS => {
+                ScriptVerifyError::InvalidFlags
+            }
+            kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_INVALID_FLAGS_COMBINATION => {
+                ScriptVerifyError::InvalidFlagsCombination
+            }
+            kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_SPENT_OUTPUTS_REQUIRED => {
+                ScriptVerifyError::SpentOutputsRequired
+            }
+            kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_SPENT_OUTPUTS_MISMATCH => {
+                ScriptVerifyError::SpentOutputsMismatch
+            }
+            _ => ScriptVerifyError::Invalid,
+        };
+        Err(KernelError::ScriptVerify(err))
     } else {
         Ok(())
     }
@@ -323,13 +344,6 @@ pub struct ContextBuilder {
     pub kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
 }
 
-pub fn make_kernel_error() -> kernel_Error {
-    kernel_Error {
-        code: kernel_ErrorCode_kernel_ERROR_OK,
-        message: [0; 256],
-    }
-}
-
 impl ContextBuilder {
     pub fn new() -> ContextBuilder {
         let context = ContextBuilder {
@@ -341,9 +355,10 @@ impl ContextBuilder {
     }
 
     pub fn build(self) -> Result<Context, KernelError> {
-        let mut err = make_kernel_error();
-        let inner = unsafe { kernel_context_create(self.inner, &mut err) };
-        handle_kernel_error(err)?;
+        let inner = unsafe { kernel_context_create(self.inner) };
+        if inner.is_null() {
+            return Err(KernelError::Internal("Invalid context.".to_string()));
+        }
         if self.kn_callbacks.is_none() {
             return Err(KernelError::MissingCallbacks(
                 "Missing KernelNotificationInterface callbacks.".to_string(),
@@ -362,7 +377,6 @@ impl ContextBuilder {
         tr_callbacks: Box<TaskRunnerCallbackHolder>,
     ) -> Result<ContextBuilder, KernelError> {
         let tr_pointer = Box::into_raw(tr_callbacks);
-        let mut err = make_kernel_error();
 
         unsafe {
             let holder = kernel_TaskRunnerCallbacks {
@@ -372,15 +386,18 @@ impl ContextBuilder {
                 size: Some(tr_size_wrapper),
             };
             let kernel_task_runner = kernel_task_runner_create(holder);
-            kernel_context_options_set(
+            let success = kernel_context_options_set(
                 self.inner,
                 kernel_ContextOptionType_kernel_TASK_RUNNER_OPTION,
                 kernel_task_runner as *mut c_void,
-                &mut err,
             );
             kernel_task_runner_destroy(kernel_task_runner);
+            if !success {
+                return Err(KernelError::InvalidOptions(
+                    "Failed to set task runner context option.".to_string(),
+                ));
+            }
         };
-        handle_kernel_error(err)?;
         self.tr_callbacks = unsafe { Some(Box::from_raw(tr_pointer)) };
         Ok(self)
     }
@@ -390,7 +407,6 @@ impl ContextBuilder {
         kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
     ) -> Result<ContextBuilder, KernelError> {
         let kn_pointer = Box::into_raw(kn_callbacks);
-        let mut err = make_kernel_error();
         unsafe {
             let holder = kernel_NotificationInterfaceCallbacks {
                 user_data: kn_pointer as *mut c_void,
@@ -403,55 +419,68 @@ impl ContextBuilder {
                 fatal_error: Some(kn_fatal_error_wrapper),
             };
             let kernel_notifications = kernel_notifications_create(holder);
-            kernel_context_options_set(
+            let success = kernel_context_options_set(
                 self.inner,
                 kernel_ContextOptionType_kernel_NOTIFICATIONS_OPTION,
                 kernel_notifications as *mut c_void,
-                &mut err,
             );
             kernel_notifications_destroy(kernel_notifications);
+            if !success {
+                return Err(KernelError::InvalidOptions(
+                    "Failed to set notifications context option.".to_string(),
+                ));
+            }
         };
-        handle_kernel_error(err)?;
         self.kn_callbacks = unsafe { Some(Box::from_raw(kn_pointer)) };
         Ok(self)
     }
 
     pub fn chain_type(self, chain_type: ChainType) -> Result<ContextBuilder, KernelError> {
-        let mut err = make_kernel_error();
         let chain_params = ChainParams::new(chain_type);
         unsafe {
-            kernel_context_options_set(
+            if !kernel_context_options_set(
                 self.inner,
                 kernel_ContextOptionType_kernel_CHAIN_PARAMETERS_OPTION,
                 chain_params.inner as *mut c_void,
-                &mut err,
-            )
+            ) {
+                return Err(KernelError::InvalidOptions(
+                    "Failed to set chainparams context option.".to_string(),
+                ));
+            }
         };
-        handle_kernel_error(err)?;
         Ok(self)
     }
 }
 
 #[derive(Debug)]
 pub enum KernelError {
-    TxIndex(String),
-    TxSizeMismatch(String),
-    TxDeserialize(String),
-    InvalidFlags(String),
-    InvalidFlagsCombination(String),
-    SpentOutputsRequired(String),
-    SpentOutputsMismatch(String),
-    InvalidPointer(String),
-    LoggingFailed(String),
-    UnknownContextOption(String),
-    InvalidContext(String),
-    InvalidContextOption(String),
-    MissingCallbacks(String),
-    OutOfBounds(String),
-    DuplicateBlock(String),
-    BlockWithoutCoinbase(String),
     Internal(String),
+    MissingCallbacks(String),
     CStringCreationFailed(String),
+    InvalidOptions(String),
+    OutOfBounds,
+    ScriptVerify(ScriptVerifyError),
+    ProcessBlock(ProcessBlockError),
+}
+
+#[derive(Debug)]
+pub enum ScriptVerifyError {
+    TxInputIndex,
+    TxSizeMismatch,
+    TxDeserialize,
+    InvalidFlags,
+    InvalidFlagsCombination,
+    SpentOutputsMismatch,
+    SpentOutputsRequired,
+    Invalid,
+}
+
+#[derive(Debug)]
+pub enum ProcessBlockError {
+    NoCoinbase,
+    Duplicate,
+    InvalidDuplicate,
+    Invalid,
 }
 
 impl From<NulError> for KernelError {
@@ -463,62 +492,11 @@ impl From<NulError> for KernelError {
 impl fmt::Display for KernelError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            KernelError::TxIndex(msg)
-            | KernelError::TxSizeMismatch(msg)
-            | KernelError::TxDeserialize(msg)
-            | KernelError::InvalidFlags(msg)
-            | KernelError::InvalidFlagsCombination(msg)
-            | KernelError::SpentOutputsRequired(msg)
-            | KernelError::SpentOutputsMismatch(msg)
-            | KernelError::InvalidPointer(msg)
-            | KernelError::LoggingFailed(msg)
-            | KernelError::UnknownContextOption(msg)
-            | KernelError::InvalidContext(msg)
-            | KernelError::InvalidContextOption(msg)
+            KernelError::Internal(msg)
             | KernelError::MissingCallbacks(msg)
-            | KernelError::Internal(msg)
-            | KernelError::DuplicateBlock(msg)
-            | KernelError::BlockWithoutCoinbase(msg)
-            | KernelError::OutOfBounds(msg) => write!(f, "{}", msg),
-            KernelError::CStringCreationFailed(msg) => write!(f, "{}", msg),
-        }
-    }
-}
-
-fn handle_kernel_error(mut error: kernel_Error) -> Result<(), KernelError> {
-    unsafe {
-        let message = CStr::from_ptr(error.message.as_mut_ptr())
-            .to_string_lossy()
-            .into_owned();
-        match error.code {
-            kernel_ErrorCode_kernel_ERROR_OK => Ok(()),
-            kernel_ErrorCode_kernel_ERROR_TX_INDEX => Err(KernelError::TxIndex(message)),
-            kernel_ErrorCode_kernel_ERROR_TX_SIZE_MISMATCH => {
-                Err(KernelError::TxSizeMismatch(message))
-            }
-            kernel_ErrorCode_kernel_ERROR_TX_DESERIALIZE => {
-                Err(KernelError::TxDeserialize(message))
-            }
-            kernel_ErrorCode_kernel_ERROR_INVALID_FLAGS => Err(KernelError::InvalidFlags(message)),
-            kernel_ErrorCode_kernel_ERROR_INVALID_FLAGS_COMBINATION => Err(KernelError::InvalidFlagsCombination(message)),
-            kernel_ErrorCode_kernel_ERROR_SPENT_OUTPUTS_REQUIRED => {
-                Err(KernelError::SpentOutputsRequired(message))
-            }
-            kernel_ErrorCode_kernel_ERROR_SPENT_OUTPUTS_MISMATCH => {
-                Err(KernelError::SpentOutputsMismatch(message))
-            }
-            kernel_ErrorCode_kernel_ERROR_LOGGING_FAILED => {
-                Err(KernelError::LoggingFailed(message))
-            }
-            kernel_ErrorCode_kernel_ERROR_INVALID_CONTEXT => {
-                Err(KernelError::InvalidContext(message))
-            }
-            kernel_ErrorCode_kernel_ERROR_INVALID_CONTEXT_OPTION => Err(KernelError::InvalidContextOption(message)),
-            kernel_ErrorCode_kernel_ERROR_DUPLICATE_BLOCK => Err(KernelError::DuplicateBlock(message)),
-            kernel_ErrorCode_kernel_ERROR_BLOCK_WITHOUT_COINBASE => Err(KernelError::BlockWithoutCoinbase(message)),
-            kernel_ErrorCode_kernel_ERROR_OUT_OF_BOUNDS => Err(KernelError::OutOfBounds(message)),
-            kernel_ErrorCode_kernel_ERROR_INTERNAL => Err(KernelError::Internal(message)),
-            _ => Ok(()),
+            | KernelError::CStringCreationFailed(msg)
+            | KernelError::InvalidOptions(msg) => write!(f, "{}", msg),
+            _ => write!(f, "Error!"),
         }
     }
 }
@@ -566,11 +544,13 @@ pub fn register_validation_interface(
     vi: &ValidationInterfaceWrapper,
     context: &Context,
 ) -> Result<(), KernelError> {
-    let mut err = make_kernel_error();
     unsafe {
-        kernel_validation_interface_register(context.inner, vi.inner, &mut err);
+        if !kernel_validation_interface_register(context.inner, vi.inner) {
+            return Err(KernelError::Internal(
+                "Failed to register validation interface.".to_string(),
+            ));
+        }
     }
-    handle_kernel_error(err)?;
     Ok(())
 }
 
@@ -578,11 +558,13 @@ pub fn unregister_validation_interface(
     vi: &ValidationInterfaceWrapper,
     context: &Context,
 ) -> Result<(), KernelError> {
-    let mut err = make_kernel_error();
     unsafe {
-        kernel_validation_interface_unregister(context.inner, vi.inner, &mut err);
+        if !kernel_validation_interface_unregister(context.inner, vi.inner) {
+            return Err(KernelError::Internal(
+                "Failed to unregister validation interface.".to_string(),
+            ));
+        }
     }
-    handle_kernel_error(err)?;
     Ok(())
 }
 
@@ -617,9 +599,7 @@ pub struct Event {
 }
 
 pub fn execute_event(event: Event) -> Result<(), KernelError> {
-    let mut err = make_kernel_error();
-    unsafe { kernel_execute_event_and_destroy(event.inner.load(Ordering::SeqCst), &mut err) };
-    handle_kernel_error(err)?;
+    unsafe { kernel_execute_event_and_destroy(event.inner.load(Ordering::SeqCst)) };
     Ok(())
 }
 
@@ -646,9 +626,12 @@ impl TryFrom<&[u8]> for Block {
     type Error = KernelError;
 
     fn try_from(raw_block: &[u8]) -> Result<Self, Self::Error> {
-        let mut err = make_kernel_error();
-        let inner = unsafe { kernel_block_create(raw_block.as_ptr(), raw_block.len(), &mut err) };
-        handle_kernel_error(err)?;
+        let inner = unsafe { kernel_block_create(raw_block.as_ptr(), raw_block.len()) };
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to de-serialize Block.".to_string(),
+            ));
+        }
         Ok(Block { inner })
     }
 }
@@ -674,13 +657,9 @@ pub struct BlockIndexInfo {
 
 impl<'a> BlockIndex<'a> {
     pub fn prev(self) -> Result<BlockIndex<'a>, KernelError> {
-        let mut err = make_kernel_error();
-        let inner = unsafe { kernel_get_previous_block_index(self.inner, &mut err) };
-        handle_kernel_error(err)?;
-        if inner == std::ptr::null_mut() {
-            return Err(KernelError::InvalidPointer(
-                "Block index is null, indicating we are at the end of the chain".to_string(),
-            ));
+        let inner = unsafe { kernel_get_previous_block_index(self.inner) };
+        if inner.is_null() {
+            return Err(KernelError::OutOfBounds);
         }
         unsafe { kernel_block_index_destroy(self.inner) };
         Ok(BlockIndex {
@@ -722,11 +701,12 @@ impl BlockUndo {
         transaction_index: u64,
         prevout_index: u64,
     ) -> Result<TxOut, KernelError> {
-        let mut err = make_kernel_error();
         let prev_out = unsafe {
-            kernel_get_undo_output_by_index(self.inner, transaction_index, prevout_index, &mut err)
+            kernel_get_undo_output_by_index(self.inner, transaction_index, prevout_index)
         };
-        handle_kernel_error(err)?;
+        if prev_out.is_null() {
+            return Err(KernelError::OutOfBounds);
+        }
         let res = TxOut {
             value: unsafe { (*prev_out).value },
             script_pubkey: unsafe {
@@ -755,15 +735,17 @@ pub struct ChainstateManagerOptions {
 impl ChainstateManagerOptions {
     pub fn new(context: &Context, data_dir: &str) -> Result<Self, KernelError> {
         let c_data_dir = CString::new(data_dir)?;
-        let mut err = make_kernel_error();
         let inner = unsafe {
             kernel_chainstate_manager_options_create(
                 context.inner,
                 c_data_dir.as_ptr().cast::<i8>(),
-                &mut err,
             )
         };
-        handle_kernel_error(err)?;
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to create chainstate manager options.".to_string(),
+            ));
+        }
         Ok(Self { inner })
     }
 }
@@ -783,15 +765,14 @@ pub struct BlockManagerOptions {
 impl BlockManagerOptions {
     pub fn new(context: &Context, blocks_dir: &str) -> Result<Self, KernelError> {
         let c_blocks_dir = CString::new(blocks_dir)?;
-        let mut err = make_kernel_error();
         let inner = unsafe {
-            kernel_block_manager_options_create(
-                context.inner,
-                c_blocks_dir.as_ptr().cast::<i8>(),
-                &mut err,
-            )
+            kernel_block_manager_options_create(context.inner, c_blocks_dir.as_ptr().cast::<i8>())
         };
-        handle_kernel_error(err)?;
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to create block manager options.".to_string(),
+            ));
+        }
         Ok(Self { inner })
     }
 }
@@ -891,59 +872,69 @@ impl<'a> ChainstateManager<'a> {
         blockman_opts: BlockManagerOptions,
         context: &'a Context,
     ) -> Result<Self, KernelError> {
-        let mut err = make_kernel_error();
         let inner = unsafe {
             kernel_chainstate_manager_create(
                 chainman_opts.inner,
                 blockman_opts.inner,
                 context.inner,
-                &mut err,
             )
         };
-        handle_kernel_error(err)?;
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to create chainstate manager.".to_string(),
+            ));
+        }
         Ok(Self { inner, context })
     }
 
     pub fn load_chainstate(&self, opts: ChainstateLoadOptions) -> Result<(), KernelError> {
-        let mut err = make_kernel_error();
-        unsafe {
-            kernel_chainstate_manager_load_chainstate(
-                self.context.inner,
-                opts.inner,
-                self.inner,
-                &mut err,
-            )
-        };
-        handle_kernel_error(err)?;
+        if !unsafe {
+            kernel_chainstate_manager_load_chainstate(self.context.inner, opts.inner, self.inner)
+        } {
+            return Err(KernelError::Internal(
+                "Failed to load chainstate.".to_string(),
+            ));
+        }
         Ok(())
     }
 
-    pub fn process_block(&self, block: &Block) -> Result<bool, KernelError> {
-        let mut err = make_kernel_error();
+    pub fn process_block(&self, block: &Block) -> Result<(), KernelError> {
+        let mut status = kernel_ProcessBlockStatus_kernel_PROCESS_BLOCK_OK;
         let accepted = unsafe {
             kernel_chainstate_manager_process_block(
                 self.context.inner,
                 self.inner,
                 block.inner,
-                &mut err,
+                &mut status,
             )
         };
-        handle_kernel_error(err)?;
-        Ok(accepted)
+
+        if !accepted {
+            let err = match status {
+                kernel_ProcessBlockStatus_kernel_PROCESS_BLOCK_ERROR_NO_COINBASE => {
+                    ProcessBlockError::NoCoinbase
+                }
+                kernel_ProcessBlockStatus_kernel_PROCESS_BLOCK_DUPLICATE => {
+                    ProcessBlockError::Duplicate
+                }
+                kernel_ProcessBlockStatus_kernel_PROCESS_BLOCK_INVALID_DUPLICATE => {
+                    ProcessBlockError::Duplicate
+                }
+                _ => ProcessBlockError::Invalid,
+            };
+            Err(KernelError::ProcessBlock(err))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn import_blocks(&self) -> Result<(), KernelError> {
-        let mut err = make_kernel_error();
-        unsafe {
-            kernel_import_blocks(
-                self.context.inner,
-                self.inner,
-                std::ptr::null_mut(),
-                0,
-                &mut err,
-            )
+        if !unsafe { kernel_import_blocks(self.context.inner, self.inner, std::ptr::null_mut(), 0) }
+        {
+            return Err(KernelError::Internal(
+                "Failed to import blocks.".to_string(),
+            ));
         }
-        handle_kernel_error(err)?;
         Ok(())
     }
 
@@ -962,77 +953,66 @@ impl<'a> ChainstateManager<'a> {
     }
 
     pub fn get_block_index_by_height(&self, block_height: i32) -> Result<BlockIndex, KernelError> {
-        let mut err = make_kernel_error();
-        let block_index = unsafe {
-            BlockIndex {
-                inner: kernel_get_block_index_by_height(
-                    self.context.inner,
-                    self.inner,
-                    block_height,
-                    &mut err,
-                ),
-                marker: PhantomData,
-            }
+        let inner = unsafe {
+            kernel_get_block_index_by_height(self.context.inner, self.inner, block_height)
         };
-        handle_kernel_error(err)?;
-        Ok(block_index)
+        if inner.is_null() {
+            return Err(KernelError::OutOfBounds);
+        }
+        Ok(BlockIndex {
+            inner,
+            marker: PhantomData,
+        })
     }
 
     pub fn get_block_index_by_hash(&self, hash: [u8; 32]) -> Result<BlockIndex, KernelError> {
-        let mut err = make_kernel_error();
         let mut block_hash = kernel_BlockHash { hash };
-        let block_index = unsafe {
-            BlockIndex {
-                inner: kernel_get_block_index_by_hash(
-                    self.context.inner,
-                    self.inner,
-                    &mut block_hash,
-                    &mut err,
-                ),
-                marker: PhantomData,
-            }
+        let inner = unsafe {
+            kernel_get_block_index_by_hash(self.context.inner, self.inner, &mut block_hash)
         };
-        handle_kernel_error(err)?;
-        Ok(block_index)
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Block index for the given block hash not found.".to_string(),
+            ));
+        }
+        Ok(BlockIndex {
+            inner,
+            marker: PhantomData,
+        })
     }
 
     pub fn get_next_block_index(&self, block_index: BlockIndex) -> Result<BlockIndex, KernelError> {
-        let mut err = make_kernel_error();
-        let block_index = unsafe {
-            BlockIndex {
-                inner: kernel_get_next_block_index(
-                    self.context.inner,
-                    block_index.inner,
-                    self.inner,
-                    &mut err,
-                ),
-                marker: PhantomData,
-            }
+        let inner = unsafe {
+            kernel_get_next_block_index(self.context.inner, block_index.inner, self.inner)
         };
-        handle_kernel_error(err)?;
-        Ok(block_index)
+        if inner.is_null() {
+            return Err(KernelError::OutOfBounds);
+        }
+        Ok(BlockIndex {
+            inner,
+            marker: PhantomData,
+        })
     }
 
     pub fn read_block_data(&self, block_index: &BlockIndex) -> Result<Block, KernelError> {
-        let mut err = make_kernel_error();
         let inner = unsafe {
-            kernel_read_block_from_disk(self.context.inner, self.inner, block_index.inner, &mut err)
+            kernel_read_block_from_disk(self.context.inner, self.inner, block_index.inner)
         };
-        handle_kernel_error(err)?;
+        if inner.is_null() {
+            return Err(KernelError::Internal("Failed to read block.".to_string()));
+        }
         Ok(Block { inner })
     }
 
     pub fn read_undo_data(&self, block_index: &BlockIndex) -> Result<BlockUndo, KernelError> {
-        let mut err = make_kernel_error();
         let inner = unsafe {
-            kernel_read_block_undo_from_disk(
-                self.context.inner,
-                self.inner,
-                block_index.inner,
-                &mut err,
-            )
+            kernel_read_block_undo_from_disk(self.context.inner, self.inner, block_index.inner)
         };
-        handle_kernel_error(err)?;
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to read undo data.".to_string(),
+            ));
+        }
         let n_tx_undo = unsafe { kernel_block_undo_size(inner) }.try_into().unwrap();
         Ok(BlockUndo { inner, n_tx_undo })
     }
@@ -1080,7 +1060,6 @@ pub fn disable_logging() {
 
 impl<T: Log + 'static> Logger<T> {
     pub fn new(mut log: T) -> Result<Logger<T>, KernelError> {
-        let mut err = make_kernel_error();
         let options = kernel_LoggingOptions {
             log_timestamps: true,
             log_time_micros: false,
@@ -1094,11 +1073,15 @@ impl<T: Log + 'static> Logger<T> {
                 Some(log_callback::<T>),
                 &mut log as *mut T as *mut c_void,
                 options,
-                &mut err,
             )
         };
 
-        handle_kernel_error(err)?;
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to create new logging connection.".to_string(),
+            ));
+        }
+
         Ok(Logger { log, inner })
     }
 
