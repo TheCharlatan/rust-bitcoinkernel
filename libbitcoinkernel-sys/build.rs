@@ -1,17 +1,55 @@
 use std::env;
 use std::path::PathBuf;
+use std::path::Path;
+use std::process::Command;
 
 fn main() {
-    let pkg_config_path = "/usr/local/lib/pkgconfig";
-    if env::var("PKG_CONFIG_PATH").is_err() {
-        env::set_var("PKG_CONFIG_PATH", pkg_config_path);
-    }
+    let bitcoin_dir = Path::new("bitcoin");
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let build_dir = Path::new(&out_dir).join("bitcoin");
+    let install_dir = Path::new(&out_dir).join("install");
 
-    let library = pkg_config::Config::new()
-        .probe("libbitcoinkernel")
-        .expect("Failed to find the 'bitcoinkernel' library with pkg-config");
+    println!("{} {}", bitcoin_dir.display(), build_dir.display());
 
-    let header = format!("{}/bitcoinkernel.h", library.include_paths[0].display());
+    Command::new("cmake")
+        .arg("-B")
+        .arg(&build_dir)
+        .arg("-S")
+        .arg(&bitcoin_dir)
+        .arg("-DBUILD_KERNEL_LIB=ON")
+        .arg("-DBUILD_TESTS=OFF")
+        .arg("-BUILD_TX=OFF")
+        .arg("-DBUILD_WALLET_TOOL=OFF")
+        .arg("-DENABLE_WALLET=OFF")
+        .arg("-BUILD_UTIL=OFF")
+        .arg("-DBUILD_DAEMON=OFF")
+        .arg("-DBUILD_UTIL_CHAINSTATE=OFF")
+        .arg("-DBUILD_CLI=OFF")
+        .arg("-DBUILD_SHARED_LIBS=OFF")
+        .status()
+        .unwrap();
+
+    let num_jobs = env::var("NUM_JOBS")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(1); // Default to 1 if not set
+
+    Command::new("cmake")
+        .arg("--build")
+        .arg(&build_dir)
+        .arg(format!("--parallel={}", num_jobs))
+        .status()
+        .unwrap();
+
+    Command::new("cmake")
+        .arg("--install")
+        .arg(&build_dir)
+        .arg("--prefix")
+        .arg(&install_dir)
+        .status()
+        .unwrap();
+
+    let header = format!("{}/include/bitcoinkernel.h", install_dir.display());
 
     let bindings = bindgen::Builder::default()
         .header(header)
@@ -24,4 +62,8 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
+
+    println!("cargo:rustc-link-search=native={}/lib", install_dir.display());
+    println!("cargo:rustc-link-lib=static=bitcoinkernel");
+    println!("cargo:rustc-link-lib=dylib=stdc++"); // Or "c++" if using libc++ on macOS or LLVM
 }
