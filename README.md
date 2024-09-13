@@ -14,9 +14,9 @@ produces a C-compatible header that is used by this project to create the FFI.
 ```bash
 git clone https://github.com/TheCharlatan/bitcoin
 git checkout kernelApi
-./autogen.sh
-./configure --with-experimental-kernel-lib --enable-shared --prefix ~/bitcoin/install_dir
-make install -j 24
+cmake -B build -DBUILD_KERNEL_LIB=ON -DCMAKE_INSTALL_PREFIX=~/bitcoin/install_dir
+cmake --build build --target bitcoinkernel
+cmake --install build --component Kernel
 ```
 
 This will install the library in `$HOME/bitcoin/install_dir`. Change the value
@@ -31,7 +31,7 @@ PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig cargo b
 ```
 
 And similarly for running it (env variables only required if not installed in
-`/usr/local`):
+`/usr/local`, use `DYLD_LIBRARY_PATH` on macos instead of `LD_LIBRARY_PATH`):
 
 ```bash
 PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig LD_LIBRARY_PATH=/path/to/bitcoin/install_dir/lib cargo run
