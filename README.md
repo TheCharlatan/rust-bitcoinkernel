@@ -8,33 +8,31 @@ library exposing Bitcoin Core's validation engine.
 
 ## Building
 
-To build this library, first build the kernel library on my kernelApi branch. It
-produces a C-compatible header that is used by this project to create the FFI.
+The library statically compiles the Bitcoin Core libbitcoinkernel library as
+part of its build system. Currently it targets the kernelApi branch on the
+following fork: https://github.com/TheCharlatan/bitcoin/tree/kernelApi.
 
-```bash
-git clone https://github.com/TheCharlatan/bitcoin
-git checkout kernelApi
-./autogen.sh
-./configure --with-experimental-kernel-lib --enable-shared --prefix ~/bitcoin/install_dir
-make install -j 24
+Bitcoin Core is vendored as a `git subtree` in this project. The subtree can
+be updated, or made to point at a different commit or branch in Bitcoin Core's
+history with:
+
+```
+ git subtree pull --prefix libbitcoinkernel-sys/bitcoin https://github.com/TheCharlatan/bitcoin kernelApiNode --squash
 ```
 
-This will install the library in `$HOME/bitcoin/install_dir`. Change the value
-after `--prefix` to control where the library will be installed or leave it
-unchanged to install it system-wide.
-
-Then, to compile `rust-bitcoinkernel` (add the `PKG_CONFIG_PATH` if
-libbitcoinkernel is not installed in `/usr/local`):
+To build this library, the usual Bitcoin Core build requirements, such as
+`cmake` and a working C and C++ compiler are required. An installation of boost
+is required as well. Consult the Bitcoin Core documentation for the required
+dependencies. Once setup, run:
 
 ```bash
-PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig cargo b
+cargo b
 ```
 
-And similarly for running it (env variables only required if not installed in
-`/usr/local`):
+And for the example binary:
 
 ```bash
-PKG_CONFIG_PATH=/path/to/bitcoin/install_dir/lib/pkgconfig LD_LIBRARY_PATH=/path/to/bitcoin/install_dir/lib cargo run
+cargo run
 ```
 
 ## Fuzzing
@@ -49,20 +47,24 @@ create a tmpfs in `/tmp/rust_kernel_fuzz`.
 To get fuzzing run (in this case the `verify` target):
 
 ```bash
-LD_LIBRARY_PATH=/usr/local/lib cargo fuzz run fuzz_target_verify
+cargo fuzz run fuzz_target_verify
 ```
 
 Sanitizers can be turned on with e.g.
 ```bash
-LD_LIBRARY_PATH=/usr/local/lib RUSTFLAGS="-Zsanitizer=address" cargo fuzz run fuzz_target_block
+RUSTFLAGS="-Zsanitizer=address" cargo fuzz run fuzz_target_block
 ```
+
+To get the sanitizer flags working in the libbitcoinkernel Bitcoin Core
+library, the easiest way for now is to edit the `libbitcoinkernel-sys/build.rs`
+flags.
 
 ### Coverage
 
 Once fuzzed, a coverage report can be generated with (picking the `verify`
 target as an example):
 ```
-LD_LIBRARY_PATH=/usr/local/lib RUSTFLAGS="-C instrument-coverage" cargo fuzz coverage fuzz_target_verify
+RUSTFLAGS="-C instrument-coverage" cargo fuzz coverage fuzz_target_verify
 llvm-cov show \
   -format=html \
   -instr-profile=fuzz/coverage/fuzz_target_verify/coverage.profdata \

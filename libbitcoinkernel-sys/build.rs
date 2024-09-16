@@ -18,14 +18,15 @@ fn main() {
         .arg(&bitcoin_dir)
         .arg("-DBUILD_KERNEL_LIB=ON")
         .arg("-DBUILD_TESTS=OFF")
-        .arg("-BUILD_TX=OFF")
+        .arg("-DBUILD_TX=OFF")
         .arg("-DBUILD_WALLET_TOOL=OFF")
         .arg("-DENABLE_WALLET=OFF")
-        .arg("-BUILD_UTIL=OFF")
+        .arg("-DBUILD_UTIL=OFF")
         .arg("-DBUILD_DAEMON=OFF")
         .arg("-DBUILD_UTIL_CHAINSTATE=OFF")
         .arg("-DBUILD_CLI=OFF")
         .arg("-DBUILD_SHARED_LIBS=OFF")
+        .arg(format!("-DCMAKE_INSTALL_PREFIX={}", install_dir.display()))
         .status()
         .unwrap();
 
@@ -44,12 +45,18 @@ fn main() {
     Command::new("cmake")
         .arg("--install")
         .arg(&build_dir)
-        .arg("--prefix")
-        .arg(&install_dir)
         .status()
         .unwrap();
 
-    let header = format!("{}/include/bitcoinkernel.h", install_dir.display());
+    let pkg_config_path = install_dir.join("lib/pkgconfig");
+    env::set_var("PKG_CONFIG_PATH", pkg_config_path);
+
+    let library = pkg_config::Config::new()
+        .statik(true)
+        .probe("libbitcoinkernel")
+        .expect("Failed to find the 'bitcoinkernel' library with pkg-config");
+
+    let header = format!("{}/bitcoinkernel.h", library.include_paths[0].display());
 
     let bindings = bindgen::Builder::default()
         .header(header)
@@ -64,6 +71,8 @@ fn main() {
         .expect("Couldn't write bindings!");
 
     println!("cargo:rustc-link-search=native={}/lib", install_dir.display());
-    println!("cargo:rustc-link-lib=static=bitcoinkernel");
+    for lib in library.libs {
+        println!("cargo:rustc-link-lib=static={}", lib);
+    }
     println!("cargo:rustc-link-lib=dylib=stdc++"); // Or "c++" if using libc++ on macOS or LLVM
 }
