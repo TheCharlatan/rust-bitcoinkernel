@@ -74,5 +74,9 @@ fn main() {
     for lib in library.libs {
         println!("cargo:rustc-link-lib=static={}", lib);
     }
-    println!("cargo:rustc-link-lib=dylib=stdc++"); // Or "c++" if using libc++ on macOS or LLVM
+    if cfg!(target_os = "macos") {
+        println!("cargo:rustc-link-lib=dylib=c++");
+    } else {
+        println!("cargo:rustc-link-lib=dylib=stdc++");
+    }
 }
