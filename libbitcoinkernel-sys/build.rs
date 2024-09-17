@@ -1,13 +1,58 @@
 use std::env;
+use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 
 fn main() {
-    let pkg_config_path = "/usr/local/lib/pkgconfig";
-    if env::var("PKG_CONFIG_PATH").is_err() {
-        env::set_var("PKG_CONFIG_PATH", pkg_config_path);
-    }
+    let bitcoin_dir = Path::new("bitcoin");
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let build_dir = Path::new(&out_dir).join("bitcoin");
+    let install_dir = Path::new(&out_dir).join("install");
+
+    println!("{} {}", bitcoin_dir.display(), build_dir.display());
+
+    Command::new("cmake")
+        .arg("-B")
+        .arg(&build_dir)
+        .arg("-S")
+        .arg(&bitcoin_dir)
+        .arg("-DBUILD_KERNEL_LIB=ON")
+        .arg("-DBUILD_TESTS=OFF")
+        .arg("-DBUILD_TX=OFF")
+        .arg("-DBUILD_WALLET_TOOL=OFF")
+        .arg("-DENABLE_WALLET=OFF")
+        .arg("-DBUILD_UTIL=OFF")
+        .arg("-DBUILD_DAEMON=OFF")
+        .arg("-DBUILD_UTIL_CHAINSTATE=OFF")
+        .arg("-DBUILD_CLI=OFF")
+        .arg("-DBUILD_SHARED_LIBS=OFF")
+        .arg(format!("-DCMAKE_INSTALL_PREFIX={}", install_dir.display()))
+        .status()
+        .unwrap();
+
+    let num_jobs = env::var("NUM_JOBS")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(1); // Default to 1 if not set
+
+    Command::new("cmake")
+        .arg("--build")
+        .arg(&build_dir)
+        .arg(format!("--parallel={}", num_jobs))
+        .status()
+        .unwrap();
+
+    Command::new("cmake")
+        .arg("--install")
+        .arg(&build_dir)
+        .status()
+        .unwrap();
+
+    let pkg_config_path = install_dir.join("lib/pkgconfig");
+    env::set_var("PKG_CONFIG_PATH", pkg_config_path);
 
     let library = pkg_config::Config::new()
+        .statik(true)
         .probe("libbitcoinkernel")
         .expect("Failed to find the 'bitcoinkernel' library with pkg-config");
 
@@ -24,4 +69,13 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
+
+    let compiler = cc::Build::new().get_compiler();
+    if compiler.is_like_clang() {
+        println!("cargo:rustc-link-lib=dylib=c++");
+    } else if compiler.is_like_gnu() {
+        println!("cargo:rustc-link-lib=dylib=stdc++");
+    } else {
+        panic!("Cannot figure out the c++ standard library to link with this compiler.");
+    }
 }
