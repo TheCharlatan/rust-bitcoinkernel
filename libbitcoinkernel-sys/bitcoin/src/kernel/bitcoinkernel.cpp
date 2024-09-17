@@ -63,6 +63,7 @@ namespace {
 constexpr uint64_t KERNEL_CHAIN_PARAMS_TAG{0};
 constexpr uint64_t KERNEL_NOTIFICATIONS_TAG{1};
 constexpr uint64_t KERNEL_TASK_RUNNER_TAG{2};
+constexpr uint64_t KERNEL_MEMPOOL_OPTIONS_TAG{3};
 
 /** A class that deserializes a single CTransaction one time. */
 class TxInputStream
@@ -195,6 +196,25 @@ public:
     }
 };
 
+class KernelMempoolOptions
+{
+    uint64_t m_tag;
+
+public:
+    CTxMemPool::Options m_mempool_options;
+
+    KernelMempoolOptions()
+        : m_tag{KERNEL_MEMPOOL_OPTIONS_TAG},
+          m_mempool_options{CTxMemPool::Options{}}
+    {
+    }
+
+    bool IsValid() const
+    {
+        return m_tag == KERNEL_MEMPOOL_OPTIONS_TAG;
+    }
+};
+
 kernel_SynchronizationState cast_state(SynchronizationState state)
 {
     switch (state) {
@@ -310,6 +330,7 @@ struct ContextOptions {
     std::unique_ptr<const KernelNotifications> m_notifications;
     std::unique_ptr<const CChainParams> m_chainparams;
     std::unique_ptr<TaskRunner> m_task_runner;
+    std::unique_ptr<const CTxMemPool::Options> m_mempool_options;
 };
 
 class Context
@@ -324,6 +345,8 @@ public:
     std::unique_ptr<util::SignalInterrupt> m_interrupt;
 
     std::unique_ptr<const CChainParams> m_chainparams;
+
+    std::unique_ptr<CTxMemPool> m_mempool;
 
     Context(const ContextOptions* options, bool& sane)
         : m_context{std::make_unique<kernel::Context>()},
@@ -346,6 +369,17 @@ public:
             m_signals = std::make_unique<ValidationSignals>(std::make_unique<TaskRunner>(*options->m_task_runner));
         } else {
             m_signals = nullptr;
+        }
+
+        if (options && options->m_mempool_options) {
+            bilingual_str mempool_err;
+            m_mempool = std::make_unique<CTxMemPool>(*options->m_mempool_options, mempool_err);
+            if (!mempool_err.empty()) {
+                LogError("Failed to construct a chainstate manager: %s", mempool_err.original);
+                sane = false;
+            }
+        } else {
+            m_mempool = nullptr;
         }
 
         if (!kernel::SanityChecks(*m_context)) {
@@ -388,6 +422,12 @@ const KernelChainParams* cast_const_chain_params(const kernel_ChainParameters* c
 {
     assert(chain_params);
     return reinterpret_cast<const KernelChainParams*>(chain_params);
+}
+
+const KernelMempoolOptions* cast_const_mempool_options(const kernel_MempoolOptions* mempool)
+{
+    assert(mempool);
+    return reinterpret_cast<const KernelMempoolOptions*>(mempool);
 }
 
 const KernelNotifications* cast_const_notifications(const kernel_Notifications* notifications)
@@ -478,6 +518,24 @@ CBlockUndo* cast_block_undo(kernel_BlockUndo* undo)
 {
     assert(undo);
     return reinterpret_cast<CBlockUndo*>(undo);
+}
+
+static CCoinsViewCursor* cast_coins_view_cursor(kernel_CoinsViewCursor* cursor)
+{
+    assert(cursor);
+    return reinterpret_cast<CCoinsViewCursor*>(cursor);
+}
+
+CBlockHeader* cast_block_header(kernel_BlockHeader* header)
+{
+    assert(header);
+    return reinterpret_cast<CBlockHeader*>(header);
+}
+
+CTransactionRef* cast_transaction_ref(kernel_Transaction* transaction)
+{
+    assert(transaction);
+    return reinterpret_cast<CTransactionRef*>(transaction);
 }
 
 } // namespace
@@ -666,6 +724,18 @@ void kernel_notifications_destroy(const kernel_Notifications* notifications)
     }
 }
 
+kernel_MempoolOptions* kernel_mempool_options_create()
+{
+    return reinterpret_cast<kernel_MempoolOptions*>(new KernelMempoolOptions{});
+}
+
+void kernel_mempool_options_destroy(const kernel_MempoolOptions* mempool_options)
+{
+    if (mempool_options) {
+        delete cast_const_mempool_options(mempool_options);
+    }
+}
+
 kernel_ContextOptions* kernel_context_options_create()
 {
     return reinterpret_cast<kernel_ContextOptions*>(new ContextOptions{});
@@ -703,6 +773,15 @@ bool kernel_context_options_set(kernel_ContextOptions* options_, const kernel_Co
         }
         // Copy the task runner, so the caller can free it again.
         options->m_task_runner = std::make_unique<TaskRunner>(*task_runner);
+        return true;
+    }
+    case kernel_ContextOptionType::kernel_MEMPOOL_OPTION: {
+        auto mempool_opts{reinterpret_cast<const KernelMempoolOptions*>(value)};
+        if (!mempool_opts->IsValid()) {
+            LogError("Selected mempool option context option, but the value is not a valid mempool options struct.\n");
+            return false;
+        }
+        options->m_mempool_options = std::make_unique<const CTxMemPool::Options>(mempool_opts->m_mempool_options);
         return true;
     }
     } // no default case, so the compiler can warn about missing cases
@@ -958,10 +1037,15 @@ bool kernel_chainstate_manager_load_chainstate(const kernel_Context* context_,
     try {
         auto& chainstate_load_opts{*cast_chainstate_load_options(chainstate_load_opts_)};
         auto& chainman{*cast_chainstate_manager(chainman_)};
+        auto& context{*cast_const_context(context_)};
 
         if (chainstate_load_opts.wipe_block_tree_db && !chainstate_load_opts.wipe_chainstate_db) {
             LogError("Wiping the block tree db without also wiping the chainstate db is currently unsupported.\n");
             return false;
+        }
+
+        if (context.m_mempool) {
+            chainstate_load_opts.mempool = context.m_mempool.get();
         }
 
         node::CacheSizes cache_sizes;
@@ -1273,10 +1357,34 @@ void kernel_transaction_output_destroy(kernel_TransactionOutput* transaction_out
     if (transaction_output) delete transaction_output;
 }
 
+bool kernel_chainstate_manager_process_block_header(const kernel_Context* context_, kernel_ChainstateManager* chainman_, kernel_BlockHeader* header_)
+{
+    auto& chainman{*cast_chainstate_manager(chainman_)};
+    auto header{cast_block_header(header_)};
+
+    std::vector<CBlockHeader> headers{*header};
+    BlockValidationState state;
+    return chainman.ProcessNewBlockHeaders(headers, true, state);
+}
+
+bool kernel_chainstate_manager_process_transaction(
+    const kernel_Context* context,
+    kernel_ChainstateManager* chainman_,
+    kernel_Transaction* transaction_,
+    bool test_accept)
+{
+    auto& chainman{*cast_chainstate_manager(chainman_)};
+    auto transaction{cast_transaction_ref(transaction_)};
+
+    MempoolAcceptResult res = WITH_LOCK(::cs_main, return chainman.ProcessTransaction(*transaction, test_accept));
+
+    return res.m_result_type ==  MempoolAcceptResult::ResultType::VALID;
+}
+
 bool kernel_chainstate_manager_process_block(
     const kernel_Context* context_,
     kernel_ChainstateManager* chainman_,
-    kernel_Block* block_,
+    kernel_Block* block_, 
     kernel_ProcessBlockStatus* status)
 {
     auto& chainman{*cast_chainstate_manager(chainman_)};
@@ -1328,4 +1436,239 @@ bool kernel_chainstate_manager_process_block(
         if (status) *status = kernel_PROCESS_BLOCK_INVALID;
     }
     return accepted;
+}
+
+kernel_CoinsViewCursor* kernel_chainstate_coins_cursor_create(kernel_ChainstateManager* chainman_)
+{
+    auto chainman{cast_chainstate_manager(chainman_)};
+
+    std::unique_ptr<CCoinsViewCursor> cursor{};
+    {
+        chainman->ActiveChainstate().ForceFlushStateToDisk();
+        cursor = WITH_LOCK(::cs_main, return chainman->ActiveChainstate().CoinsDB()).Cursor();
+        if (!cursor->Valid()) {
+            LogError("Cursor is not valid, probably the chainstate is not initialized correctly.\n");
+            return nullptr;
+        }
+    }
+    return reinterpret_cast<kernel_CoinsViewCursor*>(cursor.release());
+}
+
+bool kernel_coins_cursor_next(kernel_CoinsViewCursor* cursor_)
+{
+    auto cursor{cast_coins_view_cursor(cursor_)};
+    cursor->Next();
+    return cursor->Valid();
+}
+
+kernel_OutPoint* kernel_coins_cursor_get_key(kernel_CoinsViewCursor* cursor_)
+{
+    auto cursor{cast_coins_view_cursor(cursor_)};
+    COutPoint key;
+    {
+        LOCK(cs_main);
+        if (!cursor->Valid()) {
+            LogDebug(BCLog::KERNEL, "Cursor is not valid, probably iterated out of bounds.\n");
+            return nullptr;
+        }
+        cursor->GetKey(key);
+    }
+
+    kernel_OutPoint* out_point{ new kernel_OutPoint{
+        .hash = {},
+        .n = key.n,
+    }};
+    std::memcpy(out_point->hash, key.hash.data(), sizeof(out_point->hash));
+    return out_point;
+}
+
+kernel_Coin* kernel_coins_cursor_get_value(kernel_CoinsViewCursor* cursor_)
+{
+    auto cursor{cast_coins_view_cursor(cursor_)};
+
+    Coin coin;
+    {
+        LOCK(cs_main);
+        if (!cursor->Valid()) {
+            LogDebug(BCLog::KERNEL, "Cursor is not valid, probably iterated out of bounds.\n");
+            return nullptr;
+        }
+        if (!cursor->GetValue(coin)) return nullptr;
+    }
+
+    std::unique_ptr<unsigned char[]> byte_array(new unsigned char[coin.out.scriptPubKey.size()]);
+    std::copy(coin.out.scriptPubKey.begin(), coin.out.scriptPubKey.end(), byte_array.get());
+
+    auto kernel_coin{new kernel_Coin{
+        .out =  kernel_TransactionOutput {
+            .value = coin.out.nValue,
+            .script_pubkey = byte_array.release(),
+            .script_pubkey_len = coin.out.scriptPubKey.size(),
+        },
+        .is_coinbase = coin.fCoinBase,
+        .confirmation_height = coin.nHeight,
+    }};
+
+    return kernel_coin;
+}
+
+void kernel_coins_cursor_destroy(kernel_CoinsViewCursor* cursor)
+{
+    if (!cursor) {
+        return;
+    }
+    delete cast_coins_view_cursor(cursor);
+}
+
+kernel_Coin* kernel_get_coin_by_out_point(kernel_ChainstateManager* chainman_, const kernel_OutPoint* out_point)
+{
+    auto chainman{cast_chainstate_manager(chainman_)};
+    Coin coin;
+    COutPoint key{Txid::FromUint256(uint256{out_point->hash}), out_point->n };
+    {
+        LOCK(cs_main);
+        if (!chainman->ActiveChainstate().CoinsDB().HaveCoin(key)) {
+            LogDebug(BCLog::KERNEL, "Out point has no entry in coins db");
+            return nullptr;
+        }
+        chainman->ActiveChainstate().CoinsDB().GetCoin(key, coin);
+    }
+
+    std::unique_ptr<unsigned char[]> byte_array(new unsigned char[coin.out.scriptPubKey.size()]);
+    std::copy(coin.out.scriptPubKey.begin(), coin.out.scriptPubKey.end(), byte_array.get());
+
+    auto kernel_coin{new kernel_Coin{
+        .out =  kernel_TransactionOutput {
+            .value = coin.out.nValue,
+            .script_pubkey = byte_array.release(),
+            .script_pubkey_len = coin.out.scriptPubKey.size(),
+        },
+        .is_coinbase = coin.fCoinBase,
+        .confirmation_height = coin.nHeight,
+    }};
+
+    return kernel_coin;
+}
+
+void kernel_out_point_destroy(kernel_OutPoint* out_point)
+{
+    if (out_point) delete out_point;
+}
+
+void kernel_coin_destroy(kernel_Coin* coin)
+{
+    if (coin && coin->out.script_pubkey) delete[] coin->out.script_pubkey;
+    if (coin) delete coin;
+}
+
+kernel_BlockHeader* kernel_get_block_header(kernel_Block* block_)
+{
+    auto block{cast_cblocksharedpointer(block_)};
+    return reinterpret_cast<kernel_BlockHeader*>(new CBlockHeader{(*block)->GetBlockHeader()});
+} 
+
+kernel_BlockHeader* kernel_block_header_create(const unsigned char* raw_block_header, size_t raw_block_header_len)
+{
+    auto header{new CBlockHeader{}};
+
+    DataStream stream{Span{raw_block_header, raw_block_header_len}};
+
+    try {
+        stream >> *header;
+    } catch (const std::exception& e) {
+        delete header;
+        LogError("Block header decode failed.\n");
+        return nullptr;
+    }
+
+    return reinterpret_cast<kernel_BlockHeader*>(header);
+}
+
+void kernel_block_header_destroy(kernel_BlockHeader* header)
+{
+    if (header) {
+        delete cast_block_header(header);
+    }
+}
+
+kernel_ByteArray* kernel_copy_block_header_data(kernel_BlockHeader* header_)
+{
+    auto header{cast_block_header(header_)};
+
+    DataStream ss{};
+    ss << *header;
+
+    auto byte_array{new kernel_ByteArray{
+        .data = new unsigned char[ss.size()],
+        .size = ss.size(),
+    }};
+
+    std::memcpy(byte_array->data, ss.data(), byte_array->size);
+
+    return byte_array;
+}
+
+bool kernel_is_block_mutated(kernel_Block* block_, bool check_witness_root)
+{
+    auto block{cast_cblocksharedpointer(block_)};
+    return IsBlockMutated(**block, check_witness_root);
+}
+
+size_t kernel_number_of_transactions_in_block(kernel_Block* block_)
+{
+    auto block{cast_cblocksharedpointer(block_)};
+    return (**block).vtx.size();
+}
+
+kernel_Transaction* kernel_get_transaction_by_index(kernel_Block* block_, uint64_t index)
+{
+    auto block{cast_cblocksharedpointer(block_)};
+    if (index >= (**block).vtx.size()) {
+        LogDebug(BCLog::KERNEL, "Index is not in range of available transactions in this block.\n");
+        return nullptr;
+    }
+    return reinterpret_cast<kernel_Transaction*>(new CTransactionRef{(**block).vtx[index]});
+}
+
+kernel_ByteArray* kernel_copy_transaction_data(kernel_Transaction* transaction_)
+{
+    auto transaction{cast_transaction_ref(transaction_)};
+
+    DataStream ss{};
+    ss << TX_WITH_WITNESS(**transaction);
+
+    auto byte_array{new kernel_ByteArray{
+        .data = new unsigned char[ss.size()],
+        .size = ss.size(),
+    }};
+
+    std::memcpy(byte_array->data, ss.data(), byte_array->size);
+
+    return byte_array;
+}
+
+kernel_Transaction* kernel_transaction_create(const unsigned char* raw_transaction, size_t raw_transaction_len)
+{
+    DataStream stream{Span{raw_transaction, raw_transaction_len}};
+
+    CTransaction* transaction;
+    try {
+        transaction = new CTransaction{deserialize, TX_WITH_WITNESS, stream};
+    } catch (const std::exception& e) {
+        LogDebug(BCLog::KERNEL, "Transaction decode failed.\n");
+        return nullptr;
+    }
+    return reinterpret_cast<kernel_Transaction*>(new std::shared_ptr<CTransaction>{transaction});
+}
+
+void kernel_transaction_destroy(kernel_Transaction* transaction)
+{
+    if (transaction) {
+        delete cast_transaction_ref(transaction);
+    }
+}
+
+bool kernel_loading_blocks(kernel_ChainstateManager* chainman)
+{
+    return cast_chainstate_manager(chainman)->m_blockman.LoadingBlocks();
 }
