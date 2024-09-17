@@ -1,6 +1,6 @@
 use std::env;
-use std::path::PathBuf;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
@@ -70,9 +70,12 @@ fn main() {
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 
-    println!("cargo:rustc-link-search=native={}/lib", install_dir.display());
-    for lib in library.libs {
-        println!("cargo:rustc-link-lib=static={}", lib);
+    let compiler = cc::Build::new().get_compiler();
+    if compiler.is_like_clang() {
+        println!("cargo:rustc-link-lib=dylib=c++");
+    } else if compiler.is_like_gnu() {
+        println!("cargo:rustc-link-lib=dylib=stdc++");
+    } else {
+        panic!("Cannot figure out the c++ standard library to link with this compiler.");
     }
-    println!("cargo:rustc-link-lib=dylib=stdc++"); // Or "c++" if using libc++ on macOS or LLVM
 }

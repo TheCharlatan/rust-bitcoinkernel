@@ -2,7 +2,12 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use libbitcoinkernel_sys::{
-        execute_event, register_validation_interface, unregister_validation_interface, verify, Block, BlockIndexInfo, BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger, ProcessBlockError, TaskRunnerCallbackHolder, TxOut, Utxo, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT
+        execute_event, register_validation_interface, unregister_validation_interface, verify,
+        Block, BlockIndexInfo, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
+        ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
+        ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
+        ProcessBlockError, TaskRunnerCallbackHolder, TxOut, Utxo,
+        ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::collections::VecDeque;
     use std::fs::File;
@@ -274,7 +279,10 @@ mod tests {
             )
             .unwrap();
             let res = chainman.process_block(&block_1);
-            assert!(matches!(res, Err(KernelError::ProcessBlock(ProcessBlockError::Invalid))));
+            assert!(matches!(
+                res,
+                Err(KernelError::ProcessBlock(ProcessBlockError::Invalid))
+            ));
         }
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
     }
@@ -404,7 +412,10 @@ mod tests {
         chainman.import_blocks().unwrap();
         unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
         let block_2 = Block::try_from(block_data[1].clone().as_slice()).unwrap();
-        assert!(matches!(chainman.process_block(&block_2), Err(KernelError::ProcessBlock(ProcessBlockError::Invalid))));
+        assert!(matches!(
+            chainman.process_block(&block_2),
+            Err(KernelError::ProcessBlock(ProcessBlockError::Invalid))
+        ));
     }
 
     #[test]
