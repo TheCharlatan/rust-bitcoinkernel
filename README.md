@@ -29,11 +29,14 @@ dependencies. Once setup, run:
 cargo b
 ```
 
-And for the example binary:
+And for the example binary (takes the path to a previously used Bitcoin Core
+regtest directory):
 
 ```bash
-cargo run
+cargo run -- /path/to/.bitcoin/regtest
 ```
+
+The example binary implements a silent payments scanner.
 
 ## Fuzzing
 

@@ -1,4 +1,6 @@
 use std::fmt;
+use std::env;
+use std::process;
 
 use bitcoin::consensus::deserialize;
 use bitcoin::hashes::Hash;
@@ -223,9 +225,16 @@ fn scan_txs(chainman: &ChainstateManager) {
 }
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 {
+        eprintln!("Usage: {} <path_to_data_dir>", args[0]);
+        process::exit(1);
+    }
+
     let _ = setup_logging().unwrap();
     let context = create_context();
-    let data_dir = "/home/drgrid/.bitcoin/regtest".to_string();
+    let data_dir = args[1].clone();
     let blocks_dir = data_dir.clone() + "/blocks";
     let chainman = ChainstateManager::new(
         ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
