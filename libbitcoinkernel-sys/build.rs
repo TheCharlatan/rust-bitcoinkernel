@@ -11,6 +11,9 @@ fn main() {
 
     println!("{} {}", bitcoin_dir.display(), build_dir.display());
 
+    // Iterate through all files in the Bitcoin Core submodule directory
+    println!("cargo:rerun-if-changed={}", bitcoin_dir.display());
+
     Command::new("cmake")
         .arg("-B")
         .arg(&build_dir)
