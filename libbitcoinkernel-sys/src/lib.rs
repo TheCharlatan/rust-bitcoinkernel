@@ -6,7 +6,6 @@ use std::ffi::{CStr, CString, NulError};
 use std::fmt;
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_void};
-use std::sync::atomic::AtomicPtr;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -579,10 +578,6 @@ impl Drop for Transaction {
     fn drop(&mut self) {
         unsafe { kernel_transaction_destroy(self.inner) }
     }
-}
-
-pub struct Event {
-    pub inner: AtomicPtr<kernel_ValidationEvent>,
 }
 
 pub struct Block {
