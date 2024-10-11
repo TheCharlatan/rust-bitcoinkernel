@@ -13,19 +13,122 @@
 #include <string>
 #include <vector>
 
-int verify_script(const std::span<const unsigned char> script_pubkey,
+class Transaction
+{
+private:
+    struct Deleter {
+        void operator()(kernel_Transaction* ptr) const
+        {
+            kernel_transaction_destroy(ptr);
+        }
+    };
+
+public:
+    std::unique_ptr<kernel_Transaction, Deleter> m_transaction;
+
+    Transaction(std::span<const unsigned char> raw_transaction) noexcept
+        : m_transaction{kernel_transaction_create(raw_transaction.data(), raw_transaction.size())}
+    {
+    }
+
+    /** Check whether this Transaction object is valid. */
+    explicit operator bool() const noexcept { return bool{m_transaction}; }
+};
+
+class ScriptPubkey
+{
+private:
+    struct Deleter {
+        void operator()(kernel_ScriptPubkey* ptr) const
+        {
+            kernel_script_pubkey_destroy(ptr);
+        }
+    };
+
+public:
+    std::unique_ptr<kernel_ScriptPubkey, Deleter> m_script_pubkey;
+
+    ScriptPubkey(std::span<const unsigned char> script_pubkey) noexcept
+        : m_script_pubkey{kernel_script_pubkey_create(script_pubkey.data(), script_pubkey.size())}
+    {
+    }
+
+    ScriptPubkey(kernel_ScriptPubkey* script_pubkey) noexcept
+        : m_script_pubkey{script_pubkey}
+    {
+    }
+
+    std::vector<unsigned char> GetScriptPubkeyData() const noexcept
+    {
+        auto serialized_data{kernel_copy_script_pubkey_data(m_script_pubkey.get())};
+        std::vector<unsigned char> vec{serialized_data->data, serialized_data->data + serialized_data->size};
+        kernel_byte_array_destroy(serialized_data);
+        return vec;
+    }
+
+    /** Check whether this ScriptPubkey object is valid. */
+    explicit operator bool() const noexcept { return bool{m_script_pubkey}; }
+};
+
+class TransactionOutput
+{
+private:
+    struct Deleter {
+        void operator()(kernel_TransactionOutput* ptr) const
+        {
+            kernel_transaction_output_destroy(ptr);
+        }
+    };
+
+public:
+    std::unique_ptr<kernel_TransactionOutput, Deleter> m_transaction_output;
+
+    TransactionOutput(const ScriptPubkey& script_pubkey, int64_t amount) noexcept
+        : m_transaction_output{kernel_transaction_output_create(script_pubkey.m_script_pubkey.get(), amount)}
+    {
+    }
+
+    TransactionOutput(kernel_TransactionOutput* output) noexcept
+        : m_transaction_output{output}
+    {
+    }
+
+    /** Check whether this TransactionOutput object is valid. */
+    explicit operator bool() const noexcept { return bool{m_transaction_output}; }
+
+    ScriptPubkey GetScriptPubkey() noexcept
+    {
+        return kernel_copy_script_pubkey_from_output(m_transaction_output.get());
+    }
+
+    int64_t GetOutputAmount() noexcept
+    {
+        return kernel_get_transaction_output_amount(m_transaction_output.get());
+    }
+};
+
+int verify_script(const ScriptPubkey& script_pubkey,
                   int64_t amount,
-                  const std::span<const unsigned char> tx_to,
-                  const std::span<const kernel_TransactionOutput> spent_outputs,
+                  const Transaction& tx_to,
+                  const std::span<const TransactionOutput> spent_outputs,
                   unsigned int input_index,
                   unsigned int flags,
                   kernel_ScriptVerifyStatus& status) noexcept
 {
-    auto spent_outputs_ptr = spent_outputs.size() > 0 ? spent_outputs.data() : nullptr;
+    const kernel_TransactionOutput** spent_outputs_ptr = nullptr;
+    std::vector<const kernel_TransactionOutput*> raw_spent_outputs;
+    if (spent_outputs.size() > 0) {
+        raw_spent_outputs.reserve(spent_outputs.size());
+
+        for (const auto& output: spent_outputs) {
+            raw_spent_outputs.push_back(output.m_transaction_output.get());
+        }
+        spent_outputs_ptr = raw_spent_outputs.data();
+    }
     return kernel_verify_script(
-        script_pubkey.data(), script_pubkey.size(),
+        script_pubkey.m_script_pubkey.get(),
         amount,
-        tx_to.data(), tx_to.size(),
+        tx_to.m_transaction.get(),
         spent_outputs_ptr, spent_outputs.size(),
         input_index,
         flags,
@@ -140,46 +243,6 @@ public:
     friend class ContextOptions;
 };
 
-template <typename T>
-class TaskRunner
-{
-private:
-    kernel_TaskRunnerCallbacks MakeCallbacks()
-    {
-        return kernel_TaskRunnerCallbacks{
-            .user_data = this,
-            .insert = [](void* user_data, kernel_ValidationEvent* event) { static_cast<T*>(user_data)->insert(event); },
-            .flush = [](void* user_data) { static_cast<T*>(user_data)->flush(); },
-            .size = [](void* user_data) -> unsigned int { return static_cast<T*>(user_data)->size(); },
-        };
-    }
-
-    struct Deleter {
-        void operator()(kernel_TaskRunner* ptr) const
-        {
-            kernel_task_runner_destroy(ptr);
-        }
-    };
-    const std::unique_ptr<kernel_TaskRunner, Deleter> m_task_runner;
-
-protected:
-    virtual void insert(kernel_ValidationEvent* event)
-    {
-        kernel_execute_event_and_destroy(event);
-    }
-
-    virtual void flush() {}
-
-    virtual size_t size() { return 0; }
-
-public:
-    TaskRunner() : m_task_runner{kernel_task_runner_create(MakeCallbacks())} {}
-
-    virtual ~TaskRunner() = default;
-
-    friend class ContextOptions;
-};
-
 class ContextOptions
 {
 private:
@@ -195,30 +258,15 @@ private:
 public:
     ContextOptions() noexcept : m_options{kernel_context_options_create()} {}
 
-    bool SetChainParams(ChainParams& chain_params) const noexcept
+    void SetChainParams(ChainParams& chain_params) const noexcept
     {
-        return kernel_context_options_set(
-            m_options.get(),
-            kernel_ContextOptionType::kernel_CHAIN_PARAMETERS_OPTION,
-            chain_params.m_chain_params.get());
+        kernel_context_options_set_chainparams(m_options.get(), chain_params.m_chain_params.get());
     }
 
     template <typename T>
-    bool SetNotifications(KernelNotifications<T>& notifications) const noexcept
+    void SetNotifications(KernelNotifications<T>& notifications) const noexcept
     {
-        return kernel_context_options_set(
-            m_options.get(),
-            kernel_ContextOptionType::kernel_NOTIFICATIONS_OPTION,
-            notifications.m_notifications.get());
-    }
-
-    template <typename T>
-    bool SetTaskRunner(TaskRunner<T>& task_runner) const noexcept
-    {
-        return kernel_context_options_set(
-            m_options.get(),
-            kernel_ContextOptionType::kernel_TASK_RUNNER_OPTION,
-            task_runner.m_task_runner.get());
+        kernel_context_options_set_notifications(m_options.get(), notifications.m_notifications.get());
     }
 
     friend class Context;
@@ -403,30 +451,22 @@ public:
 
     void SetWipeBlockTreeDb(bool wipe_block_tree) const noexcept
     {
-        kernel_chainstate_load_options_set(m_options.get(),
-                                           kernel_ChainstateLoadOptionType::kernel_WIPE_BLOCK_TREE_DB_CHAINSTATE_LOAD_OPTION,
-                                           wipe_block_tree);
+        kernel_chainstate_load_options_set_wipe_block_tree_db(m_options.get(), wipe_block_tree);
     }
 
     void SetWipeChainstateDb(bool wipe_chainstate) const noexcept
     {
-        kernel_chainstate_load_options_set(m_options.get(),
-                                           kernel_ChainstateLoadOptionType::kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,
-                                           wipe_chainstate);
+        kernel_chainstate_load_options_set_wipe_chainstate_db(m_options.get(), wipe_chainstate);
     }
 
     void SetChainstateDbInMemory(bool chainstate_db_in_memory) const noexcept
     {
-        kernel_chainstate_load_options_set(m_options.get(),
-                                           kernel_ChainstateLoadOptionType::kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
-                                           chainstate_db_in_memory);
+        kernel_chainstate_load_options_set_chainstate_db_in_memory(m_options.get(), chainstate_db_in_memory);
     }
 
     void SetBlockTreeDbInMemory(bool block_tree_db_in_memory) const noexcept
     {
-        kernel_chainstate_load_options_set(m_options.get(),
-                                           kernel_ChainstateLoadOptionType::kernel_BLOCK_TREE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
-                                           block_tree_db_in_memory);
+        kernel_chainstate_load_options_set_block_tree_db_in_memory(m_options.get(), block_tree_db_in_memory);
     }
 
     friend class ChainMan;
@@ -466,13 +506,6 @@ public:
     friend class ChainMan;
 };
 
-struct TransactionOutputDeleter {
-    void operator()(kernel_TransactionOutput* ptr) const
-    {
-        kernel_transaction_output_destroy(ptr);
-    }
-};
-
 class BlockUndo
 {
 private:
@@ -502,12 +535,11 @@ public:
         return kernel_get_transaction_undo_size(m_block_undo.get(), index);
     }
 
-    std::unique_ptr<kernel_TransactionOutput, TransactionOutputDeleter> GetTxUndoPrevoutByIndex(
+    TransactionOutput GetTxUndoPrevoutByIndex(
         uint64_t tx_undo_index,
         uint64_t tx_prevout_index) const noexcept
     {
-        return std::unique_ptr<kernel_TransactionOutput, TransactionOutputDeleter>(
-            kernel_get_undo_output_by_index(m_block_undo.get(), tx_undo_index, tx_prevout_index));
+        return TransactionOutput{kernel_get_undo_output_by_index(m_block_undo.get(), tx_undo_index, tx_prevout_index)};
     }
 };
 
