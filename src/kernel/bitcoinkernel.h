@@ -83,6 +83,21 @@ extern "C" {
  */
 
 /**
+ * Opaque data structure for holding a transaction.
+ */
+typedef struct kernel_Transaction kernel_Transaction;
+
+/**
+ * Opaque data structure for holding a script pubkey.
+ */
+typedef struct kernel_ScriptPubkey kernel_ScriptPubkey;
+
+/**
+ * Opaque data structure for holding a transaction output.
+ */
+typedef struct kernel_TransactionOutput kernel_TransactionOutput;
+
+/**
  * Opaque data structure for holding a logging connection.
  *
  * The logging connection can be used to manually stop logging.
@@ -126,12 +141,11 @@ typedef struct kernel_ContextOptions kernel_ContextOptions;
  * validation objects are instantiated from it, the context needs to be kept in
  * memory for the duration of their lifetimes.
  *
- * The processing of validation events is done through the user-defined task
- * runner. Only a single task runner may be defined at a time for a context. The
- * task runner drives the execution of events triggering validation interface
- * callbacks. Multiple validation interfaces can be registered with the context.
- * The kernel will create an event for each of the registered validation
- * interfaces through the task runner.
+ * The processing of validation events is done through an internal task
+ * runner owned by the context. The task runner drives the execution of events
+ * triggering validation interface callbacks. Multiple validation interfaces can
+ * be registered with the context. The kernel will create an event for each of
+ * the registered validation interfaces through the task runner.
  *
  * A constructed context can be safely used from multiple threads, but functions
  * taking it as a non-cost argument need exclusive access to it.
@@ -213,19 +227,12 @@ typedef struct kernel_ValidationEvent kernel_ValidationEvent;
 typedef struct kernel_BlockValidationState kernel_BlockValidationState;
 
 /**
- * Opaque data structure for holding a task runner.
- *
- * The task runner processes validation events and forwards them to the
- * registered validation interface.
- */
-typedef struct kernel_TaskRunner kernel_TaskRunner;
-
-/**
  * Opaque data structure for holding a validation interface.
  *
- * The validation interface can be registered with the task runner of an
+ * The validation interface can be registered with the internal task runner of an
  * existing context. It holds callbacks that will be triggered by certain
- * validation events.
+ * validation events. The callbacks registered with it will block further
+ * validation progress when triggered.
  */
 typedef struct kernel_ValidationInterface kernel_ValidationInterface;
 
@@ -274,42 +281,9 @@ typedef void (*kernel_NotifyFlushError)(void* user_data, const char* message);
 typedef void (*kernel_NotifyFatalError)(void* user_data, const char* message);
 
 /**
- * Function signatures for the task runner used to process validation events.
- */
-typedef void (*kernel_TaskRunnerInsert)(void* user_data, kernel_ValidationEvent* event);
-typedef void (*kernel_TaskRunnerFlush)(void* user_data);
-typedef uint32_t (*kernel_TaskRunnerSize)(void* user_data);
-
-/**
  * Function signatures for the validation interface.
  */
 typedef void (*kernel_ValidationInterfaceBlockChecked)(void* user_data, const kernel_BlockPointer* block, const kernel_BlockValidationState* state);
-
-/**
- * Available types of context options. Passed with a corresponding value to
- * kernel_context_options_set(..).
- */
-typedef enum {
-    kernel_CHAIN_PARAMETERS_OPTION = 0, //!< Set the chain parameters, value must be a valid pointer
-                                        //!< to a kernel_ChainParameters struct.
-    kernel_NOTIFICATIONS_OPTION,        //!< Set the kernel notifications, value must be a valid
-                                        //!< pointer to a kernel_Notifications struct.
-    kernel_TASK_RUNNER_OPTION,          //!< Set the task runner, value must be a valid pointer to a
-                                        //!< kernel_TaskRunner struct.
-} kernel_ContextOptionType;
-
-/**
- * Available types of chainstate load options. Passed with a corresponding value
- * to kernel_chainstate_load_options_set(..).
- */
-typedef enum {
-    kernel_WIPE_BLOCK_TREE_DB_CHAINSTATE_LOAD_OPTION = 0,  //! Set the wipe block tree db option, default is false.
-                                                           //! Should only be set in combination with wiping the chainstate db.
-                                                           //! Will trigger a reindex once kernel_import_blocks is called.
-    kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,      //! Set the wipe chainstate option, default is false.
-    kernel_BLOCK_TREE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION, //! Set the block tree db in memory option, default is false.
-    kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION, //! Set the coins db in memory option, default is false.
-} kernel_ChainstateLoadOptionType;
 
 /**
  * Whether a validated data structure is valid, invalid, or an error was
@@ -344,22 +318,6 @@ typedef enum {
     kernel_BLOCK_CHECKPOINT,      //!< the block failed to meet one of our checkpoints
     kernel_BLOCK_HEADER_LOW_WORK, //!< the block header may be on a too-little-work chain
 } kernel_BlockValidationResult;
-
-/**
- * Holds the task runner callbacks. The user data pointer may be used to point
- * to user-defined structures to make processing the tasks easier. May also be
- * used to process the tasks asynchronously, or in separate threads.
- */
-typedef struct {
-    void* user_data;                //!< Holds a user-defined opaque structure that is passed to the task runner callbacks.
-    kernel_TaskRunnerInsert insert; //!< Adds an event to the task runner. The event needs to be consumed with
-                                    //!< kernel_execute_event_and_destroy, but may be queued for later, asynchronous or threaded
-                                    //!< processing, or be executed immediately.
-    kernel_TaskRunnerFlush flush;   //!< If this is called the user should ensure that all queued, or pending events
-                                    //!< are executed before processing a further event.
-    kernel_TaskRunnerSize size;     //!< Should return the number of queued or pending events that are awaiting
-                                    //!< execution.
-} kernel_TaskRunnerCallbacks;
 
 /**
  * Holds the validation interface callbacks. The user data pointer may be used
@@ -433,8 +391,6 @@ typedef struct {
 typedef enum {
     kernel_SCRIPT_VERIFY_OK = 0,
     kernel_SCRIPT_VERIFY_ERROR_TX_INPUT_INDEX, //!< The provided input index is out of range of the actual number of inputs of the transaction.
-    kernel_SCRIPT_VERIFY_ERROR_TX_SIZE_MISMATCH, //!< The provided tx_to_len argument does not match the actual size of the transaction.
-    kernel_SCRIPT_VERIFY_ERROR_TX_DESERIALIZE, //!< The provided tx could not be de-serialized.
     kernel_SCRIPT_VERIFY_ERROR_INVALID_FLAGS, //!< The provided bitfield for the flags was invalid.
     kernel_SCRIPT_VERIFY_ERROR_INVALID_FLAGS_COMBINATION, //!< The flags very combined in an invalid way.
     kernel_SCRIPT_VERIFY_ERROR_SPENT_OUTPUTS_REQUIRED, //!< The taproot flag was set, so valid spent_outputs have to be provided.
@@ -465,6 +421,17 @@ typedef enum
 } kernel_ScriptFlags;
 
 /**
+ * Chain type used for creating chain params.
+ */
+typedef enum {
+    kernel_CHAIN_TYPE_MAINNET = 0,
+    kernel_CHAIN_TYPE_TESTNET,
+    kernel_CHAIN_TYPE_TESTNET_4,
+    kernel_CHAIN_TYPE_SIGNET,
+    kernel_CHAIN_TYPE_REGTEST,
+} kernel_ChainType;
+
+/**
  * Process block statuses. More detailed information about block verification
  * can also be gathered through a registered validation interface.
  */
@@ -475,25 +442,6 @@ typedef enum {
     kernel_PROCESS_BLOCK_DUPLICATE,         //!< The block has been processed before.
     kernel_PROCESS_BLOCK_INVALID_DUPLICATE, //!< The block has been process before, and it was invalid.
 } kernel_ProcessBlockStatus;
-
-/**
- * A helper struct for a single transaction output.
- */
-typedef struct {
-    int64_t value;
-    const unsigned char* script_pubkey;
-    size_t script_pubkey_len;
-} kernel_TransactionOutput;
-
-/**
- * Chain type used for creating chain params.
- */
-typedef enum {
-    kernel_CHAIN_TYPE_MAINNET = 0,
-    kernel_CHAIN_TYPE_TESTNET,
-    kernel_CHAIN_TYPE_SIGNET,
-    kernel_CHAIN_TYPE_REGTEST,
-} kernel_ChainType;
 
 /**
  * A type-safe block identifier.
@@ -518,17 +466,71 @@ typedef struct {
 } kernel_ByteArray;
 
 /**
+ * @brief Create a new transaction from the serialized data.
+ *
+ * @param[in] raw_transaction     Non-null.
+ * @param[in] raw_transaction_len Length of the serialized transaction.
+ * @return                        The transaction, or null on error.
+ */
+kernel_Transaction* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_transaction_create(
+    const unsigned char* raw_transaction, size_t raw_transaction_len
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * Destroy the transaction.
+ */
+void kernel_transaction_destroy(kernel_Transaction* transaction);
+
+/**
+ * @brief Create a script pubkey from serialized data.
+ * @param[in] script_pubkey     Non-null.
+ * @param[in] script_pubkey_len Length of the script pubkey data.
+ * @return                      The script pubkey, or null on error.
+ */
+kernel_ScriptPubkey* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_script_pubkey_create(
+    const unsigned char* script_pubkey, size_t script_pubkey_len
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Copies the script pubkey data into the returned byte array.
+ * @param[in] script_pubkey Non-null.
+ * @return                  The serialized script pubkey data.
+ */
+kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_script_pubkey_data(
+        const kernel_ScriptPubkey* script_pubkey
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * Destroy the script pubkey.
+ */
+void kernel_script_pubkey_destroy(kernel_ScriptPubkey* script_pubkey);
+
+/**
+ * @brief Create a transaction output from a script pubkey and an amount.
+ * @param[in] script_pubkey Non-null.
+ * @param[in] amount        The amount associated with the script pubkey for this output.
+ * @return                  The transaction output.
+ */
+kernel_TransactionOutput* kernel_transaction_output_create(
+    kernel_ScriptPubkey* script_pubkey,
+    int64_t amount
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * Destroy the transaction output.
+ */
+void kernel_transaction_output_destroy(kernel_TransactionOutput* transaction_output);
+
+/**
  * @brief Verify if the input at input_index of tx_to spends the script pubkey
  * under the constraints specified by flags. If the witness flag is set the
  * amount parameter is used. If the taproot flag is set, the spent outputs
  * parameter is used to validate taproot transactions.
  *
- * @param[in] script_pubkey     Non-null, serialized script pubkey to be spent.
- * @param[in] script_pubkey_len Length of the script pubkey to be spent.
+ * @param[in] script_pubkey     Non-null, script pubkey to be spent.
  * @param[in] amount            Amount of the script pubkey's associated output. May be zero if
  *                              the witness flag is not set.
- * @param[in] tx_to             Non-null, serialized transaction spending the script_pubkey.
- * @param[in] tx_to_len         Length of the serialized transaction spending the script_pubkey.
+ * @param[in] tx_to             Non-null, transaction spending the script_pubkey.
  * @param[in] spent_outputs     Nullable if the taproot flag is not set. Points to an array of
  *                              outputs spent by the transaction.
  * @param[in] spent_outputs_len Length of the spent_outputs array.
@@ -539,14 +541,14 @@ typedef struct {
  * @return                      True if the script is valid.
  */
 bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_verify_script(
-    const unsigned char* script_pubkey, size_t script_pubkey_len,
+    const kernel_ScriptPubkey* script_pubkey,
     int64_t amount,
-    const unsigned char* tx_to, size_t tx_to_len,
-    const kernel_TransactionOutput* spent_outputs, size_t spent_outputs_len,
+    const kernel_Transaction* tx_to,
+    const kernel_TransactionOutput** spent_outputs, size_t spent_outputs_len,
     unsigned int input_index,
     unsigned int flags,
     kernel_ScriptVerifyStatus* status
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(4);
+) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(3);
 
 /**
  * @brief This disables the global internal logger. No log messages will be
@@ -644,17 +646,24 @@ kernel_ContextOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_c
  * @brief Sets a single, specific field in the options. The option type has to
  * match the option value.
  *
- * @param[in] context_options Non-null, previously created with kernel_context_options_create.
- * @param[in] n_option        Describes the option field that should be set with the value.
- * @param[in] value           Non-null, single value that will be used to set the field selected by n_option.
- * @return                    True on success, false if an error occurred, like the selected option not
- *                            corresponding to the passed in value.
+ * @param[in] context_options  Non-null, previously created with kernel_context_options_create.
+ * @param[in] chain_parameters Is set to the context options.
  */
-bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_set(
+void kernel_context_options_set_chainparams(
     kernel_ContextOptions* context_options,
-    const kernel_ContextOptionType n_option,
-    const void* value
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(3);
+    const kernel_ChainParameters* chain_parameters
+) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+
+/**
+ * @brief Set the kernel notifications for context option.
+ *
+ * @param[in] context_options Non-null, previously created with kernel_context_options_create.
+ * @param[in] notifications   Is set to the context options.
+ */
+void kernel_context_options_set_notifications(
+    kernel_ContextOptions* context_options,
+    const kernel_Notifications* notifications
+) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
 
 /**
  * Destroy the context options.
@@ -754,21 +763,6 @@ kernel_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_man
 void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainstate_manager, const kernel_Context* context);
 
 /**
- * @brief Create a task runner. The returned object can be used to set the
- * context options.
- *
- * @param[in] task_runner_callbacks The callbacks used for dispatching and managing events in the
- *                                  task runner.
- */
-kernel_TaskRunner* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_task_runner_create(
-    kernel_TaskRunnerCallbacks task_runner_callbacks);
-
-/**
- * Destroy the task runner.
- */
-void kernel_task_runner_destroy(kernel_TaskRunner* task_runner);
-
-/**
  * @brief Creates a new validation interface for consuming events issued by the
  * chainstate manager. The interface should be created and registered before the
  * chainstate manager is created to avoid missing validation events.
@@ -817,31 +811,52 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_validation_interface_unregister(
 void kernel_validation_interface_destroy(kernel_ValidationInterface* validation_interface);
 
 /**
- * @brief Use this (and only this) function to run the callback received through
- * the task runner's insert function. Once executed, the event is no longer
- * valid.
- *
- * @param[in] event  Non-null.
- */
-void kernel_execute_event_and_destroy(kernel_ValidationEvent* event) BITCOINKERNEL_ARG_NONNULL(1);
-
-/**
  * Create options for loading the chainstate.
  */
 kernel_ChainstateLoadOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_load_options_create();
 
 /**
- * @brief Sets a single, specific field in the chainstate load options. The
- * option type has to match the option value.
+ * @brief Sets wipe block tree db in the chainstate load options.
  *
  * @param[in] chainstate_load_options Non-null, created with kernel_chainstate_load_options_create.
- * @param[in] n_option                Describes the option field that should be set with the value.
- * @param[in] value                   Single value setting the field selected by n_option.
+ * @param[in] wipe_block_tree_db      Set wipe block tree db.
  */
-void kernel_chainstate_load_options_set(
+void kernel_chainstate_load_options_set_wipe_block_tree_db(
     kernel_ChainstateLoadOptions* chainstate_load_options,
-    kernel_ChainstateLoadOptionType n_option,
-    bool value
+    bool wipe_block_tree_db
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Sets wipe chainstate db in the chainstate load options.
+ *
+ * @param[in] chainstate_load_options Non-null, created with kernel_chainstate_load_options_create.
+ * @param[in] wipe_chainstate_db      Set wipe chainstate db.
+ */
+void kernel_chainstate_load_options_set_wipe_chainstate_db(
+    kernel_ChainstateLoadOptions* chainstate_load_options,
+    bool wipe_chainstate_db
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Sets block tree db in memory in the chainstate load options.
+ *
+ * @param[in] chainstate_load_options Non-null, created with kernel_chainstate_load_options_create.
+ * @param[in] block_tree_db_in_memory Set block tree db in memory.
+ */
+void kernel_chainstate_load_options_set_block_tree_db_in_memory(
+    kernel_ChainstateLoadOptions* chainstate_load_options,
+    bool block_tree_db_in_memory
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Sets chainstate db in memory in the chainstate load options.
+ *
+ * @param[in] chainstate_load_options Non-null, created with kernel_chainstate_load_options_create.
+ * @param[in] chainstate_db_in_memory Set chainstate db in memory.
+ */
+void kernel_chainstate_load_options_set_chainstate_db_in_memory(
+    kernel_ChainstateLoadOptions* chainstate_load_options,
+    bool chainstate_db_in_memory
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
@@ -1134,9 +1149,23 @@ kernel_BlockIndexInfo* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_i
 void kernel_block_index_info_destroy(kernel_BlockIndexInfo* info);
 
 /**
- * Destroy a kernel transaction output.
+ * @brief Copies the script pubkey of an output in the returned script pubkey
+ * opaque object.
+ *
+ * @param[in] transaction_output Non-null.
+ * @return                       The data for the output's script pubkey.
  */
-void kernel_transaction_output_destroy(kernel_TransactionOutput* transaction_output);
+kernel_ScriptPubkey* kernel_copy_script_pubkey_from_output(kernel_TransactionOutput* transaction_output
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Gets the amount associated with this transaction output
+ *
+ * @param[in] transaction_output Non-null.
+ * @return                       The amount.
+ */
+int64_t kernel_get_transaction_output_amount(kernel_TransactionOutput* transaction_output
+) BITCOINKERNEL_ARG_NONNULL(1);
 
 #ifdef __cplusplus
 } // extern "C"

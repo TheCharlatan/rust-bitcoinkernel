@@ -28,10 +28,6 @@ public:
     }
 };
 
-class TestTaskRunner : public TaskRunner<TestTaskRunner>
-{
-};
-
 class TestValidationInterface : public ValidationInterface<TestValidationInterface>
 {
 public:
@@ -156,12 +152,10 @@ int main(int argc, char* argv[])
 
     ContextOptions options{};
     ChainParams params{kernel_ChainType::kernel_CHAIN_TYPE_REGTEST};
-    assert(options.SetChainParams(params));
+    options.SetChainParams(params);
 
     TestKernelNotifications notifications{};
-    assert(options.SetNotifications(notifications));
-    TestTaskRunner task_runner{};
-    assert(options.SetTaskRunner(task_runner));
+    options.SetNotifications(notifications);
 
     Context context{options};
     assert(context);

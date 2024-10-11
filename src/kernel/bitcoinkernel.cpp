@@ -36,7 +36,6 @@
 #include <validation.h>
 #include <validationinterface.h>
 
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -46,10 +45,11 @@
 #include <list>
 #include <memory>
 #include <string>
-#include <thread>
 #include <tuple>
 #include <utility>
 #include <vector>
+
+using util::ImmediateTaskRunner;
 
 // Define G_TRANSLATION_FUN symbol in libbitcoinkernel library so users of the
 // library aren't required to export this symbol
@@ -58,11 +58,6 @@ extern const std::function<std::string(const char*)> G_TRANSLATION_FUN{nullptr};
 static const kernel::Context kernel_context_static{};
 
 namespace {
-
-// These tags are used to guard against void* types pointing to unexpected data
-constexpr uint64_t KERNEL_CHAIN_PARAMS_TAG{0};
-constexpr uint64_t KERNEL_NOTIFICATIONS_TAG{1};
-constexpr uint64_t KERNEL_TASK_RUNNER_TAG{2};
 
 /** A class that deserializes a single CTransaction one time. */
 class TxInputStream
@@ -176,25 +171,6 @@ std::string log_category_to_string(const kernel_LogCategory category)
     assert(false);
 }
 
-class KernelChainParams
-{
-    uint64_t m_tag;
-
-public:
-    std::unique_ptr<const CChainParams> m_chainparams;
-
-    KernelChainParams(std::unique_ptr<const CChainParams> chainparams)
-        : m_tag{KERNEL_CHAIN_PARAMS_TAG},
-          m_chainparams{std::move(chainparams)}
-    {
-    }
-
-    bool IsValid() const
-    {
-        return m_tag == KERNEL_CHAIN_PARAMS_TAG;
-    }
-};
-
 kernel_SynchronizationState cast_state(SynchronizationState state)
 {
     switch (state) {
@@ -222,13 +198,11 @@ kernel_Warning cast_kernel_warning(kernel::Warning warning)
 class KernelNotifications : public kernel::Notifications
 {
 private:
-    uint64_t m_tag;
     kernel_NotificationInterfaceCallbacks m_cbs;
 
 public:
     KernelNotifications(kernel_NotificationInterfaceCallbacks cbs)
-        : m_tag{KERNEL_NOTIFICATIONS_TAG},
-          m_cbs{cbs}
+        : m_cbs{cbs}
     {
     }
 
@@ -257,59 +231,11 @@ public:
     {
         if (m_cbs.fatal_error) m_cbs.fatal_error(m_cbs.user_data, message.original.c_str());
     }
-
-    bool IsValid() const
-    {
-        return m_tag == KERNEL_NOTIFICATIONS_TAG;
-    }
-};
-
-class TaskRunner : public util::TaskRunnerInterface
-{
-private:
-    uint64_t m_tag;
-    kernel_TaskRunnerCallbacks m_cbs;
-
-public:
-    TaskRunner(kernel_TaskRunnerCallbacks tr_cbs)
-        : m_tag{KERNEL_TASK_RUNNER_TAG},
-          m_cbs{tr_cbs}
-    {
-    }
-
-    void insert(std::function<void()> func) override
-    {
-        if (m_cbs.insert) {
-            // prevent the event from being deleted when it goes out of scope
-            // here, it is the caller's responsibility to correctly call
-            // kernel_execute_event_and_destroy to process it, preventing a memory leak.
-            auto heap_func = new std::function<void()>(func);
-
-            m_cbs.insert(m_cbs.user_data, reinterpret_cast<kernel_ValidationEvent*>(heap_func));
-        }
-    }
-
-    void flush() override
-    {
-        if (m_cbs.flush) m_cbs.flush(m_cbs.user_data);
-    }
-
-    size_t size() override
-    {
-        if (m_cbs.size) return m_cbs.size(m_cbs.user_data);
-        return 0;
-    }
-
-    bool IsValid() const
-    {
-        return m_tag == KERNEL_TASK_RUNNER_TAG;
-    }
 };
 
 struct ContextOptions {
     std::unique_ptr<const KernelNotifications> m_notifications;
     std::unique_ptr<const CChainParams> m_chainparams;
-    std::unique_ptr<TaskRunner> m_task_runner;
 };
 
 class Context
@@ -317,17 +243,18 @@ class Context
 public:
     std::unique_ptr<kernel::Context> m_context;
 
-    std::unique_ptr<ValidationSignals> m_signals;
-
     std::unique_ptr<KernelNotifications> m_notifications;
 
     std::unique_ptr<util::SignalInterrupt> m_interrupt;
+
+    std::unique_ptr<ValidationSignals> m_signals;
 
     std::unique_ptr<const CChainParams> m_chainparams;
 
     Context(const ContextOptions* options, bool& sane)
         : m_context{std::make_unique<kernel::Context>()},
-          m_interrupt{std::make_unique<util::SignalInterrupt>()}
+          m_interrupt{std::make_unique<util::SignalInterrupt>()},
+          m_signals{std::make_unique<ValidationSignals>(std::make_unique<ImmediateTaskRunner>())}
     {
         if (options && options->m_notifications) {
             m_notifications = std::make_unique<KernelNotifications>(*options->m_notifications);
@@ -340,12 +267,6 @@ public:
             m_chainparams = std::make_unique<const CChainParams>(*options->m_chainparams);
         } else {
             m_chainparams = CChainParams::Main();
-        }
-
-        if (options && options->m_task_runner) {
-            m_signals = std::make_unique<ValidationSignals>(std::make_unique<TaskRunner>(*options->m_task_runner));
-        } else {
-            m_signals = nullptr;
         }
 
         if (!kernel::SanityChecks(*m_context)) {
@@ -372,6 +293,24 @@ protected:
     }
 };
 
+const CTransaction* cast_transaction(const kernel_Transaction* transaction)
+{
+    assert(transaction);
+    return reinterpret_cast<const CTransaction*>(transaction);
+}
+
+const CScript* cast_script_pubkey(const kernel_ScriptPubkey* script_pubkey)
+{
+    assert(script_pubkey);
+    return reinterpret_cast<const CScript*>(script_pubkey);
+}
+
+const CTxOut* cast_transaction_output(const kernel_TransactionOutput* transaction_output)
+{
+    assert(transaction_output);
+    return reinterpret_cast<const CTxOut*>(transaction_output);
+}
+
 const ContextOptions* cast_const_context_options(const kernel_ContextOptions* options)
 {
     assert(options);
@@ -384,10 +323,10 @@ ContextOptions* cast_context_options(kernel_ContextOptions* options)
     return reinterpret_cast<ContextOptions*>(options);
 }
 
-const KernelChainParams* cast_const_chain_params(const kernel_ChainParameters* chain_params)
+const CChainParams* cast_const_chain_params(const kernel_ChainParameters* chain_params)
 {
     assert(chain_params);
-    return reinterpret_cast<const KernelChainParams*>(chain_params);
+    return reinterpret_cast<const CChainParams*>(chain_params);
 }
 
 const KernelNotifications* cast_const_notifications(const kernel_Notifications* notifications)
@@ -450,12 +389,6 @@ std::function<void()>* cast_validation_event(kernel_ValidationEvent* event)
     return reinterpret_cast<std::function<void()>*>(event);
 }
 
-const TaskRunner* cast_task_runner(kernel_TaskRunner* task_runner)
-{
-    assert(task_runner);
-    return reinterpret_cast<const TaskRunner*>(task_runner);
-}
-
 const BlockValidationState* cast_block_validation_state(const kernel_BlockValidationState* block_validation_state)
 {
     assert(block_validation_state);
@@ -482,15 +415,75 @@ CBlockUndo* cast_block_undo(kernel_BlockUndo* undo)
 
 } // namespace
 
-bool kernel_verify_script(const unsigned char* script_pubkey, size_t script_pubkey_len,
+kernel_Transaction* kernel_transaction_create(const unsigned char* raw_transaction, size_t raw_transaction_len)
+{
+    try {
+        TxInputStream stream{raw_transaction, raw_transaction_len};
+        auto tx = new CTransaction{deserialize, TX_WITH_WITNESS, stream};
+        return reinterpret_cast<kernel_Transaction*>(tx);
+    } catch (const std::exception&) {
+        return nullptr;
+    }
+}
+
+void kernel_transaction_destroy(kernel_Transaction* transaction)
+{
+    if (transaction) {
+        delete cast_transaction(transaction);
+    }
+}
+
+kernel_ScriptPubkey* kernel_script_pubkey_create(const unsigned char* script_pubkey_, size_t script_pubkey_len)
+{
+    auto script_pubkey = new CScript(script_pubkey_, script_pubkey_ + script_pubkey_len);
+    return reinterpret_cast<kernel_ScriptPubkey*>(script_pubkey);
+}
+
+kernel_ByteArray* kernel_copy_script_pubkey_data(const kernel_ScriptPubkey* script_pubkey_)
+{
+    auto script_pubkey{cast_script_pubkey(script_pubkey_)};
+
+    auto byte_array{new kernel_ByteArray{
+        .data = new unsigned char[script_pubkey->size()],
+        .size = script_pubkey->size(),
+    }};
+
+    std::memcpy(byte_array->data, script_pubkey->data(), byte_array->size);
+    return byte_array;
+}
+
+void kernel_script_pubkey_destroy(kernel_ScriptPubkey* script_pubkey)
+{
+    if (script_pubkey) {
+        delete cast_script_pubkey(script_pubkey);
+    }
+}
+
+kernel_TransactionOutput* kernel_transaction_output_create(kernel_ScriptPubkey* script_pubkey_, int64_t amount)
+{
+    const auto& script_pubkey{*cast_script_pubkey(script_pubkey_)};
+    const CAmount& value{amount};
+    auto tx_out{new CTxOut(value, script_pubkey)};
+    return reinterpret_cast<kernel_TransactionOutput*>(tx_out);
+}
+
+void kernel_transaction_output_destroy(kernel_TransactionOutput* output)
+{
+    if (output) {
+        delete cast_transaction_output(output);
+    }
+}
+
+bool kernel_verify_script(const kernel_ScriptPubkey* script_pubkey_,
                          const int64_t amount_,
-                         const unsigned char* tx_to, size_t tx_to_len,
-                         const kernel_TransactionOutput* spent_outputs_, size_t spent_outputs_len,
+                         const kernel_Transaction* tx_to,
+                         const kernel_TransactionOutput** spent_outputs_, size_t spent_outputs_len,
                          const unsigned int input_index,
                          const unsigned int flags,
                          kernel_ScriptVerifyStatus* status)
 {
     const CAmount amount{amount_};
+    const auto& script_pubkey{*cast_script_pubkey(script_pubkey_)};
 
     if (!verify_flags(flags)) {
         if (status) *status = kernel_SCRIPT_VERIFY_ERROR_INVALID_FLAGS;
@@ -507,51 +500,36 @@ bool kernel_verify_script(const unsigned char* script_pubkey, size_t script_pubk
         return false;
     }
 
-    try {
-        TxInputStream stream{tx_to, tx_to_len};
-        CTransaction tx{deserialize, TX_WITH_WITNESS, stream};
-
-        std::vector<CTxOut> spent_outputs;
-        if (spent_outputs_ != nullptr) {
-            if (spent_outputs_len != tx.vin.size()) {
-                if (status) *status = kernel_SCRIPT_VERIFY_ERROR_SPENT_OUTPUTS_MISMATCH;
-                return false;
-            }
-            spent_outputs.reserve(spent_outputs_len);
-            for (size_t i = 0; i < spent_outputs_len; i++) {
-                CScript spk{CScript(spent_outputs_[i].script_pubkey, spent_outputs_[i].script_pubkey + spent_outputs_[i].script_pubkey_len)};
-                const CAmount& value{spent_outputs_[i].value};
-                CTxOut tx_out{CTxOut(value, spk)};
-                spent_outputs.push_back(tx_out);
-            }
-        }
-
-        if (input_index >= tx.vin.size()) {
-            if (status) *status = kernel_SCRIPT_VERIFY_ERROR_TX_INPUT_INDEX;
+    const CTransaction& tx{*cast_transaction(tx_to)};
+    std::vector<CTxOut> spent_outputs;
+    if (spent_outputs_ != nullptr) {
+        if (spent_outputs_len != tx.vin.size()) {
+            if (status) *status = kernel_SCRIPT_VERIFY_ERROR_SPENT_OUTPUTS_MISMATCH;
             return false;
         }
-        if (GetSerializeSize(TX_WITH_WITNESS(tx)) != tx_to_len) {
-            if (status) *status = kernel_SCRIPT_VERIFY_ERROR_TX_SIZE_MISMATCH;
-            return false;
+        spent_outputs.reserve(spent_outputs_len);
+        for (size_t i = 0; i < spent_outputs_len; i++) {
+            const CTxOut& tx_out{*reinterpret_cast<const CTxOut*>(spent_outputs_[i])};
+            spent_outputs.push_back(tx_out);
         }
+    }
 
-        PrecomputedTransactionData txdata{tx};
-
-        if (spent_outputs_ != nullptr && flags & kernel_SCRIPT_FLAGS_VERIFY_TAPROOT) {
-            txdata.Init(tx, std::move(spent_outputs));
-        }
-
-        return VerifyScript(tx.vin[input_index].scriptSig,
-                            CScript(script_pubkey,
-                                    script_pubkey + script_pubkey_len),
-                            &tx.vin[input_index].scriptWitness,
-                            flags,
-                            TransactionSignatureChecker(&tx, input_index, amount, txdata, MissingDataBehavior::FAIL),
-                            nullptr);
-    } catch (const std::exception&) {
-        if (status) *status = kernel_SCRIPT_VERIFY_ERROR_TX_DESERIALIZE;
+    if (input_index >= tx.vin.size()) {
+        if (status) *status = kernel_SCRIPT_VERIFY_ERROR_TX_INPUT_INDEX;
         return false;
     }
+    PrecomputedTransactionData txdata{tx};
+
+    if (spent_outputs_ != nullptr && flags & kernel_SCRIPT_FLAGS_VERIFY_TAPROOT) {
+        txdata.Init(tx, std::move(spent_outputs));
+    }
+
+    return VerifyScript(tx.vin[input_index].scriptSig,
+                        script_pubkey,
+                        &tx.vin[input_index].scriptWitness,
+                        flags,
+                        TransactionSignatureChecker(&tx, input_index, amount, txdata, MissingDataBehavior::FAIL),
+                        nullptr);
 }
 
 bool kernel_add_log_level_category(const kernel_LogCategory category, const kernel_LogLevel level_)
@@ -632,16 +610,19 @@ const kernel_ChainParameters* kernel_chain_parameters_create(const kernel_ChainT
 {
     switch (chain_type) {
     case kernel_ChainType::kernel_CHAIN_TYPE_MAINNET: {
-        return reinterpret_cast<const kernel_ChainParameters*>(new KernelChainParams(CChainParams::Main()));
+        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::Main().release());
     }
     case kernel_ChainType::kernel_CHAIN_TYPE_TESTNET: {
-        return reinterpret_cast<const kernel_ChainParameters*>(new KernelChainParams(CChainParams::TestNet()));
+        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::TestNet().release());
+    }
+    case kernel_ChainType::kernel_CHAIN_TYPE_TESTNET_4: {
+        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::TestNet4().release());
     }
     case kernel_ChainType::kernel_CHAIN_TYPE_SIGNET: {
-        return reinterpret_cast<const kernel_ChainParameters*>(new KernelChainParams(CChainParams::SigNet({})));
+        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::SigNet({}).release());
     }
     case kernel_ChainType::kernel_CHAIN_TYPE_REGTEST: {
-        return reinterpret_cast<const kernel_ChainParameters*>(new KernelChainParams(CChainParams::RegTest({})));
+        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::RegTest({}).release());
     }
     } // no default case, so the compiler can warn about missing cases
     assert(false);
@@ -671,42 +652,19 @@ kernel_ContextOptions* kernel_context_options_create()
     return reinterpret_cast<kernel_ContextOptions*>(new ContextOptions{});
 }
 
-bool kernel_context_options_set(kernel_ContextOptions* options_, const kernel_ContextOptionType n_option, const void* value)
+void kernel_context_options_set_chainparams(kernel_ContextOptions* options_, const kernel_ChainParameters* chain_parameters)
 {
     auto options{cast_context_options(options_)};
-    switch (n_option) {
-    case kernel_ContextOptionType::kernel_CHAIN_PARAMETERS_OPTION: {
-        auto chain_params{reinterpret_cast<const KernelChainParams*>(value)};
-        if (!chain_params->IsValid()) {
-            LogError("Selected kernel notifications context option, but the value is not a valid chain params struct.\n");
-            return false;
-        }
-        // Copy the chainparams, so the caller can free it again
-        options->m_chainparams = std::make_unique<const CChainParams>(*chain_params->m_chainparams);
-        return true;
-    }
-    case kernel_ContextOptionType::kernel_NOTIFICATIONS_OPTION: {
-        auto notifications{reinterpret_cast<const KernelNotifications*>(value)};
-        if (!notifications->IsValid()) {
-            LogError("Selected kernel notifications context option, but the value is not a valid kernel notifications struct.\n");
-            return false;
-        }
-        // This copies the data, so the caller can free it again.
-        options->m_notifications = std::make_unique<KernelNotifications>(*notifications);
-        return true;
-    }
-    case kernel_ContextOptionType::kernel_TASK_RUNNER_OPTION: {
-        auto task_runner{reinterpret_cast<const TaskRunner*>(value)};
-        if (!task_runner->IsValid()) {
-            LogError("Selected kernel task runner context option, but the value is not a valid kernel task runner struct.\n");
-            return false;
-        }
-        // Copy the task runner, so the caller can free it again.
-        options->m_task_runner = std::make_unique<TaskRunner>(*task_runner);
-        return true;
-    }
-    } // no default case, so the compiler can warn about missing cases
-    assert(false);
+    auto chain_params{reinterpret_cast<const CChainParams*>(chain_parameters)};
+    // Copy the chainparams, so the caller can free it again
+    options->m_chainparams = std::make_unique<const CChainParams>(*chain_params);
+}
+
+void kernel_context_options_set_notifications(kernel_ContextOptions* options_, const kernel_Notifications* notifications_)
+{
+    auto options{cast_context_options(options_)};
+    auto notifications{reinterpret_cast<const KernelNotifications*>(notifications_)};
+    options->m_notifications = std::make_unique<const KernelNotifications>(*notifications);
 }
 
 void kernel_context_options_destroy(kernel_ContextOptions* options)
@@ -739,20 +697,6 @@ void kernel_context_destroy(kernel_Context* context)
 {
     if (context) {
         delete cast_context(context);
-    }
-}
-
-kernel_TaskRunner* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_task_runner_create(kernel_TaskRunnerCallbacks callbacks)
-{
-    auto runner{new TaskRunner{callbacks}};
-    runner->IsValid();
-    return reinterpret_cast<kernel_TaskRunner*>(runner);
-}
-
-void kernel_task_runner_destroy(kernel_TaskRunner* task_runner)
-{
-    if (task_runner) {
-        delete cast_task_runner(task_runner);
     }
 }
 
@@ -916,32 +860,37 @@ kernel_ChainstateLoadOptions* kernel_chainstate_load_options_create()
     return reinterpret_cast<kernel_ChainstateLoadOptions*>(new node::ChainstateLoadOptions);
 }
 
-void kernel_chainstate_load_options_set(
+
+void kernel_chainstate_load_options_set_wipe_block_tree_db(
     kernel_ChainstateLoadOptions* chainstate_load_opts_,
-    kernel_ChainstateLoadOptionType n_option,
-    bool value)
+    bool wipe_block_tree_db)
 {
     auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
+    chainstate_load_opts->wipe_block_tree_db = wipe_block_tree_db;
+}
 
-    switch (n_option) {
-    case kernel_ChainstateLoadOptionType::kernel_WIPE_BLOCK_TREE_DB_CHAINSTATE_LOAD_OPTION: {
-        chainstate_load_opts->wipe_block_tree_db = value;
-        return;
-    }
-    case kernel_ChainstateLoadOptionType::kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION: {
-        chainstate_load_opts->wipe_chainstate_db = value;
-        return;
-    }
-    case kernel_ChainstateLoadOptionType::kernel_BLOCK_TREE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION: {
-        chainstate_load_opts->block_tree_db_in_memory = value;
-        return;
-    }
-    case kernel_ChainstateLoadOptionType::kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION: {
-        chainstate_load_opts->coins_db_in_memory = value;
-        return;
-    }
-    } // no default case, so the compiler can warn about missing cases
-    assert(false);
+void kernel_chainstate_load_options_set_wipe_chainstate_db(
+    kernel_ChainstateLoadOptions* chainstate_load_opts_,
+    bool wipe_chainstate_db)
+{
+    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
+    chainstate_load_opts->wipe_chainstate_db = wipe_chainstate_db;
+}
+
+void kernel_chainstate_load_options_set_block_tree_db_in_memory(
+    kernel_ChainstateLoadOptions* chainstate_load_opts_,
+    bool block_tree_db_in_memory)
+{
+    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
+    chainstate_load_opts->block_tree_db_in_memory = block_tree_db_in_memory;
+}
+
+void kernel_chainstate_load_options_set_chainstate_db_in_memory(
+    kernel_ChainstateLoadOptions* chainstate_load_opts_,
+    bool chainstate_db_in_memory)
+{
+    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
+    chainstate_load_opts->coins_db_in_memory = chainstate_db_in_memory;
 }
 
 void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chainstate_load_opts)
@@ -1241,17 +1190,8 @@ kernel_TransactionOutput* kernel_get_undo_output_by_index(kernel_BlockUndo* bloc
         return nullptr;
     }
 
-    const auto& prevout{tx_undo.vprevout.at(output_index).out};
-    std::unique_ptr<unsigned char[]> byte_array(new unsigned char[prevout.scriptPubKey.size()]);
-    std::copy(prevout.scriptPubKey.begin(), prevout.scriptPubKey.end(), byte_array.get());
-
-    auto kernel_prevout{new kernel_TransactionOutput{}};
-
-    kernel_prevout->value = prevout.nValue;
-    kernel_prevout->script_pubkey_len = prevout.scriptPubKey.size();
-    kernel_prevout->script_pubkey = byte_array.release();
-
-    return reinterpret_cast<kernel_TransactionOutput*>(kernel_prevout);
+    CTxOut* prevout{new CTxOut{tx_undo.vprevout.at(output_index).out}};
+    return reinterpret_cast<kernel_TransactionOutput*>(prevout);
 }
 
 kernel_BlockIndexInfo* kernel_get_block_index_info(kernel_BlockIndex* block_index_)
@@ -1265,12 +1205,17 @@ void kernel_block_index_info_destroy(kernel_BlockIndexInfo* info)
     if (info) delete info;
 }
 
-void kernel_transaction_output_destroy(kernel_TransactionOutput* transaction_output)
+kernel_ScriptPubkey* kernel_copy_script_pubkey_from_output(kernel_TransactionOutput* output_)
 {
-    if (transaction_output && transaction_output->script_pubkey) {
-        delete[] transaction_output->script_pubkey;
-    }
-    if (transaction_output) delete transaction_output;
+    auto output{cast_transaction_output(output_)};
+    auto script_pubkey = new CScript{output->scriptPubKey};
+    return reinterpret_cast<kernel_ScriptPubkey*>(script_pubkey);
+}
+
+int64_t kernel_get_transaction_output_amount(kernel_TransactionOutput* output_)
+{
+    auto output{cast_transaction_output(output_)};
+    return output->nValue;
 }
 
 bool kernel_chainstate_manager_process_block(
