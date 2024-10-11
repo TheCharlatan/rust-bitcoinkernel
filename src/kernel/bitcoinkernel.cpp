@@ -383,12 +383,6 @@ std::shared_ptr<KernelValidationInterface>* cast_validation_interface(kernel_Val
     return reinterpret_cast<std::shared_ptr<KernelValidationInterface>*>(interface);
 }
 
-std::function<void()>* cast_validation_event(kernel_ValidationEvent* event)
-{
-    assert(event);
-    return reinterpret_cast<std::function<void()>*>(event);
-}
-
 const BlockValidationState* cast_block_validation_state(const kernel_BlockValidationState* block_validation_state)
 {
     assert(block_validation_state);
@@ -664,6 +658,7 @@ void kernel_context_options_set_notifications(kernel_ContextOptions* options_, c
 {
     auto options{cast_context_options(options_)};
     auto notifications{reinterpret_cast<const KernelNotifications*>(notifications_)};
+    // Copy the notifications, so the caller can free it again
     options->m_notifications = std::make_unique<const KernelNotifications>(*notifications);
 }
 
@@ -735,18 +730,6 @@ void kernel_validation_interface_destroy(kernel_ValidationInterface* validation_
 {
     if (validation_interface) {
         delete cast_validation_interface(validation_interface);
-    }
-}
-
-void kernel_execute_event_and_destroy(kernel_ValidationEvent* event)
-{
-    std::function<void()>* func = cast_validation_event(event);
-    try {
-        (*func)();
-        delete func;
-    } catch (const std::exception& e) {
-        LogError("Failed to execute event: %s\n", std::string{e.what()});
-        if (func) delete func;
     }
 }
 
