@@ -213,12 +213,6 @@ typedef struct kernel_Block kernel_Block;
 typedef struct kernel_BlockPointer kernel_BlockPointer;
 
 /**
- * Opaque data structure for holding a validation event. The event can only be
- * processed by calling kernel_execute_event_and_destroy(..).
- */
-typedef struct kernel_ValidationEvent kernel_ValidationEvent;
-
-/**
  * Opaque data structure for holding the state of a block during validation.
  *
  * Contains information indicating whether validation was successful, and if not
@@ -643,8 +637,8 @@ void kernel_notifications_destroy(const kernel_Notifications* notifications);
 kernel_ContextOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_create();
 
 /**
- * @brief Sets a single, specific field in the options. The option type has to
- * match the option value.
+ * @brief Sets the chain params for the context options. The context created
+ * with the options will be configured for these chain parameters.
  *
  * @param[in] context_options  Non-null, previously created with kernel_context_options_create.
  * @param[in] chain_parameters Is set to the context options.
@@ -655,7 +649,8 @@ void kernel_context_options_set_chainparams(
 ) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
 
 /**
- * @brief Set the kernel notifications for context option.
+ * @brief Set the kernel notifications for the context options. The context
+ * created with the options will be configured with these notifications.
  *
  * @param[in] context_options Non-null, previously created with kernel_context_options_create.
  * @param[in] notifications   Is set to the context options.
