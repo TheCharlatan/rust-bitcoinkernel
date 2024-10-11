@@ -3,7 +3,7 @@
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 
-use libbitcoinkernel_sys::{verify, Utxo};
+use libbitcoinkernel_sys::{verify, ScriptPubkey, Transaction, TxOut};
 
 #[derive(Debug, Arbitrary)]
 pub struct UtxoWrapper {
@@ -23,19 +23,26 @@ pub struct VerifyInput {
 
 fuzz_target!(|data: VerifyInput| {
     // Call the verify function with the fuzzed inputs
-    let spent_outputs: Vec<Utxo> = data
+    let spent_outputs: Vec<TxOut> = data
         .spent_outputs
         .iter()
-        .map(|utxo| Utxo {
-            value: utxo.value,
-            script_pubkey: &utxo.script_pubkey,
+        .map(|utxo| {
+            let script_pubkey = ScriptPubkey::try_from(utxo.script_pubkey.as_slice()).unwrap();
+            TxOut::new(&script_pubkey, utxo.value)
         })
         .collect();
 
+    let script_pubkey = ScriptPubkey::try_from(data.script_pubkey.as_slice()).unwrap();
+    let transaction = if let Ok(res) = Transaction::try_from(data.tx_to.as_slice()) {
+        res
+    } else {
+        return;
+    };
+
     let _ = verify(
-        &data.script_pubkey,
+        &script_pubkey,
         data.amount,
-        &data.tx_to,
+        &transaction,
         data.input_index,
         data.flags,
         &spent_outputs,

@@ -1,5 +1,5 @@
-use std::fmt;
 use std::env;
+use std::fmt;
 use std::process;
 
 use bitcoin::consensus::deserialize;
@@ -37,7 +37,6 @@ fn setup_logging() -> Result<Logger<MainLog>, KernelError> {
 fn create_context() -> Context {
     ContextBuilder::new()
         .chain_type(ChainType::REGTEST)
-        .unwrap()
         .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
             kn_block_tip: Box::new(|_state, _block_index| {}),
             kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
@@ -47,7 +46,6 @@ fn create_context() -> Context {
             kn_flush_error: Box::new(|_message| {}),
             kn_fatal_error: Box::new(|_message| {}),
         }))
-        .unwrap()
         .build()
         .unwrap()
 }
@@ -183,8 +181,7 @@ fn scan_txs(chainman: &ChainstateManager) {
         assert_eq!(block.txdata.len() - 1, undo.n_tx_undo);
 
         for i in 0..(block.txdata.len() - 1) {
-            let transaction_undo_size: u64 =
-                undo.get_get_transaction_undo_size(i.try_into().unwrap());
+            let transaction_undo_size: u64 = undo.get_transaction_undo_size(i.try_into().unwrap());
             let transaction_input_size: u64 = block.txdata[i + 1].input.len().try_into().unwrap();
             assert_eq!(transaction_input_size, transaction_undo_size);
             let mut scan_tx_helper = ScanTxHelper {
@@ -200,7 +197,8 @@ fn scan_txs(chainman: &ChainstateManager) {
                     prevout: undo
                         .get_prevout_by_index(i as u64, j)
                         .unwrap()
-                        .script_pubkey,
+                        .get_script_pubkey()
+                        .get(),
                     script_sig: block.txdata[i + 1].input[j as usize].script_sig.to_bytes(),
                     witness: block.txdata[i + 1].input[j as usize].witness.to_vec(),
                     prevout_data: (

@@ -2,18 +2,16 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use libbitcoinkernel_sys::{
-        execute_event, register_validation_interface, unregister_validation_interface, verify,
-        Block, BlockIndexInfo, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
+        register_validation_interface, unregister_validation_interface, verify, Block,
+        BlockIndexInfo, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
         ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
-        ContextBuilder, Event, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
-        ProcessBlockError, TaskRunnerCallbackHolder, TxOut, Utxo,
+        ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
+        ProcessBlockError, ScriptPubkey, Transaction, TxOut, Utxo,
         ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT,
     };
-    use std::collections::VecDeque;
     use std::fs::File;
     use std::io::{BufRead, BufReader};
-    use std::sync::{Arc, Condvar, Mutex, Once};
-    use std::thread;
+    use std::sync::Once;
     use tempdir::TempDir;
 
     struct TestLog {}
@@ -29,14 +27,6 @@ mod tests {
     static START: Once = Once::new();
     static mut GLOBAL_LOG_CALLBACK_HOLDER: Option<Logger<TestLog>> = None;
 
-    type Queue = Arc<(Mutex<VecDeque<Event>>, Condvar)>;
-
-    enum TaskRunnerType {
-        Threaded,
-        Immediate,
-        None,
-    }
-
     fn setup_logging() {
         let mut builder = env_logger::Builder::from_default_env();
         builder.filter(None, log::LevelFilter::Info).init();
@@ -44,79 +34,9 @@ mod tests {
         unsafe { GLOBAL_LOG_CALLBACK_HOLDER = Some(Logger::new(TestLog {}).unwrap()) };
     }
 
-    fn runtime(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
-        thread::spawn(move || {
-            let (lock, cvar) = &*queue;
-            loop {
-                let mut queue = lock.lock().unwrap();
-                while queue.is_empty() {
-                    queue = cvar.wait(queue).unwrap();
-                }
-                let event = queue.pop_front().unwrap();
-                execute_event(event).unwrap();
-                log::trace!("executed runtime event!");
-            }
-        });
-    }
-
-    fn empty_queue(queue: Arc<(Mutex<VecDeque<Event>>, Condvar)>) {
-        log::trace!("Emptying the processing queue...");
-        let (lock, _) = &*queue;
-        let mut queue = lock.lock().unwrap();
-        while let Some(event) = queue.pop_front() {
-            execute_event(event).unwrap();
-        }
-        log::trace!("Processing queue emptied.");
-    }
-
-    fn immediate_taskrunner() -> TaskRunnerCallbackHolder {
-        TaskRunnerCallbackHolder {
-            tr_insert: Box::new(move |event| {
-                execute_event(event).unwrap();
-            }),
-            tr_flush: Box::new(|| {
-                return;
-            }),
-            tr_size: Box::new(|| {
-                return 0;
-            }),
-        }
-    }
-
-    fn threaded_taskrunner(queue: Queue) -> TaskRunnerCallbackHolder {
-        TaskRunnerCallbackHolder {
-            tr_insert: {
-                let queue = queue.clone();
-                Box::new(move |event| {
-                    log::trace!("Added to process queue");
-                    let (lock, cvar) = &*queue;
-                    lock.lock().unwrap().push_back(event);
-                    cvar.notify_one();
-                })
-            },
-
-            tr_flush: {
-                let queue = queue.clone();
-                Box::new(move || {
-                    empty_queue(queue.clone());
-                })
-            },
-
-            tr_size: {
-                let queue = queue.clone();
-                Box::new(move || {
-                    log::trace!("Callbacks pending...");
-                    let (lock, _) = &*queue;
-                    lock.lock().unwrap().len().try_into().unwrap()
-                })
-            },
-        }
-    }
-
-    fn create_context(queue: Option<Queue>) -> Context {
-        let mut builder = ContextBuilder::new()
+    fn create_context() -> Context {
+        let builder = ContextBuilder::new()
             .chain_type(ChainType::REGTEST)
-            .unwrap()
             .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
                 kn_block_tip: Box::new(|_state, _block_tip| {
                     log::info!("Received block tip.");
@@ -143,17 +63,7 @@ mod tests {
                 kn_fatal_error: Box::new(|message| {
                     log::info!("Fatal Error! {message}");
                 }),
-            }))
-            .unwrap();
-        if let Some(queue) = queue {
-            builder = builder
-                .tr_callbacks(Box::new(threaded_taskrunner(queue.clone())))
-                .unwrap();
-        } else {
-            builder = builder
-                .tr_callbacks(Box::new(immediate_taskrunner()))
-                .unwrap();
-        }
+            }));
         builder.build().unwrap()
     }
 
@@ -168,30 +78,12 @@ mod tests {
         validation_interface
     }
 
-    fn testing_setup(
-        task_runner_type: TaskRunnerType,
-    ) -> (Context, Option<ValidationInterfaceWrapper>, String) {
+    fn testing_setup() -> (Context, ValidationInterfaceWrapper, String) {
         START.call_once(|| {
             setup_logging();
         });
-        let (context, validation_interface) = match task_runner_type {
-            TaskRunnerType::Threaded => {
-                let queue = Arc::new((Mutex::new(VecDeque::<Event>::new()), Condvar::new()));
-                runtime(queue.clone());
-                let context = create_context(Some(queue.clone()));
-                let validation_interface = setup_validation_interface(&context);
-                (context, Some(validation_interface))
-            }
-            TaskRunnerType::Immediate => {
-                let context = create_context(None);
-                let validation_interface = setup_validation_interface(&context);
-                (context, Some(validation_interface))
-            }
-            TaskRunnerType::None => {
-                let context = create_context(None);
-                (context, None)
-            }
-        };
+        let context = create_context();
+        let validation_interface = setup_validation_interface(&context);
 
         let temp_dir = TempDir::new("test_chainman_regtest").unwrap();
         let data_dir = temp_dir.path();
@@ -214,7 +106,7 @@ mod tests {
 
     #[test]
     fn test_reindex() {
-        let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Threaded);
+        let (context, validation_interface, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         {
             let block_data = read_block_data();
@@ -241,16 +133,16 @@ mod tests {
         )
         .unwrap();
         chainman
-            .load_chainstate(ChainstateLoadOptions::new().set_reindex(true).unwrap())
+            .load_chainstate(ChainstateLoadOptions::new().set_reindex(true))
             .unwrap();
         chainman.import_blocks().unwrap();
         drop(chainman);
-        unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
+        unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
     #[test]
     fn test_invalid_block() {
-        let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Threaded);
+        let (context, validation_interface, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         for _ in 0..10 {
             let chainman = ChainstateManager::new(
@@ -284,7 +176,7 @@ mod tests {
                 Err(KernelError::ProcessBlock(ProcessBlockError::Invalid))
             ));
         }
-        unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
+        unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
     #[test]
@@ -302,7 +194,7 @@ mod tests {
             outs: Vec<Vec<u8>>,
         }
 
-        let (context, _, data_dir) = testing_setup(TaskRunnerType::None);
+        let (context, validation_interface, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
@@ -319,7 +211,6 @@ mod tests {
             let block = Block::try_from(raw_block.as_slice()).unwrap();
             chainman.process_block(&block).unwrap();
         }
-
         let block_index_genesis = chainman.get_block_index_genesis();
         let info = block_index_genesis.info();
         assert_eq!(info.height, 0);
@@ -345,8 +236,7 @@ mod tests {
         assert_eq!(block.txdata.len() - 1, undo.n_tx_undo);
 
         for i in 0..(block.txdata.len() - 1) {
-            let transaction_undo_size: u64 =
-                undo.get_get_transaction_undo_size(i.try_into().unwrap());
+            let transaction_undo_size: u64 = undo.get_transaction_undo_size(i.try_into().unwrap());
             let transaction_input_size: u64 = block.txdata[i + 1].input.len().try_into().unwrap();
             assert_eq!(transaction_input_size, transaction_undo_size);
             let mut helper = ScanTxHelper {
@@ -362,18 +252,20 @@ mod tests {
                     prevout: undo
                         .get_prevout_by_index(i as u64, j)
                         .unwrap()
-                        .script_pubkey,
+                        .get_script_pubkey()
+                        .get(),
                     script_sig: block.txdata[i + 1].input[j as usize].script_sig.to_bytes(),
                     witness: block.txdata[i + 1].input[j as usize].witness.to_vec(),
                 });
             }
             println!("helper: {:?}", helper);
         }
+        unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
     #[test]
     fn test_process_data() {
-        let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Immediate);
+        let (context, validation_interface, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
@@ -391,12 +283,12 @@ mod tests {
             chainman.process_block(&block).unwrap();
         }
 
-        unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
+        unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
     #[test]
     fn test_validate_any() {
-        let (context, validation_interface, data_dir) = testing_setup(TaskRunnerType::Immediate);
+        let (context, validation_interface, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
@@ -410,7 +302,7 @@ mod tests {
             .unwrap();
 
         chainman.import_blocks().unwrap();
-        unregister_validation_interface(&validation_interface.unwrap(), &context).unwrap();
+        unregister_validation_interface(&validation_interface, &context).unwrap();
         let block_2 = Block::try_from(block_data[1].clone().as_slice()).unwrap();
         assert!(matches!(
             chainman.process_block(&block_2),
@@ -420,7 +312,7 @@ mod tests {
 
     #[test]
     fn test_logger() {
-        let (_, _, _) = testing_setup(TaskRunnerType::Immediate);
+        let (_, _, _) = testing_setup();
 
         let logger_1 = Some(Logger::new(TestLog {}).unwrap());
         let logger_2 = Some(Logger::new(TestLog {}).unwrap());
@@ -484,10 +376,13 @@ mod tests {
         input: u32,
     ) -> Result<(), KernelError> {
         let outputs = vec![];
+        let spent_script_pubkey =
+            ScriptPubkey::try_from(hex::decode(spent).unwrap().as_slice()).unwrap();
+        let spending_tx = Transaction::try_from(hex::decode(spending).unwrap().as_slice()).unwrap();
         verify(
-            hex::decode(spent).unwrap().as_slice(),
+            &spent_script_pubkey,
             Some(amount),
-            hex::decode(spending).unwrap().as_slice(),
+            &spending_tx,
             input,
             Some(VERIFY_ALL_PRE_TAPROOT),
             &outputs,
@@ -498,12 +393,16 @@ mod tests {
     fn test_traits() {
         fn is_sync<T: Sync>() {}
         fn is_send<T: Send>() {}
+        is_sync::<ScriptPubkey>();
+        is_send::<ScriptPubkey>();
         is_sync::<ChainParams>(); // compiles only if true
         is_send::<ChainParams>();
         is_sync::<Utxo>();
         is_send::<Utxo>();
         is_sync::<TxOut>();
         is_send::<TxOut>();
+        is_sync::<Transaction>();
+        is_send::<Transaction>();
         is_sync::<Context>();
         is_send::<Context>();
         is_sync::<Block>();

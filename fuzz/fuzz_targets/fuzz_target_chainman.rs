@@ -15,7 +15,6 @@ use libbitcoinkernel_sys::{
 fn create_context(chain_type: ChainType) -> Context {
     ContextBuilder::new()
         .chain_type(chain_type)
-        .unwrap()
         .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
             kn_block_tip: Box::new(|_state, _block_index| {}),
             kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
@@ -25,7 +24,6 @@ fn create_context(chain_type: ChainType) -> Context {
             kn_flush_error: Box::new(|_message| {}),
             kn_fatal_error: Box::new(|_message| {}),
         }))
-        .unwrap()
         .build()
         .unwrap()
 }
@@ -89,15 +87,13 @@ fuzz_target!(|data: ChainstateManagerInput| {
     match chainman.load_chainstate(
         ChainstateLoadOptions::new()
             .set_reindex(data.wipe_block_index)
-            .unwrap()
             .set_wipe_chainstate_db(data.wipe_chainstate_index)
-            .unwrap()
             .set_block_tree_db_in_memory(data.block_tree_db_in_memory)
-            .unwrap()
-            .set_chainstate_db_in_memory(data.chainstate_db_in_memory)
-            .unwrap(),
+            .set_chainstate_db_in_memory(data.chainstate_db_in_memory),
     ) {
-        Err(libbitcoinkernel_sys::KernelError::Internal(_)) => {}
+        Err(libbitcoinkernel_sys::KernelError::Internal(_)) => {
+            return;
+        }
         Err(err) => {
             let _ = std::fs::remove_dir_all(data_dir);
             panic!("this should never happen: {}", err);

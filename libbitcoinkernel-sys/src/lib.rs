@@ -6,7 +6,7 @@ use std::ffi::{CStr, CString, NulError};
 use std::fmt;
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_void};
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::AtomicPtr;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -34,12 +34,12 @@ pub struct Utxo<'a> {
 }
 
 pub fn verify(
-    script_pubkey: &[u8],
+    script_pubkey: &ScriptPubkey,
     amount: Option<i64>,
-    tx_to: &[u8],
+    tx_to: &Transaction,
     input_index: u32,
     flags: Option<u32>,
-    spent_outputs: &[Utxo],
+    spent_outputs: &[TxOut],
 ) -> Result<(), KernelError> {
     let kernel_flags = if let Some(flag) = flags {
         flag
@@ -48,28 +48,22 @@ pub fn verify(
     };
     let mut status = kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_OK;
     let kernel_amount = if let Some(a) = amount { a } else { 0 };
-    let kernel_spent_outputs: Vec<kernel_TransactionOutput> = spent_outputs
+    let kernel_spent_outputs: Vec<*const kernel_TransactionOutput> = spent_outputs
         .iter()
-        .map(|utxo| kernel_TransactionOutput {
-            value: utxo.value,
-            script_pubkey: utxo.script_pubkey.as_ptr(),
-            script_pubkey_len: utxo.script_pubkey.len(),
-        })
+        .map(|utxo| utxo.inner as *const kernel_TransactionOutput)
         .collect();
 
     let spent_outputs_ptr = if kernel_spent_outputs.is_empty() {
-        std::ptr::null()
+        std::ptr::null_mut()
     } else {
-        kernel_spent_outputs.as_ptr()
+        kernel_spent_outputs.as_ptr() as *mut *const kernel_TransactionOutput
     };
 
     let ret = unsafe {
         kernel_verify_script(
-            script_pubkey.as_ptr(),
-            script_pubkey.len(),
+            script_pubkey.inner,
             kernel_amount,
-            tx_to.as_ptr(),
-            tx_to.len(),
+            tx_to.inner,
             spent_outputs_ptr,
             spent_outputs.len(),
             input_index,
@@ -82,12 +76,6 @@ pub fn verify(
         let err = match status {
             kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_TX_INPUT_INDEX => {
                 ScriptVerifyError::TxInputIndex
-            }
-            kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_TX_SIZE_MISMATCH => {
-                ScriptVerifyError::TxSizeMismatch
-            }
-            kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_TX_DESERIALIZE => {
-                ScriptVerifyError::TxDeserialize
             }
             kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_ERROR_INVALID_FLAGS => {
                 ScriptVerifyError::InvalidFlags
@@ -258,39 +246,6 @@ unsafe extern "C" fn kn_fatal_error_wrapper(user_data: *mut c_void, message: *co
     (holder.kn_fatal_error)(cast_string(message));
 }
 
-pub trait TRInsertFn: Fn(Event) {}
-impl<F: Fn(Event)> TRInsertFn for F {}
-
-pub trait TRFlushFn: Fn() {}
-impl<F: Fn()> TRFlushFn for F {}
-
-pub trait TRSizeFn: Fn() -> usize {}
-impl<F: Fn() -> usize> TRSizeFn for F {}
-
-pub struct TaskRunnerCallbackHolder {
-    pub tr_insert: Box<dyn TRInsertFn>,
-    pub tr_flush: Box<dyn TRFlushFn>,
-    pub tr_size: Box<dyn TRSizeFn>,
-}
-
-unsafe extern "C" fn tr_insert_wrapper(user_data: *mut c_void, event: *mut kernel_ValidationEvent) {
-    let holder = &*(user_data as *mut TaskRunnerCallbackHolder);
-    (holder.tr_insert)(Event {
-        inner: AtomicPtr::new(event),
-    });
-}
-
-unsafe extern "C" fn tr_flush_wrapper(user_data: *mut c_void) {
-    let holder = &*(user_data as *mut TaskRunnerCallbackHolder);
-    (holder.tr_flush)();
-}
-
-unsafe extern "C" fn tr_size_wrapper(user_data: *mut c_void) -> u32 {
-    let holder = &*(user_data as *mut TaskRunnerCallbackHolder);
-    let res = (holder.tr_size)();
-    res.try_into().unwrap()
-}
-
 pub struct ChainParams {
     inner: *const kernel_ChainParameters,
 }
@@ -317,7 +272,6 @@ impl Drop for ChainParams {
 
 pub struct Context {
     inner: *mut kernel_Context,
-    pub tr_callbacks: Option<Box<TaskRunnerCallbackHolder>>,
     pub kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
 }
 
@@ -340,7 +294,6 @@ impl Drop for Context {
 
 pub struct ContextBuilder {
     inner: *mut kernel_ContextOptions,
-    pub tr_callbacks: Option<Box<TaskRunnerCallbackHolder>>,
     pub kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
 }
 
@@ -348,7 +301,6 @@ impl ContextBuilder {
     pub fn new() -> ContextBuilder {
         let context = ContextBuilder {
             inner: unsafe { kernel_context_options_create() },
-            tr_callbacks: None,
             kn_callbacks: None,
         };
         context
@@ -367,45 +319,14 @@ impl ContextBuilder {
         unsafe { kernel_context_options_destroy(self.inner) };
         Ok(Context {
             inner,
-            tr_callbacks: self.tr_callbacks,
             kn_callbacks: self.kn_callbacks.unwrap(),
         })
-    }
-
-    pub fn tr_callbacks(
-        mut self,
-        tr_callbacks: Box<TaskRunnerCallbackHolder>,
-    ) -> Result<ContextBuilder, KernelError> {
-        let tr_pointer = Box::into_raw(tr_callbacks);
-
-        unsafe {
-            let holder = kernel_TaskRunnerCallbacks {
-                user_data: tr_pointer as *mut c_void,
-                insert: Some(tr_insert_wrapper),
-                flush: Some(tr_flush_wrapper),
-                size: Some(tr_size_wrapper),
-            };
-            let kernel_task_runner = kernel_task_runner_create(holder);
-            let success = kernel_context_options_set(
-                self.inner,
-                kernel_ContextOptionType_kernel_TASK_RUNNER_OPTION,
-                kernel_task_runner as *mut c_void,
-            );
-            kernel_task_runner_destroy(kernel_task_runner);
-            if !success {
-                return Err(KernelError::InvalidOptions(
-                    "Failed to set task runner context option.".to_string(),
-                ));
-            }
-        };
-        self.tr_callbacks = unsafe { Some(Box::from_raw(tr_pointer)) };
-        Ok(self)
     }
 
     pub fn kn_callbacks(
         mut self,
         kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
-    ) -> Result<ContextBuilder, KernelError> {
+    ) -> ContextBuilder {
         let kn_pointer = Box::into_raw(kn_callbacks);
         unsafe {
             let holder = kernel_NotificationInterfaceCallbacks {
@@ -419,36 +340,17 @@ impl ContextBuilder {
                 fatal_error: Some(kn_fatal_error_wrapper),
             };
             let kernel_notifications = kernel_notifications_create(holder);
-            let success = kernel_context_options_set(
-                self.inner,
-                kernel_ContextOptionType_kernel_NOTIFICATIONS_OPTION,
-                kernel_notifications as *mut c_void,
-            );
+            kernel_context_options_set_notifications(self.inner, kernel_notifications);
             kernel_notifications_destroy(kernel_notifications);
-            if !success {
-                return Err(KernelError::InvalidOptions(
-                    "Failed to set notifications context option.".to_string(),
-                ));
-            }
         };
         self.kn_callbacks = unsafe { Some(Box::from_raw(kn_pointer)) };
-        Ok(self)
+        self
     }
 
-    pub fn chain_type(self, chain_type: ChainType) -> Result<ContextBuilder, KernelError> {
+    pub fn chain_type(self, chain_type: ChainType) -> ContextBuilder {
         let chain_params = ChainParams::new(chain_type);
-        unsafe {
-            if !kernel_context_options_set(
-                self.inner,
-                kernel_ContextOptionType_kernel_CHAIN_PARAMETERS_OPTION,
-                chain_params.inner as *mut c_void,
-            ) {
-                return Err(KernelError::InvalidOptions(
-                    "Failed to set chainparams context option.".to_string(),
-                ));
-            }
-        };
-        Ok(self)
+        unsafe { kernel_context_options_set_chainparams(self.inner, chain_params.inner) };
+        self
     }
 }
 
@@ -577,30 +479,110 @@ impl Drop for ValidationInterfaceWrapper {
 }
 
 #[derive(Debug, Clone)]
-pub struct TxOut {
-    pub value: i64,
-    pub script_pubkey: Vec<u8>,
+pub struct ScriptPubkey {
+    inner: *mut kernel_ScriptPubkey,
 }
 
-impl From<kernel_TransactionOutput> for TxOut {
-    fn from(c: kernel_TransactionOutput) -> TxOut {
-        TxOut {
-            value: c.value,
-            script_pubkey: unsafe {
-                std::slice::from_raw_parts(c.script_pubkey, c.script_pubkey_len.try_into().unwrap())
-            }
-            .to_vec(),
+unsafe impl Send for ScriptPubkey {}
+unsafe impl Sync for ScriptPubkey {}
+
+impl ScriptPubkey {
+    pub fn get(&self) -> Vec<u8> {
+        let script_pubkey = unsafe { kernel_copy_script_pubkey_data(self.inner) };
+        unsafe {
+            std::slice::from_raw_parts(
+                (*script_pubkey).data,
+                (*script_pubkey).size.try_into().unwrap(),
+            )
         }
+        .to_vec()
+    }
+}
+
+impl TryFrom<&[u8]> for ScriptPubkey {
+    type Error = KernelError;
+
+    fn try_from(raw_script_pubkey: &[u8]) -> Result<Self, Self::Error> {
+        let inner = unsafe {
+            kernel_script_pubkey_create(raw_script_pubkey.as_ptr(), raw_script_pubkey.len())
+        };
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to decode raw transaction".to_string(),
+            ));
+        }
+        Ok(ScriptPubkey { inner })
+    }
+}
+
+impl Drop for ScriptPubkey {
+    fn drop(&mut self) {
+        unsafe { kernel_script_pubkey_destroy(self.inner) }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TxOut {
+    inner: *mut kernel_TransactionOutput,
+}
+
+unsafe impl Send for TxOut {}
+unsafe impl Sync for TxOut {}
+
+impl TxOut {
+    pub fn new(script_pubkey: &ScriptPubkey, amount: i64) -> TxOut {
+        TxOut {
+            inner: unsafe { kernel_transaction_output_create(script_pubkey.inner, amount) },
+        }
+    }
+
+    pub fn get_value(&self) -> i64 {
+        unsafe { kernel_get_transaction_output_amount(self.inner) }
+    }
+
+    pub fn get_script_pubkey(&self) -> ScriptPubkey {
+        ScriptPubkey {
+            inner: unsafe { kernel_copy_script_pubkey_from_output(self.inner) },
+        }
+    }
+}
+
+impl Drop for TxOut {
+    fn drop(&mut self) {
+        unsafe { kernel_transaction_output_destroy(self.inner) }
+    }
+}
+
+pub struct Transaction {
+    inner: *mut kernel_Transaction,
+}
+
+unsafe impl Send for Transaction {}
+unsafe impl Sync for Transaction {}
+
+impl TryFrom<&[u8]> for Transaction {
+    type Error = KernelError;
+
+    fn try_from(raw_transaction: &[u8]) -> Result<Self, Self::Error> {
+        let inner =
+            unsafe { kernel_transaction_create(raw_transaction.as_ptr(), raw_transaction.len()) };
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to decode raw transaction.".to_string(),
+            ));
+        }
+        Ok(Transaction { inner })
+    }
+}
+
+impl Drop for Transaction {
+    fn drop(&mut self) {
+        unsafe { kernel_transaction_destroy(self.inner) }
     }
 }
 
 pub struct Event {
     pub inner: AtomicPtr<kernel_ValidationEvent>,
-}
-
-pub fn execute_event(event: Event) -> Result<(), KernelError> {
-    unsafe { kernel_execute_event_and_destroy(event.inner.load(Ordering::SeqCst)) };
-    Ok(())
 }
 
 pub struct Block {
@@ -692,7 +674,7 @@ unsafe impl Send for BlockUndo {}
 unsafe impl Sync for BlockUndo {}
 
 impl BlockUndo {
-    pub fn get_get_transaction_undo_size(&self, transaction_index: u64) -> u64 {
+    pub fn get_transaction_undo_size(&self, transaction_index: u64) -> u64 {
         unsafe { kernel_get_transaction_undo_size(self.inner, transaction_index) }
     }
 
@@ -707,17 +689,7 @@ impl BlockUndo {
         if prev_out.is_null() {
             return Err(KernelError::OutOfBounds);
         }
-        let res = TxOut {
-            value: unsafe { (*prev_out).value },
-            script_pubkey: unsafe {
-                std::slice::from_raw_parts(
-                    (*prev_out).script_pubkey,
-                    (*prev_out).script_pubkey_len.try_into().unwrap(),
-                )
-                .to_vec()
-            },
-        };
-        unsafe { kernel_transaction_output_destroy(prev_out) };
+        let res = TxOut { inner: prev_out };
         Ok(res)
     }
 }
@@ -796,59 +768,39 @@ impl ChainstateLoadOptions {
         }
     }
 
-    pub fn set_reindex(self, reindex: bool) -> Result<Self, KernelError> {
+    pub fn set_reindex(self, reindex: bool) -> Self {
         unsafe {
-            kernel_chainstate_load_options_set(
-                self.inner,
-                kernel_ChainstateLoadOptionType_kernel_WIPE_BLOCK_TREE_DB_CHAINSTATE_LOAD_OPTION,
-                reindex,
-            );
-            kernel_chainstate_load_options_set(
-                self.inner,
-                kernel_ChainstateLoadOptionType_kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,
-                reindex,
-            );
+            kernel_chainstate_load_options_set_wipe_block_tree_db(self.inner, reindex);
+            kernel_chainstate_load_options_set_wipe_chainstate_db(self.inner, reindex);
         }
-        Ok(self)
+        self
     }
 
-    pub fn set_wipe_chainstate_db(self, wipe_chainstate: bool) -> Result<Self, KernelError> {
+    pub fn set_wipe_chainstate_db(self, wipe_chainstate: bool) -> Self {
         unsafe {
-            kernel_chainstate_load_options_set(
-                self.inner,
-                kernel_ChainstateLoadOptionType_kernel_WIPE_CHAINSTATE_DB_CHAINSTATE_LOAD_OPTION,
-                wipe_chainstate,
-            );
+            kernel_chainstate_load_options_set_wipe_chainstate_db(self.inner, wipe_chainstate);
         }
-        Ok(self)
+        self
     }
 
-    pub fn set_chainstate_db_in_memory(
-        self,
-        chainstate_db_in_memory: bool,
-    ) -> Result<Self, KernelError> {
+    pub fn set_chainstate_db_in_memory(self, chainstate_db_in_memory: bool) -> Self {
         unsafe {
-            kernel_chainstate_load_options_set(
+            kernel_chainstate_load_options_set_chainstate_db_in_memory(
                 self.inner,
-                kernel_ChainstateLoadOptionType_kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
                 chainstate_db_in_memory,
             );
         }
-        Ok(self)
+        self
     }
 
-    pub fn set_block_tree_db_in_memory(
-        self,
-        block_tree_db_in_memory: bool,
-    ) -> Result<Self, KernelError> {
+    pub fn set_block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Self {
         unsafe {
-            kernel_chainstate_load_options_set(
+            kernel_chainstate_load_options_set_block_tree_db_in_memory(
                 self.inner,
-                kernel_ChainstateLoadOptionType_kernel_CHAINSTATE_DB_IN_MEMORY_CHAINSTATE_LOAD_OPTION,
                 block_tree_db_in_memory,
             );
         }
-        Ok(self)
+        self
     }
 }
 
