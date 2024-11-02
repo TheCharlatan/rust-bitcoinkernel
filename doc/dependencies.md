@@ -9,7 +9,7 @@ You can find installation instructions in the `build-*.md` file for your platfor
 | [Clang](https://clang.llvm.org) | [16.0](https://github.com/bitcoin/bitcoin/pull/30263) |
 | [CMake](https://cmake.org/) | [3.22](https://github.com/bitcoin/bitcoin/pull/30454) |
 | [GCC](https://gcc.gnu.org) | [11.1](https://github.com/bitcoin/bitcoin/pull/29091) |
-| [Python](https://www.python.org) (scripts, tests) | [3.9](https://github.com/bitcoin/bitcoin/pull/28211) |
+| [Python](https://www.python.org) (scripts, tests) | [3.10](https://github.com/bitcoin/bitcoin/pull/30527) |
 | [systemtap](https://sourceware.org/systemtap/) ([tracing](tracing.md))| N/A |
 
 ## Required
@@ -34,7 +34,6 @@ You can find installation instructions in the `build-*.md` file for your platfor
 ### Networking
 | Dependency | Releases | Version used | Minimum required | Runtime |
 | --- | --- | --- | --- | --- |
-| [libnatpmp](../depends/packages/libnatpmp.mk) | [link](https://github.com/miniupnp/libnatpmp/) | commit [f2433be...](https://github.com/bitcoin/bitcoin/pull/29708) | | No |
 | [MiniUPnPc](../depends/packages/miniupnpc.mk) | [link](https://miniupnp.tuxfamily.org/) | [2.2.7](https://github.com/bitcoin/bitcoin/pull/29707) | 2.1 | No |
 
 ### Notifications

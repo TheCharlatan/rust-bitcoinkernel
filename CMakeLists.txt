@@ -122,11 +122,6 @@ option(REDUCE_EXPORTS "Attempt to reduce exported symbols in the resulting execu
 option(WERROR "Treat compiler warnings as errors." OFF)
 option(WITH_CCACHE "Attempt to use ccache for compiling." ON)
 
-option(WITH_NATPMP "Enable NAT-PMP." OFF)
-if(WITH_NATPMP)
-  find_package(NATPMP MODULE REQUIRED)
-endif()
-
 option(WITH_MINIUPNPC "Enable UPnP." OFF)
 if(WITH_MINIUPNPC)
   find_package(MiniUPnPc MODULE REQUIRED)
@@ -183,7 +178,7 @@ if(BUILD_GUI)
   if(BUILD_GUI_TESTS)
     list(APPEND qt_components Test)
   endif()
-  find_package(Qt5 5.11.3 MODULE REQUIRED
+  find_package(Qt 5.11.3 MODULE REQUIRED
     COMPONENTS ${qt_components}
   )
   unset(qt_components)
@@ -241,7 +236,6 @@ if(BUILD_FOR_FUZZING)
   set(BUILD_WALLET_TOOL OFF)
   set(BUILD_GUI OFF)
   set(ENABLE_EXTERNAL_SIGNER OFF)
-  set(WITH_NATPMP OFF)
   set(WITH_MINIUPNPC OFF)
   set(WITH_ZMQ OFF)
   set(BUILD_TESTS OFF)
@@ -251,6 +245,7 @@ if(BUILD_FOR_FUZZING)
 
   target_compile_definitions(core_interface INTERFACE
     ABORT_ON_FAILED_ASSUME
+    FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
   )
 endif()
 
@@ -547,7 +542,7 @@ if(WERROR)
   unset(werror_flag)
 endif()
 
-find_package(Python3 3.9 COMPONENTS Interpreter)
+find_package(Python3 3.10 COMPONENTS Interpreter)
 if(Python3_EXECUTABLE)
   set(PYTHON_COMMAND ${Python3_EXECUTABLE})
 else()
@@ -623,9 +618,7 @@ if(ENABLE_WALLET)
   message("   - legacy wallets (Berkeley DB) ..... ${WITH_BDB}")
 endif()
 message("  external signer ..................... ${ENABLE_EXTERNAL_SIGNER}")
-message("  port mapping:")
-message("   - using NAT-PMP .................... ${WITH_NATPMP}")
-message("   - using UPnP ....................... ${WITH_MINIUPNPC}")
+message("  port mapping using UPnP ............. ${WITH_MINIUPNPC}")
 message("  ZeroMQ .............................. ${WITH_ZMQ}")
 message("  USDT tracing ........................ ${WITH_USDT}")
 message("  QR code (GUI) ....................... ${WITH_QRENCODE}")

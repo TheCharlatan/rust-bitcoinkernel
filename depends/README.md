@@ -22,15 +22,15 @@ created. To use it during configuring Bitcoin Core:
 
 Common `host-platform-triplet`s for cross compilation are:
 
-- `i686-pc-linux-gnu` for Linux 32 bit
-- `x86_64-pc-linux-gnu` for x86 Linux
+- `i686-pc-linux-gnu` for Linux x86 32 bit
+- `x86_64-pc-linux-gnu` for Linux x86 64 bit
 - `x86_64-w64-mingw32` for Win64
 - `x86_64-apple-darwin` for macOS
 - `arm64-apple-darwin` for ARM macOS
 - `arm-linux-gnueabihf` for Linux ARM 32 bit
 - `aarch64-linux-gnu` for Linux ARM 64 bit
-- `powerpc64-linux-gnu` for Linux POWER 64-bit (big endian)
-- `powerpc64le-linux-gnu` for Linux POWER 64-bit (little endian)
+- `powerpc64-linux-gnu` for Linux POWER 64 bit (big endian)
+- `powerpc64le-linux-gnu` for Linux POWER 64 bit (little endian)
 - `riscv32-linux-gnu` for Linux RISC-V 32 bit
 - `riscv64-linux-gnu` for Linux RISC-V 64 bit
 - `s390x-linux-gnu` for Linux S390X
@@ -41,7 +41,7 @@ The paths are automatically configured and no other options are needed.
 
 #### Common
 
-    apt install automake bison cmake curl libtool make patch pkg-config python3 xz-utils
+    apt install bison cmake curl make patch pkg-config python3 xz-utils
 
 #### For macOS cross compilation
 
@@ -54,7 +54,7 @@ For more information, see [SDK Extraction](../contrib/macdeploy/README.md#sdk-ex
 
 #### For Win64 cross compilation
 
-- see [build-windows.md](../doc/build-windows.md#cross-compilation-for-ubuntu-and-windows-subsystem-for-linux)
+    apt install g++-mingw-w64-x86-64-posix
 
 #### For linux (including i386, ARM) cross compilation
 
@@ -113,9 +113,8 @@ The following can be set when running make: `make FOO=bar`
 - `NO_BDB`: Don't download/build/cache BerkeleyDB
 - `NO_SQLITE`: Don't download/build/cache SQLite
 - `NO_UPNP`: Don't download/build/cache packages needed for enabling UPnP
-- `NO_NATPMP`: Don't download/build/cache packages needed for enabling NAT-PMP
 - `NO_USDT`: Don't download/build/cache packages needed for enabling USDT tracepoints
-- `MULTIPROCESS`: Build libmultiprocess (experimental, requires CMake)
+- `MULTIPROCESS`: Build libmultiprocess (experimental)
 - `DEBUG`: Disable some optimizations and enable more runtime checking
 - `HOST_ID_SALT`: Optional salt to use when generating host package ids
 - `BUILD_ID_SALT`: Optional salt to use when generating build package ids

@@ -83,15 +83,15 @@ BOOST_AUTO_TEST_CASE(logging_timer)
     BOOST_CHECK_EQUAL(micro_timer.LogMsg("msg").substr(0, result_prefix.size()), result_prefix);
 }
 
-BOOST_FIXTURE_TEST_CASE(logging_LogPrintf_, LogSetup)
+BOOST_FIXTURE_TEST_CASE(logging_LogPrintStr, LogSetup)
 {
     LogInstance().m_log_sourcelocations = true;
-    LogPrintf_("fn1", "src1", 1, BCLog::LogFlags::NET, BCLog::Level::Debug, "foo1: %s\n", "bar1");
-    LogPrintf_("fn2", "src2", 2, BCLog::LogFlags::NET, BCLog::Level::Info, "foo2: %s\n", "bar2");
-    LogPrintf_("fn3", "src3", 3, BCLog::LogFlags::ALL, BCLog::Level::Debug, "foo3: %s\n", "bar3");
-    LogPrintf_("fn4", "src4", 4, BCLog::LogFlags::ALL, BCLog::Level::Info, "foo4: %s\n", "bar4");
-    LogPrintf_("fn5", "src5", 5, BCLog::LogFlags::NONE, BCLog::Level::Debug, "foo5: %s\n", "bar5");
-    LogPrintf_("fn6", "src6", 6, BCLog::LogFlags::NONE, BCLog::Level::Info, "foo6: %s\n", "bar6");
+    LogInstance().LogPrintStr("foo1: bar1", "fn1", "src1", 1, BCLog::LogFlags::NET, BCLog::Level::Debug);
+    LogInstance().LogPrintStr("foo2: bar2", "fn2", "src2", 2, BCLog::LogFlags::NET, BCLog::Level::Info);
+    LogInstance().LogPrintStr("foo3: bar3", "fn3", "src3", 3, BCLog::LogFlags::ALL, BCLog::Level::Debug);
+    LogInstance().LogPrintStr("foo4: bar4", "fn4", "src4", 4, BCLog::LogFlags::ALL, BCLog::Level::Info);
+    LogInstance().LogPrintStr("foo5: bar5", "fn5", "src5", 5, BCLog::LogFlags::NONE, BCLog::Level::Debug);
+    LogInstance().LogPrintStr("foo6: bar6", "fn6", "src6", 6, BCLog::LogFlags::NONE, BCLog::Level::Info);
     std::ifstream file{tmp_log_path};
     std::vector<std::string> log_lines;
     for (std::string log; std::getline(file, log);) {
@@ -133,11 +133,11 @@ BOOST_FIXTURE_TEST_CASE(logging_LogPrintMacrosDeprecated, LogSetup)
 
 BOOST_FIXTURE_TEST_CASE(logging_LogPrintMacros, LogSetup)
 {
-    LogTrace(BCLog::NET, "foo6: %s\n", "bar6"); // not logged
-    LogDebug(BCLog::NET, "foo7: %s\n", "bar7");
-    LogInfo("foo8: %s\n", "bar8");
-    LogWarning("foo9: %s\n", "bar9");
-    LogError("foo10: %s\n", "bar10");
+    LogTrace(BCLog::NET, "foo6: %s", "bar6"); // not logged
+    LogDebug(BCLog::NET, "foo7: %s", "bar7");
+    LogInfo("foo8: %s", "bar8");
+    LogWarning("foo9: %s", "bar9");
+    LogError("foo10: %s", "bar10");
     std::ifstream file{tmp_log_path};
     std::vector<std::string> log_lines;
     for (std::string log; std::getline(file, log);) {

@@ -543,10 +543,10 @@ public:
     }
 };
 
-struct BlockIndexInfoDeleter {
-    void operator()(kernel_BlockIndexInfo* ptr) const
+struct BlockHashDeleter {
+    void operator()(kernel_BlockHash* ptr) const
     {
-        kernel_block_index_info_destroy(ptr);
+        kernel_block_hash_destroy(ptr);
     }
 };
 
@@ -575,12 +575,20 @@ public:
         return index;
     }
 
-    std::unique_ptr<kernel_BlockIndexInfo, BlockIndexInfoDeleter> GetInfo() const noexcept
+    int32_t GetHeight() const noexcept
+    {
+        if (!m_block_index) {
+            return -1;
+        }
+        return kernel_block_index_get_height(m_block_index.get());
+    }
+
+    std::unique_ptr<kernel_BlockHash, BlockHashDeleter> GetHash() const noexcept
     {
         if (!m_block_index) {
             return nullptr;
         }
-        return std::unique_ptr<kernel_BlockIndexInfo, BlockIndexInfoDeleter>(kernel_get_block_index_info(m_block_index.get()));
+        return std::unique_ptr<kernel_BlockHash, BlockHashDeleter>(kernel_block_index_get_block_hash(m_block_index.get()));
     }
 
     operator bool() const noexcept
@@ -639,6 +647,11 @@ public:
     BlockIndex GetBlockIndexFromGenesis() const noexcept
     {
         return kernel_get_block_index_from_genesis(m_context.m_context.get(), m_chainman);
+    }
+
+    BlockIndex GetBlockIndexByHash(kernel_BlockHash* block_hash) const noexcept
+    {
+        return kernel_get_block_index_by_hash(m_context.m_context.get(), m_chainman, block_hash);
     }
 
     std::optional<BlockIndex> GetBlockIndexByHeight(int height) const noexcept

@@ -2,7 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <config/bitcoin-config.h> // IWYU pragma: keep
+#include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <clientversion.h>
 #include <common/args.h>
@@ -79,6 +79,18 @@ void RPCTypeCheckObj(const UniValue& o,
             }
         }
     }
+}
+
+int ParseVerbosity(const UniValue& arg, int default_verbosity)
+{
+    if (!arg.isNull()) {
+        if (arg.isBool()) {
+            return arg.get_bool(); // true = 1
+        } else {
+            return arg.getInt<int>();
+        }
+    }
+    return default_verbosity;
 }
 
 CAmount AmountFromValue(const UniValue& value, int decimals)
