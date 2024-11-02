@@ -434,6 +434,7 @@ inspecting signatures in Mach-O binaries.")
                   "--enable-default-ssp=yes",
                   "--enable-default-pie=yes",
                   "--enable-standard-branch-protection=yes",
+                  "--enable-cet=yes",
                   building-on)))
         ((#:phases phases)
           `(modify-phases ,phases
@@ -468,6 +469,7 @@ inspecting signatures in Mach-O binaries.")
           `(append ,flags
             ;; https://www.gnu.org/software/libc/manual/html_node/Configuring-and-compiling.html
             (list "--enable-stack-protector=all",
+                  "--enable-cet",
                   "--enable-bind-now",
                   "--disable-werror",
                   building-on)))

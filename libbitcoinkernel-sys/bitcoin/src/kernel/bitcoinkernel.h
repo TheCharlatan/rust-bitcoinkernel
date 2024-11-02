@@ -445,13 +445,6 @@ typedef struct {
 } kernel_BlockHash;
 
 /**
- * Holds some info about an indexed block.
- */
-typedef struct {
-    int height; //!< Non-zero if the block is in the chain. Once retrieved not guaranteed to remain accurate.
-} kernel_BlockIndexInfo;
-
-/**
  * Convenience struct for holding serialized data.
  */
 typedef struct {
@@ -1129,19 +1122,29 @@ kernel_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_undo_outpu
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
- * @brief Return a block index info struct describing the passed in block index.
+ * @brief Return the height of a certain block index.
  *
  * @param[in] block_index Non-null.
- * @return                A block index info pointer, or null on error.
+ * @return                The block height.
  */
-kernel_BlockIndexInfo* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_info(
+int32_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_height(
     kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
- * Destroy the block index info.
+ * @brief Return the block hash associated with a block index.
+ *
+ * @param[in] block_index Non-null.
+ * @return    The block hash.
  */
-void kernel_block_index_info_destroy(kernel_BlockIndexInfo* info);
+kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_block_hash(
+    kernel_BlockIndex* block_index
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * Destroy the block hash.
+ */
+void kernel_block_hash_destroy(kernel_BlockHash* block_hash);
 
 /**
  * @brief Copies the script pubkey of an output in the returned script pubkey

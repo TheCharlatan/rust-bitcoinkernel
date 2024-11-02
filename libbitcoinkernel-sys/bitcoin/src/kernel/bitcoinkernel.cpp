@@ -22,7 +22,6 @@
 #include <script/interpreter.h>
 #include <script/script.h>
 #include <serialize.h>
-#include <span.h>
 #include <streams.h>
 #include <sync.h>
 #include <tinyformat.h>
@@ -41,9 +40,9 @@
 #include <cstring>
 #include <exception>
 #include <functional>
-#include <iostream>
 #include <list>
 #include <memory>
+#include <span>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -58,46 +57,6 @@ extern const std::function<std::string(const char*)> G_TRANSLATION_FUN{nullptr};
 static const kernel::Context kernel_context_static{};
 
 namespace {
-
-/** A class that deserializes a single CTransaction one time. */
-class TxInputStream
-{
-private:
-    const unsigned char* m_data;
-    size_t m_remaining;
-
-public:
-    TxInputStream(const unsigned char* txTo, size_t txToLen) : m_data{txTo},
-                                                               m_remaining{txToLen}
-    {
-    }
-
-    void read(Span<std::byte> dst)
-    {
-        if (dst.size() > m_remaining) {
-            throw std::ios_base::failure(std::string(__func__) + ": end of data");
-        }
-
-        if (dst.data() == nullptr) {
-            throw std::ios_base::failure(std::string(__func__) + ": bad destination buffer");
-        }
-
-        if (m_data == nullptr) {
-            throw std::ios_base::failure(std::string(__func__) + ": bad source buffer");
-        }
-
-        memcpy(dst.data(), m_data, dst.size());
-        m_remaining -= dst.size();
-        m_data += dst.size();
-    }
-
-    template <typename T>
-    TxInputStream& operator>>(T&& obj)
-    {
-        ::Unserialize(*this, obj);
-        return *this;
-    }
-};
 
 /** Check that all specified flags are part of the libbitcoinkernel interface. */
 bool verify_flags(unsigned int flags)
@@ -412,7 +371,7 @@ CBlockUndo* cast_block_undo(kernel_BlockUndo* undo)
 kernel_Transaction* kernel_transaction_create(const unsigned char* raw_transaction, size_t raw_transaction_len)
 {
     try {
-        TxInputStream stream{raw_transaction, raw_transaction_len};
+        DataStream stream{std::span{raw_transaction, raw_transaction_len}};
         auto tx = new CTransaction{deserialize, TX_WITH_WITNESS, stream};
         return reinterpret_cast<kernel_Transaction*>(tx);
     } catch (const std::exception&) {
@@ -720,8 +679,6 @@ bool kernel_validation_interface_unregister(kernel_Context* context_, kernel_Val
         LogError("Cannot de-register validation interface with context that has no validation signals.\n");
         return false;
     }
-    context->m_signals->SyncWithValidationInterfaceQueue();
-    context->m_signals->FlushBackgroundCallbacks();
     context->m_signals->UnregisterSharedValidationInterface(*validation_interface);
     return true;
 }
@@ -972,7 +929,7 @@ kernel_Block* kernel_block_create(const unsigned char* raw_block, size_t raw_blo
 {
     auto block{new CBlock()};
 
-    DataStream stream{Span{raw_block, raw_block_length}};
+    DataStream stream{std::span{raw_block, raw_block_length}};
 
     try {
         stream >> TX_WITH_WITNESS(*block);
@@ -1177,15 +1134,26 @@ kernel_TransactionOutput* kernel_get_undo_output_by_index(kernel_BlockUndo* bloc
     return reinterpret_cast<kernel_TransactionOutput*>(prevout);
 }
 
-kernel_BlockIndexInfo* kernel_get_block_index_info(kernel_BlockIndex* block_index_)
+int32_t kernel_block_index_get_height(kernel_BlockIndex* block_index_)
 {
     auto block_index{cast_block_index(block_index_)};
-    return new kernel_BlockIndexInfo{block_index->nHeight};
+    return block_index->nHeight;
 }
 
-void kernel_block_index_info_destroy(kernel_BlockIndexInfo* info)
+kernel_BlockHash* kernel_block_index_get_block_hash(kernel_BlockIndex* block_index_)
 {
-    if (info) delete info;
+    auto block_index{cast_block_index(block_index_)};
+    if (block_index->phashBlock == nullptr) {
+        return nullptr;
+    }
+    auto block_hash = new kernel_BlockHash{};
+    std::memcpy(block_hash->hash, block_index->phashBlock->begin(), sizeof(*block_index->phashBlock));
+    return block_hash;
+}
+
+void kernel_block_hash_destroy(kernel_BlockHash* hash)
+{
+    if (hash) delete hash;
 }
 
 kernel_ScriptPubkey* kernel_copy_script_pubkey_from_output(kernel_TransactionOutput* output_)

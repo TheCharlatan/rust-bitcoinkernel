@@ -561,8 +561,8 @@ void chainman_reindex_test(TestDirectory& test_directory)
     auto first_index{chainman->GetBlockIndexByHeight(0).value()};
     auto first_block_raw{chainman->ReadBlock(genesis_index).value().GetBlockData()};
     assert(genesis_block_raw == first_block_raw);
-    auto first_info{first_index.GetInfo()};
-    assert(first_info->height == 0);
+    auto height{first_index.GetHeight()};
+    assert(height == 0);
 
     auto next_index{chainman->GetNextBlockIndex(first_index).value()};
     auto next_block_string{chainman->ReadBlock(next_index).value().GetBlockData()};
@@ -570,10 +570,15 @@ void chainman_reindex_test(TestDirectory& test_directory)
     auto tip_block_string{chainman->ReadBlock(tip_index).value().GetBlockData()};
     auto second_index{chainman->GetBlockIndexByHeight(1).value()};
     auto second_block_string{chainman->ReadBlock(second_index).value().GetBlockData()};
-    auto second_info{second_index.GetInfo()};
-    assert(second_info->height == 1);
+    auto second_height{second_index.GetHeight()};
+    assert(second_height == 1);
     assert(next_block_string == tip_block_string);
     assert(next_block_string == second_block_string);
+
+    auto hash{second_index.GetHash()};
+    auto another_second_index{chainman->GetBlockIndexByHash(hash.get())};
+    auto another_second_height{another_second_index.GetHeight()};
+    assert(second_height == another_second_height);
 }
 
 void chainman_reindex_chainstate_test(TestDirectory& test_directory)

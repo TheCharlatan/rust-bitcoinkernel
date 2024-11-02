@@ -3,7 +3,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <config/bitcoin-config.h> // IWYU pragma: keep
+#include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <validation.h>
 
@@ -107,10 +107,6 @@ const std::vector<std::string> CHECKLEVEL_DOC {
  *  noticeably interfere with the pruning mechanism.
  * */
 static constexpr int PRUNE_LOCK_BUFFER{10};
-
-GlobalMutex g_best_block_mutex;
-std::condition_variable g_best_block_cv;
-uint256 g_best_block;
 
 const CBlockIndex* Chainstate::FindForkInGlobalIndex(const CBlockLocator& locator) const
 {
@@ -2024,7 +2020,8 @@ void Chainstate::CheckForkWarningConditions()
 
     // Before we get past initial download, we cannot reliably alert about forks
     // (we assume we don't get stuck on a fork before finishing our initial sync)
-    if (m_chainman.IsInitialBlockDownload()) {
+    // Also not applicable to the background chainstate
+    if (m_chainman.IsInitialBlockDownload() || this->GetRole() == ChainstateRole::BACKGROUND) {
         return;
     }
 
@@ -2182,6 +2179,8 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
         if (pvChecks) {
             pvChecks->emplace_back(std::move(check));
         } else if (!check()) {
+            ScriptError error{check.GetScriptError()};
+
             if (flags & STANDARD_NOT_MANDATORY_VERIFY_FLAGS) {
                 // Check whether the failure was caused by a
                 // non-mandatory script verification check, such as
@@ -2195,6 +2194,14 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
                         flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheSigStore, &txdata);
                 if (check2())
                     return state.Invalid(TxValidationResult::TX_NOT_STANDARD, strprintf("non-mandatory-script-verify-flag (%s)", ScriptErrorString(check.GetScriptError())));
+
+                // If the second check failed, it failed due to a mandatory script verification
+                // flag, but the first check might have failed on a non-mandatory script
+                // verification flag.
+                //
+                // Avoid reporting a mandatory script check failure with a non-mandatory error
+                // string by reporting the error from the second check.
+                error = check2.GetScriptError();
             }
             // MANDATORY flag failures correspond to
             // TxValidationResult::TX_CONSENSUS. Because CONSENSUS
@@ -2205,7 +2212,7 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
             // support, to avoid splitting the network (but this
             // depends on the details of how net_processing handles
             // such errors).
-            return state.Invalid(TxValidationResult::TX_CONSENSUS, strprintf("mandatory-script-verify-flag-failed (%s)", ScriptErrorString(check.GetScriptError())));
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, strprintf("mandatory-script-verify-flag-failed (%s)", ScriptErrorString(error)));
         }
     }
 
@@ -2739,7 +2746,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         block.vtx.size(),
         nInputs,
         nSigOpsCost,
-        time_5 - time_start // in microseconds (µs)
+        Ticks<std::chrono::nanoseconds>(time_5 - time_start)
     );
 
     return true;
@@ -2986,12 +2993,6 @@ void Chainstate::UpdateTip(const CBlockIndex* pindexNew)
     // New best block
     if (m_mempool) {
         m_mempool->AddTransactionsUpdated(1);
-    }
-
-    {
-        LOCK(g_best_block_mutex);
-        g_best_block = pindexNew->GetBlockHash();
-        g_best_block_cv.notify_all();
     }
 
     std::vector<bilingual_str> warning_messages;
@@ -3542,7 +3543,6 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
                     m_chainman.m_options.signals->UpdatedBlockTip(pindexNewTip, pindexFork, still_in_ibd);
                 }
 
-                // Always notify the UI if a new block tip was connected
                 if (kernel::IsInterrupted(m_chainman.GetNotifications().blockTip(GetSynchronizationState(still_in_ibd, m_chainman.m_blockman.m_blockfiles_indexed), *pindexNewTip))) {
                     // Just breaking and returning success for now. This could
                     // be changed to bubble up the kernel::Interrupted value to
@@ -6014,7 +6014,7 @@ util::Result<void> ChainstateManager::PopulateAndValidateSnapshot(
         index = snapshot_chainstate.m_chain[i];
 
         // Fake BLOCK_OPT_WITNESS so that Chainstate::NeedsRedownload()
-        // won't ask to rewind the entire assumed-valid chain on startup.
+        // won't ask for -reindex on startup.
         if (DeploymentActiveAt(*index, *this, Consensus::DEPLOYMENT_SEGWIT)) {
             index->nStatus |= BLOCK_OPT_WITNESS;
         }

@@ -21,4 +21,4 @@ export BITCOIN_CONFIG="\
  -DCMAKE_C_COMPILER=clang-16 \
  -DCMAKE_CXX_COMPILER=clang++-16 \
 "
-export CCACHE_MAXSIZE=200M
+export LLVM_SYMBOLIZER_PATH="/usr/bin/llvm-symbolizer-16"
