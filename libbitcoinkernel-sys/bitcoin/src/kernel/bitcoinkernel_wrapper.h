@@ -31,8 +31,18 @@ public:
     {
     }
 
+    Transaction(kernel_Transaction* transaction) noexcept : m_transaction{transaction} {}
+
     /** Check whether this Transaction object is valid. */
     explicit operator bool() const noexcept { return bool{m_transaction}; }
+
+    std::vector<unsigned char> GetTransactionData() const noexcept
+    {
+        auto serialized_transaction{kernel_copy_transaction_data(m_transaction.get())};
+        std::vector<unsigned char> vec{serialized_transaction->data, serialized_transaction->data + serialized_transaction->size};
+        kernel_byte_array_destroy(serialized_transaction);
+        return vec;
+    }
 };
 
 class ScriptPubkey
@@ -225,6 +235,24 @@ public:
     friend class ContextOptions;
 };
 
+class MempoolOptions
+{
+private:
+    struct Deleter {
+        void operator()(const kernel_MempoolOptions* ptr) const
+        {
+            kernel_mempool_options_destroy(ptr);
+        }
+    };
+
+    std::unique_ptr<const kernel_MempoolOptions, Deleter> m_mempool_options;
+
+public:
+    MempoolOptions() noexcept : m_mempool_options{kernel_mempool_options_create()} {}
+
+    friend class ContextOptions;
+};
+
 class ChainParams
 {
 private:
@@ -267,6 +295,11 @@ public:
     void SetNotifications(KernelNotifications<T>& notifications) const noexcept
     {
         kernel_context_options_set_notifications(m_options.get(), notifications.m_notifications.get());
+    }
+
+    void SetMempoolOptions(MempoolOptions& mempool_options) const noexcept
+    {
+        kernel_context_options_set_mempool(m_options.get(), mempool_options.m_mempool_options.get());
     }
 
     friend class Context;
@@ -472,6 +505,42 @@ public:
     friend class ChainMan;
 };
 
+class BlockHeader
+{
+private:
+    struct Deleter {
+        void operator()(kernel_BlockHeader* ptr) const
+        {
+            kernel_block_header_destroy(ptr);
+        }
+    };
+
+    std::unique_ptr<kernel_BlockHeader, Deleter> m_block_header;
+
+public:
+    BlockHeader(std::span<const unsigned char> raw_block_header) noexcept
+        : m_block_header{kernel_block_header_create(raw_block_header.data(), raw_block_header.size())}
+    {
+    }
+
+    BlockHeader(kernel_BlockHeader* block_header) noexcept : m_block_header{block_header}
+    {
+    }
+
+    /** Check whether this BlockHeader object is valid. */
+    explicit operator bool() const noexcept { return bool{m_block_header}; }
+
+    std::vector<unsigned char> GetBlockHeaderData() const noexcept
+    {
+        auto serialized_header{kernel_copy_block_header_data(m_block_header.get())};
+        std::vector<unsigned char> vec{serialized_header->data, serialized_header->data + serialized_header->size};
+        kernel_byte_array_destroy(serialized_header);
+        return vec;
+    }
+
+    friend class ChainMan;
+};
+
 class Block
 {
 private:
@@ -501,6 +570,26 @@ public:
         std::vector<unsigned char> vec{serialized_block->data, serialized_block->data + serialized_block->size};
         kernel_byte_array_destroy(serialized_block);
         return vec;
+    }
+
+    bool IsBlockMutated(bool check_witness_root) const noexcept
+    {
+        return kernel_is_block_mutated(m_block.get(), check_witness_root);
+    }
+
+    BlockHeader GetBlockHeader() const noexcept
+    {
+        return kernel_get_block_header(m_block.get());
+    }
+
+    size_t GetNumberOfTransactions() const noexcept
+    {
+        return kernel_number_of_transactions_in_block(m_block.get());
+    }
+
+    Transaction GetTransaction(uint64_t index) const noexcept
+    {
+        return Transaction{kernel_get_transaction_by_index(m_block.get(), index)};
     }
 
     friend class ChainMan;
@@ -599,6 +688,39 @@ public:
     friend class ChainMan;
 };
 
+class CoinsViewCursor
+{
+private:
+    struct Deleter {
+        void operator()(kernel_CoinsViewCursor* ptr) const
+        {
+            kernel_coins_cursor_destroy(ptr);
+        }
+    };
+    std::unique_ptr<kernel_CoinsViewCursor, Deleter> m_cursor;
+
+public:
+    CoinsViewCursor(kernel_CoinsViewCursor* cursor) noexcept : m_cursor{cursor} {}
+
+    /** Check whether this CoinsViewCursor object is valid. */
+    explicit operator bool() const noexcept { return m_cursor != nullptr; }
+
+    bool Next() const noexcept
+    {
+        return kernel_coins_cursor_next(m_cursor.get());
+    }
+
+    kernel_OutPoint* GetKey() const noexcept
+    {
+        return kernel_coins_cursor_get_key(m_cursor.get());
+    }
+
+    TransactionOutput GetValue() const noexcept
+    {
+        return kernel_coins_cursor_get_value(m_cursor.get());
+    }
+};
+
 class ChainMan
 {
 private:
@@ -619,6 +741,7 @@ public:
     ChainMan& operator=(const ChainMan&) = delete;
 
     bool LoadChainstate(const ChainstateLoadOptions& chainstate_load_opts) const noexcept
+
     {
         return kernel_chainstate_manager_load_chainstate(m_context.m_context.get(), chainstate_load_opts.m_options.get(), m_chainman);
     }
@@ -632,6 +755,21 @@ public:
         }
 
         return kernel_import_blocks(m_context.m_context.get(), m_chainman, c_paths.data(), c_paths.size());
+    }
+
+    bool LoadingBlocks() const noexcept
+    {
+        return kernel_loading_blocks(m_chainman);
+    }
+
+    bool ProcessBlockHeader(BlockHeader& header) const noexcept
+    {
+        return kernel_chainstate_manager_process_block_header(m_context.m_context.get(), m_chainman, header.m_block_header.get());
+    }
+
+    bool ProcessTransaction(Transaction& transaction, bool test_accept) const noexcept
+    {
+        return kernel_chainstate_manager_process_transaction(m_context.m_context.get(), m_chainman, transaction.m_transaction.get(), test_accept);
     }
 
     bool ProcessBlock(Block& block, kernel_ProcessBlockStatus& status) const noexcept
@@ -680,6 +818,16 @@ public:
         auto undo{kernel_read_block_undo_from_disk(m_context.m_context.get(), m_chainman, block_index.m_block_index.get())};
         if (!undo) return std::nullopt;
         return undo;
+    }
+
+    CoinsViewCursor GetCoinsViewCursor() const noexcept
+    {
+        return CoinsViewCursor{kernel_chainstate_coins_cursor_create(m_chainman)};
+    }
+
+    TransactionOutput GetOutputByOutPoint(const kernel_OutPoint* out_point) const noexcept
+    {
+        return kernel_get_output_by_out_point(m_chainman, out_point);
     }
 
     ~ChainMan()

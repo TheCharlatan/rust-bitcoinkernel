@@ -242,6 +242,35 @@ typedef struct kernel_ValidationInterface kernel_ValidationInterface;
  */
 typedef struct kernel_BlockUndo kernel_BlockUndo;
 
+/**
+ * Opaque data structure for holding a cursor over the UTXO set. The cursor
+ * should remain valid over future updates to the chainstate, but may return
+ * unexpected results. It is therefore best to avoid validation tasks while
+ * manipulating a cursor.
+ */
+typedef struct kernel_CoinsViewCursor kernel_CoinsViewCursor;
+
+/**
+ * Opaque data structure for holding a block header.
+ */
+typedef struct kernel_BlockHeader kernel_BlockHeader;
+
+/**
+ * Opaque data structure for holding a transaction. Internally, this creates a
+ * reference counted transaction pointer.
+ */
+typedef struct kernel_Transaction kernel_Transaction;
+
+/**
+ * Opaque data structure for holding a mempool options. This is passed through
+ * the context options to the context. The context then instantiates a mempool.
+ * When loading the chainstate in the chainstate manager, the context passes a
+ * pointer of the mempool to the chainstate. The chainstate then uses it for
+ * processing transactions. It may be destroyed once passed to the context
+ * options.
+ */
+typedef struct kernel_MempoolOptions kernel_MempoolOptions;
+
 /** Current sync state passed to tip changed callbacks. */
 typedef enum {
     kernel_INIT_REINDEX,
@@ -509,6 +538,15 @@ kernel_TransactionOutput* kernel_transaction_output_create(
 void kernel_transaction_output_destroy(kernel_TransactionOutput* transaction_output);
 
 /**
+ * Holds the information for retrieving a previous transaction output. This
+ * information is part of a transaction's input.
+ */
+typedef struct {
+    uint8_t hash[32];
+    unsigned int n;
+} kernel_OutPoint;
+
+/**
  * @brief Verify if the input at input_index of tx_to spends the script pubkey
  * under the constraints specified by flags. If the witness flag is set the
  * amount parameter is used. If the taproot flag is set, the spent outputs
@@ -625,6 +663,16 @@ kernel_Notifications* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_notifications_crea
 void kernel_notifications_destroy(const kernel_Notifications* notifications);
 
 /**
+ * @brief Create an opaque kernel mempool.
+ */
+kernel_MempoolOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_mempool_options_create();
+
+/**
+ * Destroy the kernel mempool options.
+ */
+void kernel_mempool_options_destroy(const kernel_MempoolOptions* mempool);
+
+/**
  * Creates an empty context options.
  */
 kernel_ContextOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_create();
@@ -651,6 +699,17 @@ void kernel_context_options_set_chainparams(
 void kernel_context_options_set_notifications(
     kernel_ContextOptions* context_options,
     const kernel_Notifications* notifications
+) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+
+/**
+ * @brief Set the kernel mempool options for
+ *
+ * @param[in] context_options Non-null, previously create with kernel_mempool_options_create.
+ * @param[in] mempool_options Is set to the context options.
+ */
+void kernel_context_options_set_mempool(
+        kernel_ContextOptions* context_options,
+        const kernel_MempoolOptions* mempool_options
 ) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
 
 /**
@@ -1072,6 +1131,37 @@ kernel_BlockUndo* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_undo_from_d
 ) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
 
 /**
+ * @brief Validates a passed in block header and on success adds it to the header chain.
+ *
+ * @param[in] chainman Non-null.
+ * @param[in] header   Non-null, the header to be validated.
+ * @return             True if the header was successfully validated.
+ */
+bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_process_block_header(
+    const kernel_Context* context,
+    kernel_ChainstateManager* chainman,
+    kernel_BlockHeader* header
+) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
+
+/**
+ * @brief Validates a single passed in transaction. Requires a mempool to have
+ * been configured previously for the chainstate manager through the chainstate
+ * load options.
+ *
+ * @param[in] context     Non-null.
+ * @param[in] chainman    Non-null.
+ * @param[in] transaction Non-null.
+ * @param[in] test_accept If true, will only check the transaction validity and will not submit it to the mempool.
+ * @return                True if the transaction was successfully validated.
+ */
+bool kernel_chainstate_manager_process_transaction(
+    const kernel_Context* context,
+    kernel_ChainstateManager* chainman,
+    kernel_Transaction* transaction,
+    bool test_accept
+) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
+
+/**
  * @brief Destroy the block index.
  */
 void kernel_block_index_destroy(kernel_BlockIndex* block_index);
@@ -1163,6 +1253,164 @@ kernel_ScriptPubkey* kernel_copy_script_pubkey_from_output(kernel_TransactionOut
  * @return                       The amount.
  */
 int64_t kernel_get_transaction_output_amount(kernel_TransactionOutput* transaction_output
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Return a coins view cursor that can be used to iterate through the coins.
+ *
+ * @param[in]  chainman Non-null.
+ * @return              A valid coins database cursor, or null on error.
+ */
+kernel_CoinsViewCursor* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_coins_cursor_create(
+    kernel_ChainstateManager* chainman
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Makes the cursor point to the next entry in the coins database.
+ *
+ * @param[in] cursor Non-null.
+ * @return           True on success.
+ */
+bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_coins_cursor_next(
+    kernel_CoinsViewCursor* cursor
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Retrieve the transaction out point the cursor currently points to.
+ *
+ * @param[in] cursor Non-null.
+ * @return           A transaction out point, or null on error.
+ */
+kernel_OutPoint* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_coins_cursor_get_key(
+    kernel_CoinsViewCursor* cursor
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Retrieve the coin the cursor currently point to.
+ *
+ * @param[in] cursor Non-null.
+ * @return           An unspent transaction output, or null on error.
+ */
+kernel_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_coins_cursor_get_value(
+    kernel_CoinsViewCursor* cursor
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * Destroy the coins view cursor.
+ */void kernel_coins_cursor_destroy(kernel_CoinsViewCursor* cursor);
+
+/**
+ * @brief Retrieve a coin by its outpoint.
+ *
+ * @param[in] chainman  Non-null.
+ * @param[in] out_point Non-null.
+ * @return              An unspent output if a corresponding entry was found, null if no entry was found.
+ */
+kernel_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_output_by_out_point(
+    kernel_ChainstateManager* chainman,
+    const kernel_OutPoint* out_point
+) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+
+/**
+ * Destroy the out point.
+ */
+void kernel_out_point_destroy(kernel_OutPoint* out_point);
+
+
+/**
+ * @brief Get the block header from an existing block.
+ *
+ * @param[in] block Non-null.
+ * @return          A copy of the block's header.
+ */
+kernel_BlockHeader* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_header(
+    kernel_Block* block
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Parse a serialized raw block header into a new block header object.
+ *
+ * @param[in] raw_block_header     Non-null, serialized block header.
+ * @param[in] raw_block_header_len Length of the serialized block header.
+ * @return                         The allocated block header, or null on error.
+ */
+kernel_BlockHeader* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_header_create(
+    const unsigned char* raw_block_header, size_t raw_block_header_len
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Copies block header data into the returned byte array.
+ *
+ * @param[in] header Non-null.
+ * @return           Allocated byte array holding the block data.
+ */
+kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_block_header_data(
+    kernel_BlockHeader* header
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Checks if the block has been mutated. If the block is a segwit block,
+ * check_witness_root should be set, otherwise the block will be seen as
+ * mutated.
+ *
+ * @param[in] block              Non-null.
+ * @param[in] check_witness_root Also check the witness root, additionally to the merkle root.
+ * @return                       True if the block is mutated.
+ */
+bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_is_block_mutated(
+    kernel_Block* block,
+    bool check_witness_root
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * Destroy the block header.
+ */
+void kernel_block_header_destroy(kernel_BlockHeader* header);
+
+/**
+ * @brief Retrieve the number of transactions in a block. This information can be used
+ * to iterate through the block and retrieve certain transactions through
+ * kernel_get_transcation_by_index.
+ *
+ * @param[in] block Non-null.
+ * @return          The number of transactions in the block.
+ */
+size_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_number_of_transactions_in_block(
+    kernel_Block* block
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Retrieve a transaction by its index in a block. The user has ownership
+ * over this transaction and may use it even after the block is destroyed.
+ *
+ * @param[in] block Non-null.
+ * @param[in] index The index within the block of the to be retrieved transaction.
+ * @return          The transaction, or null on error.
+ */
+kernel_Transaction* kernel_get_transaction_by_index(
+    kernel_Block* block,
+    uint64_t index
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Copy and serialize the transaction data into the returned byte array.
+ *
+ * @param[in] transaction Non-null.
+ * @return                Allocated byte array holding the transaction data.
+ */
+kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_transaction_data(
+    kernel_Transaction* transaction
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Check if the chainstate manager is busy loading blocks from disk. This
+ * may be the case when reindexing, or importing block files from disk.
+ *
+ * @param[in] chainman Non-null.
+ * @return             True if the chainstate manager is busy loading blocks.
+ */
+bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_loading_blocks(
+    kernel_ChainstateManager* chainman
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 #ifdef __cplusplus
