@@ -8,6 +8,7 @@
 #include <test/kernel/block_data.h>
 
 #include <cassert>
+#include <cstring>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -50,6 +51,16 @@ std::vector<unsigned char> hex_string_to_char_vec(const std::string& hex)
     return bytes;
 }
 
+std::string span_to_hex_string(std::span<const unsigned char> bytes)
+{
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0');
+    for (unsigned char byte : bytes) {
+        oss << std::setw(2) << static_cast<int>(byte);
+    }
+    return oss.str();
+}
+
 class TestLog
 {
 public:
@@ -76,6 +87,7 @@ struct TestDirectory {
 class TestKernelNotifications : public KernelNotifications<TestKernelNotifications>
 {
 public:
+    bool m_got_header{true};
     void BlockTipHandler(kernel_SynchronizationState state, kernel_BlockIndex* index) override
     {
         std::cout << "Block tip changed" << std::endl;
@@ -83,6 +95,7 @@ public:
 
     void HeaderTipHandler(kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync) override
     {
+        m_got_header = true;
         assert(timestamp > 0);
     }
 
@@ -353,12 +366,22 @@ void context_test()
     }
 }
 
-Context create_context(TestKernelNotifications& notifications, kernel_ChainType chain_type)
+Context create_context(
+    TestKernelNotifications& notifications,
+    kernel_ChainType chain_type,
+    bool with_mempool = false)
 {
     ContextOptions options{};
     ChainParams params{chain_type};
+
     options.SetChainParams(params);
     options.SetNotifications(notifications);
+
+    if (with_mempool) {
+        MempoolOptions mempool_opts{};
+        options.SetMempoolOptions(mempool_opts);
+    }
+
     return Context{options};
 }
 
@@ -442,6 +465,7 @@ void chainman_in_memory_test()
     assert(!std::filesystem::exists(in_memory_test_directory.m_directory / "chainstate"));
 }
 
+
 void chainman_mainnet_validation_test(TestDirectory& test_directory)
 {
     TestKernelNotifications notifications{};
@@ -491,6 +515,42 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
     assert(!chainman->ProcessBlock(block, status));
     assert(status == kernel_PROCESS_BLOCK_DUPLICATE);
 
+    auto cursor = chainman->GetCoinsViewCursor();
+    assert(cursor);
+
+    // test the coins cursor
+    {
+        // After processing one block, we should have one entry in the coins db
+        auto prev_out_tx_hash(hex_string_to_char_vec("982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e"));
+        kernel_OutPoint prev_out_point {
+            .hash = {1},
+            .n = 0,
+        };
+        auto output = chainman->GetOutputByOutPoint(&prev_out_point);
+        assert(!output);
+
+        std::memcpy(prev_out_point.hash, prev_out_tx_hash.data(), 32);
+        output = chainman->GetOutputByOutPoint(&prev_out_point);
+        assert(output);
+        std::cout << span_to_hex_string(output.GetScriptPubkey().GetScriptPubkeyData()) << std::endl;
+
+        // Check that we can also retrieve it by cursor
+        auto out_point = cursor.GetKey();
+        assert(out_point);
+        std::cout << span_to_hex_string(std::span{out_point->hash, 32}) << std::endl;
+        output = cursor.GetValue();
+        assert(output);
+        std::cout << span_to_hex_string(output.GetScriptPubkey().GetScriptPubkeyData()) << std::endl;
+        kernel_out_point_destroy(out_point);
+
+        // The next entry should be invalid
+        assert(!cursor.Next());
+        out_point = cursor.GetKey();
+        assert(!out_point);
+        output = cursor.GetValue();
+        assert(!output);
+    }
+
     assert(validation_interface.Unregister(context));
 }
 
@@ -499,11 +559,29 @@ void chainman_regtest_validation_test()
     auto test_directory{TestDirectory{"regtest_test_bitcoin_kernel"}};
 
     TestKernelNotifications notifications{};
-    auto context{create_context(notifications, kernel_ChainType::kernel_CHAIN_TYPE_REGTEST)};
+    auto context{create_context(notifications, kernel_ChainType::kernel_CHAIN_TYPE_REGTEST, true)};
+
+    // Do some serialization sanity-checks for the headers
+    auto header{Block{REGTEST_BLOCK_DATA[0]}.GetBlockHeader()};
+    assert(header);
+    auto header_data{header.GetBlockHeaderData()};
+    assert(span_to_hex_string(header_data) == "0000002006226e46111a0b59caaf126043eb5bbf28c34f3a5e332a1fc7b2b73cf188910f295badc0bdd9a2bc0955d12f337491eae4c87ba4660078c0156310284d47c6ff9a242d66ffff7f2000000000");
+    auto same_header{BlockHeader{header_data}};
+    assert(same_header);
+    assert(span_to_hex_string(header_data) == span_to_hex_string(same_header.GetBlockHeaderData()));
+
+    // Do some serialization sanity-checks for the transactions
+    auto transaction{Block{REGTEST_BLOCK_DATA[0]}.GetTransaction(0)};
+    assert(transaction);
+    auto transaction_data{transaction.GetTransactionData()};
+    assert(span_to_hex_string(transaction_data) == "020000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff025100ffffffff0200f2052a010000001600141409745405c4e8310a875bcd602db6b9b3dc0cf90000000000000000266a24aa21a9ede2f61c3f71d1defd3fa999dfa36953755c690689799962b48bebd836974e8cf90120000000000000000000000000000000000000000000000000000000000000000000000000");
+    auto same_transaction{Transaction{transaction_data}};
+    assert(same_transaction);
+    assert(span_to_hex_string(transaction_data) == span_to_hex_string(same_transaction.GetTransactionData()));
 
     // Validate 206 regtest blocks in total.
     // Stop halfway to check that it is possible to continue validating starting
-    // from prior state.
+    // from prior state and with just some of the headers pre-synced.
     const size_t mid{REGTEST_BLOCK_DATA.size() / 2};
 
     {
@@ -511,21 +589,41 @@ void chainman_regtest_validation_test()
         for (size_t i{0}; i < mid; i++) {
             Block block{REGTEST_BLOCK_DATA[i]};
             assert(block);
+            assert(block.IsBlockMutated(false));
+            assert(!block.IsBlockMutated(true));
+            BlockHeader header{block.GetBlockHeader()};
+            assert(header);
+            notifications.m_got_header = false;
+            assert(chainman->ProcessBlockHeader(header));
+            assert(notifications.m_got_header);
             auto status{kernel_ProcessBlockStatus::kernel_PROCESS_BLOCK_OK};
             assert(chainman->ProcessBlock(block, status));
             assert(status == kernel_PROCESS_BLOCK_OK);
         }
     }
 
+    // Validated the rest on a new chainman, but leave the last block.
     auto chainman{create_chainman(test_directory, false, false, false, false, context)};
 
-    for (size_t i{mid}; i < REGTEST_BLOCK_DATA.size(); i++) {
+    for (size_t i{mid}; i < REGTEST_BLOCK_DATA.size() - 1; i++) {
         Block block{REGTEST_BLOCK_DATA[i]};
         assert(block);
         auto status{kernel_ProcessBlockStatus::kernel_PROCESS_BLOCK_OK};
-        assert(chainman->ProcessBlock(block, status));
+        chainman->ProcessBlock(block, status);
         assert(status == kernel_PROCESS_BLOCK_OK);
     }
+
+    Block block{REGTEST_BLOCK_DATA[REGTEST_BLOCK_DATA.size() - 1]};
+    assert(block);
+    for (size_t i{1}; i < block.GetNumberOfTransactions(); i++) {
+        Transaction tx{block.GetTransaction(i)};
+        assert(tx);
+        std::cout << "Processing: " << i << std::endl;
+        assert(chainman->ProcessTransaction(tx, true));
+    }
+    auto status{kernel_ProcessBlockStatus::kernel_PROCESS_BLOCK_OK};
+    chainman->ProcessBlock(block, status);
+    assert(status == kernel_PROCESS_BLOCK_OK);
 
     auto tip = chainman->GetBlockIndexFromTip();
     auto read_block = chainman->ReadBlock(tip).value();
@@ -590,6 +688,7 @@ void chainman_reindex_chainstate_test(TestDirectory& test_directory)
     std::vector<std::string> import_files;
     import_files.push_back(test_directory.m_directory / "blocks" / "blk00000.dat");
     chainman->ImportBlocks(import_files);
+    assert(!chainman->LoadingBlocks());
 }
 
 int main()
