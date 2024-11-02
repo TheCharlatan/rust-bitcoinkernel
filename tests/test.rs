@@ -2,12 +2,12 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use libbitcoinkernel_sys::{
-        register_validation_interface, unregister_validation_interface, verify, Block,
-        BlockIndexInfo, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
-        ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
-        ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
-        ProcessBlockError, ScriptPubkey, Transaction, TxOut, Utxo,
-        ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT,
+        register_validation_interface, unregister_validation_interface, verify, Block, BlockHash,
+        BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions,
+        ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,
+        KernelNotificationInterfaceCallbackHolder, Log, Logger, ProcessBlockError, ScriptPubkey,
+        Transaction, TxOut, Utxo, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
+        VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -212,11 +212,11 @@ mod tests {
             chainman.process_block(&block).unwrap();
         }
         let block_index_genesis = chainman.get_block_index_genesis();
-        let info = block_index_genesis.info();
-        assert_eq!(info.height, 0);
+        let height = block_index_genesis.height();
+        assert_eq!(height, 0);
         let block_index_1 = chainman.get_next_block_index(block_index_genesis).unwrap();
-        let info = block_index_1.info();
-        assert_eq!(info.height, 1);
+        let height = block_index_1.height();
+        assert_eq!(height, 1);
 
         let block_index_tip = chainman.get_block_index_tip();
         let raw_block_tip: Vec<u8> = chainman.read_block_data(&block_index_tip).unwrap().into();
@@ -411,9 +411,8 @@ mod tests {
         is_send::<BlockUndo>();
         is_sync::<ChainstateManager>();
         is_send::<ChainstateManager>();
-        is_sync::<BlockIndexInfo>();
-        is_send::<BlockIndexInfo>();
-
+        is_sync::<BlockHash>();
+        is_send::<BlockHash>();
         // is_sync::<Rc<u8>>(); // won't compile, kept as a failure case.
         // is_send::<Rc<u8>>(); // won't compile, kept as a failure case.
     }

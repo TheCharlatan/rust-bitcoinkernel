@@ -171,7 +171,7 @@ fn scan_txs(chainman: &ChainstateManager) {
     let (receiver, secret_scan_key) = parse_keys();
     let mut block_index = chainman.get_block_index_tip();
     loop {
-        if block_index.info().height <= 1 {
+        if block_index.height() <= 1 {
             break;
         }
         let undo = chainman.read_undo_data(&block_index).unwrap();

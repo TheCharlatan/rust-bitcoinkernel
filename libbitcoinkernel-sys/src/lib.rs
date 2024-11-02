@@ -628,8 +628,8 @@ unsafe impl Send for BlockIndex<'_> {}
 unsafe impl Sync for BlockIndex<'_> {}
 
 #[derive(Debug, Clone)]
-pub struct BlockIndexInfo {
-    pub height: i32,
+pub struct BlockHash {
+    pub hash: [u8; 32],
 }
 
 impl<'a> BlockIndex<'a> {
@@ -645,12 +645,16 @@ impl<'a> BlockIndex<'a> {
         })
     }
 
-    pub fn info(&self) -> BlockIndexInfo {
-        let info = unsafe { kernel_get_block_index_info(self.inner) };
-        let res = BlockIndexInfo {
-            height: unsafe { (*info).height },
+    pub fn height(&self) -> i32 {
+        unsafe { kernel_block_index_get_height(self.inner) }
+    }
+
+    pub fn info(&self) -> BlockHash {
+        let hash = unsafe { kernel_block_index_get_block_hash(self.inner) };
+        let res = BlockHash {
+            hash: unsafe { (&*hash).hash },
         };
-        unsafe { kernel_block_index_info_destroy(info) };
+        unsafe { kernel_block_hash_destroy(hash) };
         return res;
     }
 }
@@ -912,8 +916,8 @@ impl<'a> ChainstateManager<'a> {
         })
     }
 
-    pub fn get_block_index_by_hash(&self, hash: [u8; 32]) -> Result<BlockIndex, KernelError> {
-        let mut block_hash = kernel_BlockHash { hash };
+    pub fn get_block_index_by_hash(&self, hash: BlockHash) -> Result<BlockIndex, KernelError> {
+        let mut block_hash = kernel_BlockHash { hash: hash.hash };
         let inner = unsafe {
             kernel_get_block_index_by_hash(self.context.inner, self.inner, &mut block_hash)
         };
