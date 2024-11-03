@@ -19,7 +19,6 @@ pub const VERIFY_CHECKSEQUENCEVERIFY: u32 =
     kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_CHECKSEQUENCEVERIFY;
 pub const VERIFY_WITNESS: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_WITNESS;
 pub const VERIFY_TAPROOT: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_TAPROOT;
-
 pub const VERIFY_ALL_PRE_TAPROOT: u32 = VERIFY_P2SH
     | VERIFY_DERSIG
     | VERIFY_NULLDUMMY
@@ -27,11 +26,19 @@ pub const VERIFY_ALL_PRE_TAPROOT: u32 = VERIFY_P2SH
     | VERIFY_CHECKSEQUENCEVERIFY
     | VERIFY_WITNESS;
 
-pub struct Utxo<'a> {
-    pub value: i64,
-    pub script_pubkey: &'a [u8],
-}
-
+/// Verifies a transaction input against its corresponding output script.
+///
+/// # Arguments
+/// * `script_pubkey` - The output script to verify against
+/// * `amount` - Needs to be set if the segwit flag is set
+/// * `tx_to` - The transaction containing the input to verify
+/// * `input_index` - The index of the input within `tx_to` to verify
+/// * `flags` - Defaults to all if none
+/// * `spent_output` - The outputs being spent by this transaction
+///
+/// # Returns
+/// * `Ok(())` if verification succeeds
+/// * [`KernelError::ScriptVerify`] an error describing the failure
 pub fn verify(
     script_pubkey: &ScriptPubkey,
     amount: Option<i64>,
@@ -106,6 +113,8 @@ unsafe fn cast_string(c_str: *const c_char) -> String {
     }
 }
 
+/// The current synch state, i.e. whether in reindex, ibd, or complete.
+/// Emitted by the block tip notification.
 pub enum SynchronizationState {
     INIT_REINDEX,
     INIT_DOWNLOAD,
@@ -123,6 +132,7 @@ impl From<kernel_SynchronizationState> for SynchronizationState {
     }
 }
 
+/// Warning state emitted by the kernel warning notification.
 pub enum KernelWarning {
     UNKNOWN_NEW_RULES_ACTIVATED,
     LARGE_WORK_INVALID_CHAIN,
@@ -142,6 +152,7 @@ impl From<kernel_Warning> for KernelWarning {
     }
 }
 
+/// The ChainType used to configure the kernel context.
 pub enum ChainType {
     MAINNET,
     TESTNET,
@@ -181,6 +192,7 @@ impl<F: Fn(String)> KNFlushErrorFn for F {}
 pub trait KNFatalErrorFn: Fn(String) {}
 impl<F: Fn(String)> KNFatalErrorFn for F {}
 
+/// A callback holder struct for the notification interface call.
 pub struct KernelNotificationInterfaceCallbackHolder {
     pub kn_block_tip: Box<dyn KNBlockTipFn>,
     pub kn_header_tip: Box<dyn KNHeaderTipFn>,
@@ -245,6 +257,7 @@ unsafe extern "C" fn kn_fatal_error_wrapper(user_data: *mut c_void, message: *co
     (holder.kn_fatal_error)(cast_string(message));
 }
 
+/// The chain parameters with which to configure a context.
 pub struct ChainParams {
     inner: *const kernel_ChainParameters,
 }
@@ -269,6 +282,9 @@ impl Drop for ChainParams {
     }
 }
 
+/// The main context struct. This should be setup through the ContextBuilder and
+/// has to be kept in memory for the duration of context-dependent library
+/// operations.
 pub struct Context {
     inner: *mut kernel_Context,
     pub kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
@@ -291,9 +307,13 @@ impl Drop for Context {
     }
 }
 
+/// Builder struct for the kernel context.
+///
+/// The builder by default configures for mainnet and swallows any kernel
+/// notifications.
 pub struct ContextBuilder {
     inner: *mut kernel_ContextOptions,
-    pub kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
+    kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
 }
 
 impl ContextBuilder {
@@ -305,15 +325,15 @@ impl ContextBuilder {
         context
     }
 
+    /// Consumes the builder and creates a [`Context`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KernelError::Internal`] if context creation fails.
     pub fn build(self) -> Result<Context, KernelError> {
         let inner = unsafe { kernel_context_create(self.inner) };
         if inner.is_null() {
             return Err(KernelError::Internal("Invalid context.".to_string()));
-        }
-        if self.kn_callbacks.is_none() {
-            return Err(KernelError::MissingCallbacks(
-                "Missing KernelNotificationInterface callbacks.".to_string(),
-            ));
         }
         unsafe { kernel_context_options_destroy(self.inner) };
         Ok(Context {
@@ -322,6 +342,7 @@ impl ContextBuilder {
         })
     }
 
+    /// Sets the notifications callbacks to the passed in holder struct
     pub fn kn_callbacks(
         mut self,
         kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
@@ -346,6 +367,7 @@ impl ContextBuilder {
         self
     }
 
+    /// Sets the chain type
     pub fn chain_type(self, chain_type: ChainType) -> ContextBuilder {
         let chain_params = ChainParams::new(chain_type);
         unsafe { kernel_context_options_set_chainparams(self.inner, chain_params.inner) };
@@ -353,10 +375,10 @@ impl ContextBuilder {
     }
 }
 
+/// A collection of errors emitted by this library
 #[derive(Debug)]
 pub enum KernelError {
     Internal(String),
-    MissingCallbacks(String),
     CStringCreationFailed(String),
     InvalidOptions(String),
     OutOfBounds,
@@ -364,6 +386,7 @@ pub enum KernelError {
     ProcessBlock(ProcessBlockError),
 }
 
+/// A collection of errors that may occur during script verification
 #[derive(Debug)]
 pub enum ScriptVerifyError {
     TxInputIndex,
@@ -376,6 +399,7 @@ pub enum ScriptVerifyError {
     Invalid,
 }
 
+/// A collection of errors that may occur during block processing
 #[derive(Debug)]
 pub enum ProcessBlockError {
     NoCoinbase,
@@ -394,7 +418,6 @@ impl fmt::Display for KernelError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             KernelError::Internal(msg)
-            | KernelError::MissingCallbacks(msg)
             | KernelError::CStringCreationFailed(msg)
             | KernelError::InvalidOptions(msg) => write!(f, "{}", msg),
             _ => write!(f, "Error!"),
@@ -405,7 +428,9 @@ impl fmt::Display for KernelError {
 pub trait VIBlockCheckedFn: Fn() {}
 impl<F: Fn()> VIBlockCheckedFn for F {}
 
+/// A holder struct for validation interface callbacks
 pub struct ValidationInterfaceCallbackHolder {
+    /// Called after a block has completed validation and communicates its validation state.
     pub block_checked: Box<dyn VIBlockCheckedFn>,
 }
 
@@ -418,12 +443,15 @@ unsafe extern "C" fn vi_block_checked_wrapper(
     (holder.block_checked)();
 }
 
+/// A wrapper for the validation interface. This is the struct that has to be
+/// registered with a context in order to receive validation interface events.
 pub struct ValidationInterfaceWrapper {
     inner: *mut kernel_ValidationInterface,
     pub vi_callbacks: Box<ValidationInterfaceCallbackHolder>,
 }
 
 impl ValidationInterfaceWrapper {
+    /// Create a new ValidationInterface wrapper configured with the passed in callbacks.
     pub fn new(vi_callbacks: Box<ValidationInterfaceCallbackHolder>) -> ValidationInterfaceWrapper {
         let vi_pointer = Box::into_raw(vi_callbacks);
         let inner = unsafe {
@@ -441,6 +469,7 @@ impl ValidationInterfaceWrapper {
     }
 }
 
+/// Register a validation interface with a context.
 pub fn register_validation_interface(
     vi: &ValidationInterfaceWrapper,
     context: &Context,
@@ -455,6 +484,8 @@ pub fn register_validation_interface(
     Ok(())
 }
 
+/// De-register a validation interface with a previously registered context.
+/// This should be done before destroying the context.
 pub fn unregister_validation_interface(
     vi: &ValidationInterfaceWrapper,
     context: &Context,
@@ -477,6 +508,7 @@ impl Drop for ValidationInterfaceWrapper {
     }
 }
 
+/// A single script pubkey
 #[derive(Debug, Clone)]
 pub struct ScriptPubkey {
     inner: *mut kernel_ScriptPubkey,
@@ -520,6 +552,10 @@ impl Drop for ScriptPubkey {
     }
 }
 
+/// A single transaction output.
+///
+/// It can be initialized with a script pubkey and amount, and the user may
+/// retrieve a copy of a script pubkey and its amount.
 #[derive(Debug, Clone)]
 pub struct TxOut {
     inner: *mut kernel_TransactionOutput,
@@ -535,10 +571,12 @@ impl TxOut {
         }
     }
 
+    /// Get the amount associated with this transaction output
     pub fn get_value(&self) -> i64 {
         unsafe { kernel_get_transaction_output_amount(self.inner) }
     }
 
+    /// Get the script pubkey of this output
     pub fn get_script_pubkey(&self) -> ScriptPubkey {
         ScriptPubkey {
             inner: unsafe { kernel_copy_script_pubkey_from_output(self.inner) },
@@ -552,6 +590,7 @@ impl Drop for TxOut {
     }
 }
 
+/// A single transaction.
 pub struct Transaction {
     inner: *mut kernel_Transaction,
 }
@@ -580,6 +619,7 @@ impl Drop for Transaction {
     }
 }
 
+/// A single Block
 pub struct Block {
     inner: *mut kernel_Block,
 }
@@ -619,6 +659,12 @@ impl Drop for Block {
     }
 }
 
+/// A block index that is tied to a specific chainstate manager.
+///
+/// Internally the [`ChainstateManager`] keeps an in-memory of the current block
+/// tree once it is loaded. The [`BlockIndex`] points to an entry in this tree.
+/// It is only valid as long as the ChainstateManager it was retrieved from
+/// remains in scope.
 pub struct BlockIndex<'a> {
     inner: *mut kernel_BlockIndex,
     marker: PhantomData<ChainstateManager<'a>>,
@@ -627,12 +673,15 @@ pub struct BlockIndex<'a> {
 unsafe impl Send for BlockIndex<'_> {}
 unsafe impl Sync for BlockIndex<'_> {}
 
+/// A type for a Block hash.
 #[derive(Debug, Clone)]
 pub struct BlockHash {
     pub hash: [u8; 32],
 }
 
 impl<'a> BlockIndex<'a> {
+    /// Move to the previous entry in the block tree. E.g. from height n to
+    /// height n-1.
     pub fn prev(self) -> Result<BlockIndex<'a>, KernelError> {
         let inner = unsafe { kernel_get_previous_block_index(self.inner) };
         if inner.is_null() {
@@ -645,10 +694,12 @@ impl<'a> BlockIndex<'a> {
         })
     }
 
+    /// Get the current height associated with this BlockIndex.
     pub fn height(&self) -> i32 {
         unsafe { kernel_block_index_get_height(self.inner) }
     }
 
+    /// Get the current block hash associated with this BlockIndex.
     pub fn info(&self) -> BlockHash {
         let hash = unsafe { kernel_block_index_get_block_hash(self.inner) };
         let res = BlockHash {
@@ -665,6 +716,9 @@ impl<'a> Drop for BlockIndex<'a> {
     }
 }
 
+/// The undo data of a block is used internally during re-orgs. It holds the
+/// previous transaction outputs of a block's transactions. This data may be
+/// useful for building indexes.
 pub struct BlockUndo {
     inner: *mut kernel_BlockUndo,
     pub n_tx_undo: usize,
@@ -673,10 +727,13 @@ unsafe impl Send for BlockUndo {}
 unsafe impl Sync for BlockUndo {}
 
 impl BlockUndo {
+    /// Gets the number of previous outputs associated with a transaction in a
+    /// [`Block`] by its index.
     pub fn get_transaction_undo_size(&self, transaction_index: u64) -> u64 {
         unsafe { kernel_get_transaction_undo_size(self.inner, transaction_index) }
     }
 
+    /// Gets the previous output of a transaction by its index.
     pub fn get_prevout_by_index(
         &self,
         transaction_index: u64,
@@ -699,11 +756,17 @@ impl Drop for BlockUndo {
     }
 }
 
+/// Holds the configuration options for creating a new [`ChainstateManager`]
 pub struct ChainstateManagerOptions {
     inner: *mut kernel_ChainstateManagerOptions,
 }
 
 impl ChainstateManagerOptions {
+    /// Create a new option
+    ///
+    /// # Arguments
+    /// * `context` -  The [`ChainstateManager`] for which these options are created has to use the same context.
+    /// * `data_dir` - The directory into which the [`ChainstateManager`] will write its data.
     pub fn new(context: &Context, data_dir: &str) -> Result<Self, KernelError> {
         let c_data_dir = CString::new(data_dir)?;
         let inner = unsafe {
@@ -729,11 +792,18 @@ impl Drop for ChainstateManagerOptions {
     }
 }
 
+/// Holds the configuration options for a BlockManager, which is used internally
+/// by the [`ChainstateManager`]
 pub struct BlockManagerOptions {
     inner: *mut kernel_BlockManagerOptions,
 }
 
 impl BlockManagerOptions {
+    /// Create a new option
+    ///
+    /// # Arguments
+    /// * `context` -  The [`ChainstateManager`] for which these options are created has to use the same context.
+    /// * `blocks_dir` - The directory into which the [`ChainstateManager`] will write its block data.
     pub fn new(context: &Context, blocks_dir: &str) -> Result<Self, KernelError> {
         let c_blocks_dir = CString::new(blocks_dir)?;
         let inner = unsafe {
@@ -756,6 +826,7 @@ impl Drop for BlockManagerOptions {
     }
 }
 
+/// Holds the configuration options for when loading the on disk state of the [`ChainstateManager`].
 pub struct ChainstateLoadOptions {
     inner: *mut kernel_ChainstateLoadOptions,
 }
@@ -809,6 +880,14 @@ impl Drop for ChainstateLoadOptions {
     }
 }
 
+/// The chainstate manager is the central object for doing validation tasks as
+/// well as retrieving data from the chain. Internally it is a complex data
+/// structure with diverse functionality.
+///
+/// The chainstate manager is only valid for as long as the context with which it
+/// was created remains in memory.
+///
+/// Its functionality will be more and more exposed in the future.
 pub struct ChainstateManager<'a> {
     inner: *mut kernel_ChainstateManager,
     context: &'a Context,
@@ -838,6 +917,8 @@ impl<'a> ChainstateManager<'a> {
         Ok(Self { inner, context })
     }
 
+    /// This function must be called to initialize the chainstate manager before
+    /// doing validation tasks or interacting with its indexes.
     pub fn load_chainstate(&self, opts: ChainstateLoadOptions) -> Result<(), KernelError> {
         if !unsafe {
             kernel_chainstate_manager_load_chainstate(self.context.inner, opts.inner, self.inner)
@@ -849,6 +930,12 @@ impl<'a> ChainstateManager<'a> {
         Ok(())
     }
 
+    /// Process and validate the passed in block with the [`ChainstateManager`]
+    /// If processing failed, some information can be retrieved through the status
+    /// enumeration. More detailed validation information in case of a failure can
+    /// also be retrieved through a registered validation interface. If the block
+    /// fails to validate the `block_checked` callback's ['BlockValidationState'] will
+    /// contain details.
     pub fn process_block(&self, block: &Block) -> Result<(), KernelError> {
         let mut status = kernel_ProcessBlockStatus_kernel_PROCESS_BLOCK_OK;
         let accepted = unsafe {
@@ -879,6 +966,10 @@ impl<'a> ChainstateManager<'a> {
         }
     }
 
+    /// May be called after load_chainstate to initialize the
+    /// [`ChainstateManager`]. Triggers the start of a reindex if the option was
+    /// previously set for the chainstate and block manager. Can also import an
+    /// array of existing block files selected by the user.
     pub fn import_blocks(&self) -> Result<(), KernelError> {
         if !unsafe { kernel_import_blocks(self.context.inner, self.inner, std::ptr::null_mut(), 0) }
         {
@@ -889,6 +980,8 @@ impl<'a> ChainstateManager<'a> {
         Ok(())
     }
 
+    /// Get the block index entry of the current chain tip. Once returned,
+    /// there is no guarantee that it remains in the active chain.
     pub fn get_block_index_tip(&self) -> BlockIndex {
         BlockIndex {
             inner: unsafe { kernel_get_block_index_from_tip(self.context.inner, self.inner) },
@@ -896,6 +989,7 @@ impl<'a> ChainstateManager<'a> {
         }
     }
 
+    /// Get the block index entry of the genesis block.
     pub fn get_block_index_genesis(&self) -> BlockIndex {
         BlockIndex {
             inner: unsafe { kernel_get_block_index_from_genesis(self.context.inner, self.inner) },
@@ -903,6 +997,8 @@ impl<'a> ChainstateManager<'a> {
         }
     }
 
+    /// Retrieve a block index by its height in the currently active chain.
+    /// Once retrieved there is no guarantee that it remains in the active chain.
     pub fn get_block_index_by_height(&self, block_height: i32) -> Result<BlockIndex, KernelError> {
         let inner = unsafe {
             kernel_get_block_index_by_height(self.context.inner, self.inner, block_height)
@@ -916,6 +1012,7 @@ impl<'a> ChainstateManager<'a> {
         })
     }
 
+    /// Get a block index entry by its hash.
     pub fn get_block_index_by_hash(&self, hash: BlockHash) -> Result<BlockIndex, KernelError> {
         let mut block_hash = kernel_BlockHash { hash: hash.hash };
         let inner = unsafe {
@@ -932,6 +1029,8 @@ impl<'a> ChainstateManager<'a> {
         })
     }
 
+    /// Get the next block index entry in the chain. If this is the tip, or
+    /// otherwise a leaf in the block tree, return an error.
     pub fn get_next_block_index(&self, block_index: BlockIndex) -> Result<BlockIndex, KernelError> {
         let inner = unsafe {
             kernel_get_next_block_index(self.context.inner, block_index.inner, self.inner)
@@ -945,6 +1044,7 @@ impl<'a> ChainstateManager<'a> {
         })
     }
 
+    /// Read a block from disk by its block index.
     pub fn read_block_data(&self, block_index: &BlockIndex) -> Result<Block, KernelError> {
         let inner = unsafe {
             kernel_read_block_from_disk(self.context.inner, self.inner, block_index.inner)
@@ -955,6 +1055,7 @@ impl<'a> ChainstateManager<'a> {
         Ok(Block { inner })
     }
 
+    /// Read a block's undo data from disk by its block index.
     pub fn read_undo_data(&self, block_index: &BlockIndex) -> Result<BlockUndo, KernelError> {
         let inner = unsafe {
             kernel_read_block_undo_from_disk(self.context.inner, self.inner, block_index.inner)
@@ -990,6 +1091,9 @@ unsafe extern "C" fn log_callback<T: Log + 'static>(
     (*log).log(&message);
 }
 
+/// The logger object logs kernel log messages into a user-defined log function.
+/// Messages logged by the kernel before this object is created are buffered in
+/// a 1MB buffer. The kernel library internally uses a global logging instance.
 pub struct Logger<T> {
     log: T,
     inner: *mut kernel_LoggingConnection,
@@ -1003,6 +1107,7 @@ impl<T> Drop for Logger<T> {
     }
 }
 
+/// Permanently disable logging and stop buffering.
 pub fn disable_logging() {
     unsafe {
         kernel_disable_logging();
@@ -1010,6 +1115,7 @@ pub fn disable_logging() {
 }
 
 impl<T: Log + 'static> Logger<T> {
+    /// Create a new Logger with the specified callback.
     pub fn new(mut log: T) -> Result<Logger<T>, KernelError> {
         let options = kernel_LoggingOptions {
             log_timestamps: true,
@@ -1036,6 +1142,7 @@ impl<T: Log + 'static> Logger<T> {
         Ok(Logger { log, inner })
     }
 
+    /// Manually log something through the user-specified callback.
     pub fn log(&self, message: &str) {
         self.log.log(message);
     }

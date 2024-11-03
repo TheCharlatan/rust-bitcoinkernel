@@ -6,7 +6,7 @@ mod tests {
         BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions,
         ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,
         KernelNotificationInterfaceCallbackHolder, Log, Logger, ProcessBlockError, ScriptPubkey,
-        Transaction, TxOut, Utxo, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
+        Transaction, TxOut, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
         VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
@@ -397,8 +397,6 @@ mod tests {
         is_send::<ScriptPubkey>();
         is_sync::<ChainParams>(); // compiles only if true
         is_send::<ChainParams>();
-        is_sync::<Utxo>();
-        is_send::<Utxo>();
         is_sync::<TxOut>();
         is_send::<TxOut>();
         is_sync::<Transaction>();
