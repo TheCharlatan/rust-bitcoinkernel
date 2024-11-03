@@ -171,8 +171,8 @@ impl From<ChainType> for kernel_ChainType {
     }
 }
 
-pub trait KNBlockTipFn: Fn(SynchronizationState, *mut kernel_BlockIndex) {}
-impl<F: Fn(SynchronizationState, *mut kernel_BlockIndex)> KNBlockTipFn for F {}
+pub trait KNBlockTipFn: Fn(SynchronizationState, BlockHash) {}
+impl<F: Fn(SynchronizationState, BlockHash)> KNBlockTipFn for F {}
 
 pub trait KNHeaderTipFn: Fn(SynchronizationState, i64, i64, bool) {}
 impl<F: Fn(SynchronizationState, i64, i64, bool)> KNHeaderTipFn for F {}
@@ -209,7 +209,11 @@ unsafe extern "C" fn kn_block_tip_wrapper(
     block_index: *mut kernel_BlockIndex,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
-    (holder.kn_block_tip)(state.into(), block_index);
+    let hash = kernel_block_index_get_block_hash(block_index) ;
+    let res = BlockHash {
+        hash: (&*hash).hash,
+    };
+    (holder.kn_block_tip)(state.into(), res);
 }
 
 unsafe extern "C" fn kn_header_tip_wrapper(
