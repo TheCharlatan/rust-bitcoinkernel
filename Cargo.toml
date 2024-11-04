@@ -12,7 +12,7 @@ categories = ["cryptography::cryptocurrencies"]
 readme = "README.md"
 
 [dependencies]
-libbitcoinkernel-sys = { path = "libbitcoinkernel-sys" }
+libbitcoinkernel-sys = { path = "libbitcoinkernel-sys", version = "0.0.2" }
 
 [dev-dependencies]
 hex = "0.4"

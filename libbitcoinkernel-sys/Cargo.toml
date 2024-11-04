@@ -1,13 +1,53 @@
 [package]
 name = "libbitcoinkernel-sys"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 authors = ["TheCharlatan <seb.kung@gmail.com>"]
 description = "Raw Rust bindings to libbitcoinkernel"
 license = "MIT"
 repository = "https://github.com/TheCharlatan/rust-bitcoinkernel"
+documentation = "https://docs.rs/bitcoinkernel"
 links = "libbitcoinkernel.a"
 build = "build.rs"
+readme = "README.md"
+exclude = [
+    "bitcoin/.github",
+    "bitcoin/.tx",
+    "bitcoin/ci",
+    "bitcoin/contrib/asmap",
+    "bitcoin/contrib/completions",
+    "bitcoin/contrib/debian",
+    "bitcoin/contrib/guix",
+    "bitcoin/contrib/init",
+    "bitcoin/contrib/linearize",
+    "bitcoin/contrib/macdeploy",
+    "bitcoin/contrib/message-capture",
+    "bitcoin/contrib/qos",
+    "bitcoin/contrib/seeds",
+    "bitcoin/contrib/shell",
+    "bitcoin/contrib/signet",
+    "bitcoin/contrib/testgen",
+    "bitcoin/contrib/tracing",
+    "bitcoin/contrib/verify-binaries",
+    "bitcoin/contrib/verify-commits",
+    "bitcoin/depends",
+    "bitcoin/doc/*.md",
+    "bitcoin/doc/man",
+    "bitcoin/doc/design",
+    "bitcoin/share",
+    "bitcoin/src/bench",
+    "bitcoin/src/ipc",
+    "bitcoin/test/functional",
+    "bitcoin/test/fuzz",
+    "bitcoin/test/lint",
+    "bitcoin/test/sanitizer_suppresions",
+    "bitcoin/test/util",
+    "bitcoin/share",
+    "bitcoin/src/qt",
+    "bitcoin/src/bench",
+    "bitcoin/src/wallet",
+]
+publish = true
 
 [dependencies]
 libc = "0.2"
