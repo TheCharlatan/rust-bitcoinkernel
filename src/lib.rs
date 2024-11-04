@@ -507,8 +507,8 @@ impl From<kernel_BlockValidationResult> for BlockValidationResult {
 }
 
 /// Exposes the result after validating a block.
-pub trait VIBlockCheckedFn: Fn(ValidationMode, BlockValidationResult) {}
-impl<F: Fn(ValidationMode, BlockValidationResult)> VIBlockCheckedFn for F {}
+pub trait VIBlockCheckedFn: Fn(UnownedBlock, ValidationMode, BlockValidationResult) {}
+impl<F: Fn(UnownedBlock, ValidationMode, BlockValidationResult)> VIBlockCheckedFn for F {}
 
 /// A holder struct for validation interface callbacks
 pub struct ValidationInterfaceCallbackHolder {
@@ -518,13 +518,13 @@ pub struct ValidationInterfaceCallbackHolder {
 
 unsafe extern "C" fn vi_block_checked_wrapper(
     user_data: *mut c_void,
-    _: *const kernel_BlockPointer,
+    block: *const kernel_BlockPointer,
     stateIn: *const kernel_BlockValidationState,
 ) {
     let holder = &*(user_data as *mut ValidationInterfaceCallbackHolder);
     let result = kernel_get_block_validation_result_from_block_validation_state(stateIn);
     let mode = kernel_get_validation_mode_from_block_validation_state(stateIn);
-    (holder.block_checked)(mode.into(), result.into());
+    (holder.block_checked)(UnownedBlock::new(block), mode.into(), result.into());
 }
 
 /// A wrapper for the validation interface. This is the struct that has to be
@@ -700,6 +700,29 @@ impl TryFrom<&[u8]> for Transaction {
 impl Drop for Transaction {
     fn drop(&mut self) {
         unsafe { kernel_transaction_destroy(self.inner) }
+    }
+}
+
+/// A single unowned block. Can only be used for copying data from it.
+pub struct UnownedBlock {
+    inner: *const kernel_BlockPointer,
+}
+
+impl UnownedBlock {
+    fn new(block: *const kernel_BlockPointer) -> UnownedBlock {
+        UnownedBlock{ inner: block }
+    }
+}
+
+impl Into<Vec<u8>> for UnownedBlock {
+    fn into(self) -> Vec<u8> {
+        let raw_block = unsafe { kernel_copy_block_pointer_data(self.inner) };
+         let vec = unsafe {
+            std::slice::from_raw_parts((*raw_block).data, (*raw_block).size.try_into().unwrap())
+        }
+        .to_vec();
+        unsafe { kernel_byte_array_destroy(raw_block) };
+        vec
     }
 }
 
