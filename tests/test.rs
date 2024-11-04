@@ -70,7 +70,7 @@ mod tests {
     fn setup_validation_interface(context: &Context) -> ValidationInterfaceWrapper {
         let validation_interface =
             ValidationInterfaceWrapper::new(Box::new(ValidationInterfaceCallbackHolder {
-                block_checked: Box::new(|| {
+                block_checked: Box::new(|_mode, _result| {
                     log::info!("Block checked!");
                 }),
             }));

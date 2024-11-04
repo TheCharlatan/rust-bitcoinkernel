@@ -209,7 +209,7 @@ unsafe extern "C" fn kn_block_tip_wrapper(
     block_index: *mut kernel_BlockIndex,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
-    let hash = kernel_block_index_get_block_hash(block_index) ;
+    let hash = kernel_block_index_get_block_hash(block_index);
     let res = BlockHash {
         hash: (&*hash).hash,
     };
@@ -429,8 +429,78 @@ impl fmt::Display for KernelError {
     }
 }
 
-pub trait VIBlockCheckedFn: Fn() {}
-impl<F: Fn()> VIBlockCheckedFn for F {}
+/// Whether a validated data structure is valid, invalid, or an error was
+/// encountered during processing.
+pub enum ValidationMode {
+    VALID,
+    INVALID,
+    ERROR,
+}
+
+impl From<kernel_ValidationMode> for ValidationMode {
+    fn from(mode: kernel_ValidationMode) -> Self {
+        match mode {
+            kernel_ValidationMode_kernel_VALIDATION_STATE_VALID => Self::VALID,
+            kernel_ValidationMode_kernel_VALIDATION_STATE_INVALID => Self::INVALID,
+            kernel_ValidationMode_kernel_VALIDATION_STATE_ERROR => Self::ERROR,
+            _ => ValidationMode::ERROR, // This should never happen
+        }
+    }
+}
+
+/// A granular reason why a block was invalid.
+pub enum BlockValidationResult {
+    /// initial value. Block has not yet been rejected
+    RESULT_UNSET = 0,
+    /// invalid by consensus rules (excluding any below reasons)
+    CONSENSUS,
+    /// Invalid by a change to consensus rules more recent than SegWit.
+    /// Currently unused as there are no such consensus rule changes, and any download
+    /// sources realistically need to support SegWit in order to provide useful data,
+    /// so differentiating between always-invalid and invalid-by-pre-SegWit-soft-fork
+    /// is uninteresting.
+    RECENT_CONSENSUS_CHANGE,
+    /// this block was cached as being invalid and we didn't store the reason why
+    CACHED_INVALID,
+    /// invalid proof of work or time too old
+    INVALID_HEADER,
+    /// the block's data didn't match the data committed to by the PoW
+    MUTATED,
+    /// We don't have the previous block the checked one is built on
+    MISSING_PREV,
+    /// A block this one builds on is invalid
+    INVALID_PREV,
+    /// block timestamp was > 2 hours in the future (or our clock is bad)
+    TIME_FUTURE,
+    /// the block failed to meet one of our checkpoints
+    CHECKPOINT,
+    /// the block header may be on a too-little-work chain
+    HEADER_LOW_WORK,
+}
+
+impl From<kernel_BlockValidationResult> for BlockValidationResult {
+    fn from(res: kernel_BlockValidationResult) -> Self {
+        match res {
+            kernel_BlockValidationResult_kernel_BLOCK_RESULT_UNSET => Self::RESULT_UNSET,
+            kernel_BlockValidationResult_kernel_BLOCK_CONSENSUS => Self::CONSENSUS,
+            kernel_BlockValidationResult_kernel_BLOCK_RECENT_CONSENSUS_CHANGE => {
+                Self::RECENT_CONSENSUS_CHANGE
+            }
+            kernel_BlockValidationResult_kernel_BLOCK_CACHED_INVALID => Self::CACHED_INVALID,
+            kernel_BlockValidationResult_kernel_BLOCK_INVALID_HEADER => Self::INVALID_HEADER,
+            kernel_BlockValidationResult_kernel_BLOCK_MUTATED => Self::MUTATED,
+            kernel_BlockValidationResult_kernel_BLOCK_MISSING_PREV => Self::MISSING_PREV,
+            kernel_BlockValidationResult_kernel_BLOCK_INVALID_PREV => Self::INVALID_PREV,
+            kernel_BlockValidationResult_kernel_BLOCK_TIME_FUTURE => Self::TIME_FUTURE,
+            kernel_BlockValidationResult_kernel_BLOCK_CHECKPOINT => Self::CHECKPOINT,
+            kernel_BlockValidationResult_kernel_BLOCK_HEADER_LOW_WORK => Self::HEADER_LOW_WORK,
+            _ => Self::RECENT_CONSENSUS_CHANGE,
+        }
+    }
+}
+
+pub trait VIBlockCheckedFn: Fn(ValidationMode, BlockValidationResult) {}
+impl<F: Fn(ValidationMode, BlockValidationResult)> VIBlockCheckedFn for F {}
 
 /// A holder struct for validation interface callbacks
 pub struct ValidationInterfaceCallbackHolder {
@@ -440,11 +510,13 @@ pub struct ValidationInterfaceCallbackHolder {
 
 unsafe extern "C" fn vi_block_checked_wrapper(
     user_data: *mut c_void,
-    _block: *const kernel_BlockPointer,
-    _stateIn: *const kernel_BlockValidationState,
+    _: *const kernel_BlockPointer,
+    stateIn: *const kernel_BlockValidationState,
 ) {
     let holder = &*(user_data as *mut ValidationInterfaceCallbackHolder);
-    (holder.block_checked)();
+    let result = kernel_get_block_validation_result_from_block_validation_state(stateIn);
+    let mode = kernel_get_validation_mode_from_block_validation_state(stateIn);
+    (holder.block_checked)(mode.into(), result.into());
 }
 
 /// A wrapper for the validation interface. This is the struct that has to be
