@@ -171,28 +171,35 @@ impl From<ChainType> for kernel_ChainType {
     }
 }
 
+/// The chain's tip was updated to the provided block hash.
 pub trait KNBlockTipFn: Fn(SynchronizationState, BlockHash) {}
 impl<F: Fn(SynchronizationState, BlockHash)> KNBlockTipFn for F {}
 
+/// A new best block header was added.
 pub trait KNHeaderTipFn: Fn(SynchronizationState, i64, i64, bool) {}
 impl<F: Fn(SynchronizationState, i64, i64, bool)> KNHeaderTipFn for F {}
 
+/// Reports on the current synchronization progress.
 pub trait KNProgressFn: Fn(String, i32, bool) {}
 impl<F: Fn(String, i32, bool)> KNProgressFn for F {}
 
+/// A warning state issued by the kernel during validation.
 pub trait KNWarningSetFn: Fn(KernelWarning, String) {}
 impl<F: Fn(KernelWarning, String)> KNWarningSetFn for F {}
 
+/// A previous condition leading to the issuance of a warning is no longer given.
 pub trait KNWarningUnsetFn: Fn(KernelWarning) {}
 impl<F: Fn(KernelWarning)> KNWarningUnsetFn for F {}
 
+/// An error was encountered when flushing data to disk.
 pub trait KNFlushErrorFn: Fn(String) {}
 impl<F: Fn(String)> KNFlushErrorFn for F {}
 
+/// An un-recoverable system error was encountered by the library.
 pub trait KNFatalErrorFn: Fn(String) {}
 impl<F: Fn(String)> KNFatalErrorFn for F {}
 
-/// A callback holder struct for the notification interface call.
+/// A callback holder struct for the notification interface calls.
 pub struct KernelNotificationInterfaceCallbackHolder {
     pub kn_block_tip: Box<dyn KNBlockTipFn>,
     pub kn_header_tip: Box<dyn KNHeaderTipFn>,
@@ -499,6 +506,7 @@ impl From<kernel_BlockValidationResult> for BlockValidationResult {
     }
 }
 
+/// Exposes the result after validating a block.
 pub trait VIBlockCheckedFn: Fn(ValidationMode, BlockValidationResult) {}
 impl<F: Fn(ValidationMode, BlockValidationResult)> VIBlockCheckedFn for F {}
 
@@ -1154,6 +1162,7 @@ impl<'a> Drop for ChainstateManager<'a> {
     }
 }
 
+/// A function for handling log messages produced by the kernel library.
 pub trait Log {
     fn log(&self, message: &str);
 }

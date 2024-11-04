@@ -6,10 +6,8 @@ authors = ["TheCharlatan <seb.kung@gmail.com>"]
 description = "Raw Rust bindings to libbitcoinkernel"
 license = "MIT"
 repository = "https://github.com/TheCharlatan/rust-bitcoinkernel"
-links = "libbitcoinkernel"
+links = "libbitcoinkernel.a"
 build = "build.rs"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 libc = "0.2"
