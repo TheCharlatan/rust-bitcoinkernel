@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use bitcoin::consensus::deserialize;
-    use libbitcoinkernel_sys::{
+    use bitcoinkernel::{
         register_validation_interface, unregister_validation_interface, verify, Block, BlockHash,
         BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions,
         ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,

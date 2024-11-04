@@ -2,6 +2,10 @@
 name = "libbitcoinkernel-sys"
 version = "0.0.1"
 edition = "2021"
+authors = ["TheCharlatan <seb.kung@gmail.com>"]
+description = "Raw Rust bindings to libbitcoinkernel"
+license = "MIT"
+repository = "https://github.com/TheCharlatan/rust-bitcoinkernel"
 links = "libbitcoinkernel"
 build = "build.rs"
 

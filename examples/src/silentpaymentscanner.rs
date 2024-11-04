@@ -5,12 +5,12 @@ use std::process;
 use bitcoin::consensus::deserialize;
 use bitcoin::hashes::Hash;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
-use env_logger::Builder;
-use libbitcoinkernel_sys::{
+use bitcoinkernel::{
     BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
     ChainstateManagerOptions, Context, ContextBuilder, KernelError,
     KernelNotificationInterfaceCallbackHolder, Log, Logger,
 };
+use env_logger::Builder;
 use log::LevelFilter;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 use silentpayments::receiving::{Label, Receiver};

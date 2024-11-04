@@ -6,9 +6,9 @@ use libfuzzer_sys::fuzz_target;
 
 use arbitrary::Arbitrary;
 
-use libbitcoinkernel_sys::{
+use bitcoinkernel::{
     disable_logging, Block, BlockManagerOptions, ChainType, ChainstateLoadOptions,
-    ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder,
+    ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,
     KernelNotificationInterfaceCallbackHolder,
 };
 
@@ -78,7 +78,7 @@ fuzz_target!(|data: ChainstateManagerInput| {
     let blocks_dir = format!("{}/blocks", data_dir);
     let chainman_opts = match ChainstateManagerOptions::new(&context, &data_dir) {
         Ok(opts) => opts,
-        Err(libbitcoinkernel_sys::KernelError::CStringCreationFailed(_)) => return,
+        Err(KernelError::CStringCreationFailed(_)) => return,
         Err(err) => panic!("this should never happen: {}", err),
     };
     let blockman_opts = BlockManagerOptions::new(&context, &blocks_dir).unwrap();
@@ -91,7 +91,7 @@ fuzz_target!(|data: ChainstateManagerInput| {
             .set_block_tree_db_in_memory(data.block_tree_db_in_memory)
             .set_chainstate_db_in_memory(data.chainstate_db_in_memory),
     ) {
-        Err(libbitcoinkernel_sys::KernelError::Internal(_)) => {
+        Err(KernelError::Internal(_)) => {
             return;
         }
         Err(err) => {

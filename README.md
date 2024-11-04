@@ -4,7 +4,8 @@
 
 `rust-bitcoinkernel` is a wrapper around
 [libbitcoinkernel](https://github.com/bitcoin/bitcoin/issues/24303), a C++
-library exposing Bitcoin Core's validation engine.
+library exposing Bitcoin Core's validation engine. It supports both validation
+of blocks and transaction outputs as well as reading block data.
 
 ## Building
 
@@ -29,14 +30,11 @@ dependencies. Once setup, run:
 cargo b
 ```
 
-And for the example binary (takes the path to a previously used Bitcoin Core
-regtest directory):
+## Examples
 
-```bash
-cargo run -- /path/to/.bitcoin/regtest
-```
-
-The example binary implements a silent payments scanner.
+Examples for the usage of the library can be found in the `examples/` directory
+and the `tests`. For now, the example binary implements a bare-bones silent
+payments scanner.
 
 ## Fuzzing
 
