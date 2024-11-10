@@ -115,6 +115,7 @@ unsafe fn cast_string(c_str: *const c_char) -> String {
 
 /// The current synch state, i.e. whether in reindex, ibd, or complete.
 /// Emitted by the block tip notification.
+#[derive(Debug)]
 pub enum SynchronizationState {
     INIT_REINDEX,
     INIT_DOWNLOAD,

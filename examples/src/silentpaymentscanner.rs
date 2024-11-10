@@ -8,7 +8,7 @@ use bitcoin::{PrivateKey, XOnlyPublicKey};
 use bitcoinkernel::{
     BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
     ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-    KernelNotificationInterfaceCallbackHolder, Log, Logger,
+    Log, Logger,
 };
 use env_logger::Builder;
 use log::LevelFilter;
@@ -37,15 +37,6 @@ fn setup_logging() -> Result<Logger<MainLog>, KernelError> {
 fn create_context() -> Context {
     ContextBuilder::new()
         .chain_type(ChainType::REGTEST)
-        .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
-            kn_block_tip: Box::new(|_state, _block_index| {}),
-            kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
-            kn_progress: Box::new(|_title, _progress, _resume_possible| {}),
-            kn_warning_set: Box::new(|_warning, _message| {}),
-            kn_warning_unset: Box::new(|_warning| {}),
-            kn_flush_error: Box::new(|_message| {}),
-            kn_fatal_error: Box::new(|_message| {}),
-        }))
         .build()
         .unwrap()
 }
