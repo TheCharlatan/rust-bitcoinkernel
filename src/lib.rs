@@ -711,14 +711,14 @@ pub struct UnownedBlock {
 
 impl UnownedBlock {
     fn new(block: *const kernel_BlockPointer) -> UnownedBlock {
-        UnownedBlock{ inner: block }
+        UnownedBlock { inner: block }
     }
 }
 
 impl Into<Vec<u8>> for UnownedBlock {
     fn into(self) -> Vec<u8> {
         let raw_block = unsafe { kernel_copy_block_pointer_data(self.inner) };
-         let vec = unsafe {
+        let vec = unsafe {
             std::slice::from_raw_parts((*raw_block).data, (*raw_block).size.try_into().unwrap())
         }
         .to_vec();

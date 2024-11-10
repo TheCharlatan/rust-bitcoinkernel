@@ -7,8 +7,7 @@ use bitcoin::hashes::Hash;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
 use bitcoinkernel::{
     BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
-    ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-    Log, Logger,
+    ChainstateManagerOptions, Context, ContextBuilder, KernelError, Log, Logger,
 };
 use env_logger::Builder;
 use log::LevelFilter;
