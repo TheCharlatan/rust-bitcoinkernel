@@ -1,6 +1,6 @@
 #![no_main]
 
-use std::sync::Once;
+use std::sync::{Arc, Once};
 
 use libfuzzer_sys::fuzz_target;
 
@@ -12,20 +12,22 @@ use bitcoinkernel::{
     KernelNotificationInterfaceCallbackHolder,
 };
 
-fn create_context(chain_type: ChainType) -> Context {
-    ContextBuilder::new()
-        .chain_type(chain_type)
-        .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
-            kn_block_tip: Box::new(|_state, _block_index| {}),
-            kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
-            kn_progress: Box::new(|_title, _progress, _resume_possible| {}),
-            kn_warning_set: Box::new(|_warning, _message| {}),
-            kn_warning_unset: Box::new(|_warning| {}),
-            kn_flush_error: Box::new(|_message| {}),
-            kn_fatal_error: Box::new(|_message| {}),
-        }))
-        .build()
-        .unwrap()
+fn create_context(chain_type: ChainType) -> Arc<Context> {
+    Arc::new(
+        ContextBuilder::new()
+            .chain_type(chain_type)
+            .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
+                kn_block_tip: Box::new(|_state, _block_index| {}),
+                kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
+                kn_progress: Box::new(|_title, _progress, _resume_possible| {}),
+                kn_warning_set: Box::new(|_warning, _message| {}),
+                kn_warning_unset: Box::new(|_warning| {}),
+                kn_flush_error: Box::new(|_message| {}),
+                kn_fatal_error: Box::new(|_message| {}),
+            }))
+            .build()
+            .unwrap(),
+    )
 }
 
 #[derive(Debug, Arbitrary)]
@@ -82,7 +84,8 @@ fuzz_target!(|data: ChainstateManagerInput| {
         Err(err) => panic!("this should never happen: {}", err),
     };
     let blockman_opts = BlockManagerOptions::new(&context, &blocks_dir).unwrap();
-    let chainman = ChainstateManager::new(chainman_opts, blockman_opts, &context).unwrap();
+    let chainman =
+        ChainstateManager::new(chainman_opts, blockman_opts, Arc::clone(&context)).unwrap();
 
     match chainman.load_chainstate(
         ChainstateLoadOptions::new()

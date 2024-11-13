@@ -6,6 +6,7 @@ use std::ffi::{CStr, CString, NulError};
 use std::fmt;
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_void};
+use std::sync::Arc;
 
 use libbitcoinkernel_sys::*;
 
@@ -297,9 +298,12 @@ impl Drop for ChainParams {
 /// The main context struct. This should be setup through the [`ContextBuilder`] and
 /// has to be kept in memory for the duration of context-dependent library
 /// operations.
+///
 pub struct Context {
     inner: *mut kernel_Context,
-    pub kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
+    // We need something to hold this in memory.
+    #[allow(dead_code)]
+    kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
 }
 
 unsafe impl Send for Context {}
@@ -350,7 +354,7 @@ impl ContextBuilder {
         unsafe { kernel_context_options_destroy(self.inner) };
         Ok(Context {
             inner,
-            kn_callbacks: self.kn_callbacks.unwrap(),
+            kn_callbacks: self.kn_callbacks,
         })
     }
 
@@ -773,13 +777,13 @@ impl Drop for Block {
 /// tree once it is loaded. The [`BlockIndex`] points to an entry in this tree.
 /// It is only valid as long as the [`ChainstateManager`] it was retrieved from
 /// remains in scope.
-pub struct BlockIndex<'a> {
+pub struct BlockIndex {
     inner: *mut kernel_BlockIndex,
-    marker: PhantomData<ChainstateManager<'a>>,
+    marker: PhantomData<ChainstateManager>,
 }
 
-unsafe impl Send for BlockIndex<'_> {}
-unsafe impl Sync for BlockIndex<'_> {}
+unsafe impl Send for BlockIndex {}
+unsafe impl Sync for BlockIndex {}
 
 /// A type for a Block hash.
 #[derive(Debug, Clone)]
@@ -787,10 +791,10 @@ pub struct BlockHash {
     pub hash: [u8; 32],
 }
 
-impl<'a> BlockIndex<'a> {
+impl BlockIndex {
     /// Move to the previous entry in the block tree. E.g. from height n to
     /// height n-1.
-    pub fn prev(self) -> Result<BlockIndex<'a>, KernelError> {
+    pub fn prev(self) -> Result<BlockIndex, KernelError> {
         let inner = unsafe { kernel_get_previous_block_index(self.inner) };
         if inner.is_null() {
             return Err(KernelError::OutOfBounds);
@@ -808,7 +812,7 @@ impl<'a> BlockIndex<'a> {
     }
 
     /// Get the current block hash associated with this BlockIndex.
-    pub fn info(&self) -> BlockHash {
+    pub fn block_hash(&self) -> BlockHash {
         let hash = unsafe { kernel_block_index_get_block_hash(self.inner) };
         let res = BlockHash {
             hash: unsafe { (&*hash).hash },
@@ -818,7 +822,7 @@ impl<'a> BlockIndex<'a> {
     }
 }
 
-impl<'a> Drop for BlockIndex<'a> {
+impl<'a> Drop for BlockIndex {
     fn drop(&mut self) {
         unsafe { kernel_block_index_destroy(self.inner) };
     }
@@ -996,19 +1000,19 @@ impl Drop for ChainstateLoadOptions {
 /// was created remains in memory.
 ///
 /// Its functionality will be more and more exposed in the future.
-pub struct ChainstateManager<'a> {
+pub struct ChainstateManager {
     inner: *mut kernel_ChainstateManager,
-    context: &'a Context,
+    context: Arc<Context>,
 }
 
-unsafe impl Send for ChainstateManager<'_> {}
-unsafe impl Sync for ChainstateManager<'_> {}
+unsafe impl Send for ChainstateManager {}
+unsafe impl Sync for ChainstateManager {}
 
-impl<'a> ChainstateManager<'a> {
+impl<'a> ChainstateManager {
     pub fn new(
         chainman_opts: ChainstateManagerOptions,
         blockman_opts: BlockManagerOptions,
-        context: &'a Context,
+        context: Arc<Context>,
     ) -> Result<Self, KernelError> {
         let inner = unsafe {
             kernel_chainstate_manager_create(
@@ -1178,7 +1182,7 @@ impl<'a> ChainstateManager<'a> {
     }
 }
 
-impl<'a> Drop for ChainstateManager<'a> {
+impl Drop for ChainstateManager {
     fn drop(&mut self) {
         unsafe {
             kernel_chainstate_manager_destroy(self.inner, self.context.inner);

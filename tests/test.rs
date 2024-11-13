@@ -11,7 +11,7 @@ mod tests {
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
-    use std::sync::Once;
+    use std::sync::{Arc, Once};
     use tempdir::TempDir;
 
     struct TestLog {}
@@ -78,11 +78,11 @@ mod tests {
         validation_interface
     }
 
-    fn testing_setup() -> (Context, ValidationInterfaceWrapper, String) {
+    fn testing_setup() -> (Arc<Context>, ValidationInterfaceWrapper, String) {
         START.call_once(|| {
             setup_logging();
         });
-        let context = create_context();
+        let context = Arc::new(create_context());
         let validation_interface = setup_validation_interface(&context);
 
         let temp_dir = TempDir::new("test_chainman_regtest").unwrap();
@@ -114,7 +114,7 @@ mod tests {
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
                 BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-                &context,
+                Arc::clone(&context),
             )
             .unwrap();
             chainman
@@ -129,7 +129,7 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-            &context,
+            Arc::clone(&context),
         )
         .unwrap();
         chainman
@@ -148,7 +148,7 @@ mod tests {
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
                 BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-                &context,
+                Arc::clone(&context),
             )
             .unwrap();
             chainman
@@ -181,6 +181,7 @@ mod tests {
 
     #[test]
     fn test_scan_tx() {
+        #[allow(dead_code)]
         #[derive(Debug)]
         struct Input {
             prevout: Vec<u8>,
@@ -191,6 +192,7 @@ mod tests {
         #[derive(Debug)]
         struct ScanTxHelper {
             ins: Vec<Input>,
+            #[allow(dead_code)]
             outs: Vec<Vec<u8>>,
         }
 
@@ -200,7 +202,7 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-            &context,
+            Arc::clone(&context),
         )
         .unwrap();
         chainman
@@ -271,7 +273,7 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-            &context,
+            Arc::clone(&context),
         )
         .unwrap();
         chainman
@@ -294,7 +296,7 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-            &context,
+            Arc::clone(&context),
         )
         .unwrap();
         chainman

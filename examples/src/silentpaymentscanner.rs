@@ -1,6 +1,7 @@
 use std::env;
 use std::fmt;
 use std::process;
+use std::sync::Arc;
 
 use bitcoin::consensus::deserialize;
 use bitcoin::hashes::Hash;
@@ -33,11 +34,13 @@ fn setup_logging() -> Result<Logger<MainLog>, KernelError> {
     Logger::new(MainLog {})
 }
 
-fn create_context() -> Context {
-    ContextBuilder::new()
-        .chain_type(ChainType::REGTEST)
-        .build()
-        .unwrap()
+fn create_context() -> Arc<Context> {
+    Arc::new(
+        ContextBuilder::new()
+            .chain_type(ChainType::REGTEST)
+            .build()
+            .unwrap(),
+    )
 }
 
 fn vec_to_hex_string(data: &Vec<u8>) -> String {
@@ -227,7 +230,7 @@ fn main() {
     let chainman = ChainstateManager::new(
         ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
         BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-        &context,
+        Arc::clone(&context),
     )
     .unwrap();
     chainman
