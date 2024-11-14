@@ -399,7 +399,6 @@ pub enum KernelError {
     InvalidOptions(String),
     OutOfBounds,
     ScriptVerify(ScriptVerifyError),
-    ProcessBlock(ProcessBlockError),
 }
 
 /// A collection of errors that may occur during script verification
@@ -412,15 +411,6 @@ pub enum ScriptVerifyError {
     InvalidFlagsCombination,
     SpentOutputsMismatch,
     SpentOutputsRequired,
-    Invalid,
-}
-
-/// A collection of errors that may occur during block processing
-#[derive(Debug)]
-pub enum ProcessBlockError {
-    NoCoinbase,
-    Duplicate,
-    InvalidDuplicate,
     Invalid,
 }
 
@@ -466,12 +456,6 @@ pub enum BlockValidationResult {
     RESULT_UNSET = 0,
     /// invalid by consensus rules (excluding any below reasons)
     CONSENSUS,
-    /// Invalid by a change to consensus rules more recent than SegWit.
-    /// Currently unused as there are no such consensus rule changes, and any download
-    /// sources realistically need to support SegWit in order to provide useful data,
-    /// so differentiating between always-invalid and invalid-by-pre-SegWit-soft-fork
-    /// is uninteresting.
-    RECENT_CONSENSUS_CHANGE,
     /// this block was cached as being invalid and we didn't store the reason why
     CACHED_INVALID,
     /// invalid proof of work or time too old
@@ -495,9 +479,6 @@ impl From<kernel_BlockValidationResult> for BlockValidationResult {
         match res {
             kernel_BlockValidationResult_kernel_BLOCK_RESULT_UNSET => Self::RESULT_UNSET,
             kernel_BlockValidationResult_kernel_BLOCK_CONSENSUS => Self::CONSENSUS,
-            kernel_BlockValidationResult_kernel_BLOCK_RECENT_CONSENSUS_CHANGE => {
-                Self::RECENT_CONSENSUS_CHANGE
-            }
             kernel_BlockValidationResult_kernel_BLOCK_CACHED_INVALID => Self::CACHED_INVALID,
             kernel_BlockValidationResult_kernel_BLOCK_INVALID_HEADER => Self::INVALID_HEADER,
             kernel_BlockValidationResult_kernel_BLOCK_MUTATED => Self::MUTATED,
@@ -506,7 +487,7 @@ impl From<kernel_BlockValidationResult> for BlockValidationResult {
             kernel_BlockValidationResult_kernel_BLOCK_TIME_FUTURE => Self::TIME_FUTURE,
             kernel_BlockValidationResult_kernel_BLOCK_CHECKPOINT => Self::CHECKPOINT,
             kernel_BlockValidationResult_kernel_BLOCK_HEADER_LOW_WORK => Self::HEADER_LOW_WORK,
-            _ => Self::RECENT_CONSENSUS_CHANGE,
+            _ => Self::CONSENSUS,
         }
     }
 }
@@ -1048,34 +1029,17 @@ impl<'a> ChainstateManager {
     /// also be retrieved through a registered validation interface. If the block
     /// fails to validate the `block_checked` callback's ['BlockValidationState'] will
     /// contain details.
-    pub fn process_block(&self, block: &Block) -> Result<(), KernelError> {
-        let mut status = kernel_ProcessBlockStatus_kernel_PROCESS_BLOCK_OK;
+    pub fn process_block(&self, block: &Block) -> (bool /* accepted */, bool /* duplicate */) {
+        let mut new_block = true.into();
         let accepted = unsafe {
             kernel_chainstate_manager_process_block(
                 self.context.inner,
                 self.inner,
                 block.inner,
-                &mut status,
+                &mut new_block,
             )
         };
-
-        if !accepted {
-            let err = match status {
-                kernel_ProcessBlockStatus_kernel_PROCESS_BLOCK_ERROR_NO_COINBASE => {
-                    ProcessBlockError::NoCoinbase
-                }
-                kernel_ProcessBlockStatus_kernel_PROCESS_BLOCK_DUPLICATE => {
-                    ProcessBlockError::Duplicate
-                }
-                kernel_ProcessBlockStatus_kernel_PROCESS_BLOCK_INVALID_DUPLICATE => {
-                    ProcessBlockError::Duplicate
-                }
-                _ => ProcessBlockError::Invalid,
-            };
-            Err(KernelError::ProcessBlock(err))
-        } else {
-            Ok(())
-        }
+        (accepted, new_block)
     }
 
     /// May be called after load_chainstate to initialize the

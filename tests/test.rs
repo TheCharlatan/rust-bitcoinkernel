@@ -5,9 +5,8 @@ mod tests {
         register_validation_interface, unregister_validation_interface, verify, Block, BlockHash,
         BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions,
         ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-        KernelNotificationInterfaceCallbackHolder, Log, Logger, ProcessBlockError, ScriptPubkey,
-        Transaction, TxOut, ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper,
-        VERIFY_ALL_PRE_TAPROOT,
+        KernelNotificationInterfaceCallbackHolder, Log, Logger, ScriptPubkey, Transaction, TxOut,
+        ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -122,7 +121,9 @@ mod tests {
                 .unwrap();
             for raw_block in block_data.iter() {
                 let block = Block::try_from(raw_block.as_slice()).unwrap();
-                chainman.process_block(&block).unwrap();
+                let (accepted, new_block) = chainman.process_block(&block);
+                assert!(accepted);
+                assert!(new_block);
             }
         }
 
@@ -170,11 +171,9 @@ mod tests {
                 1e73a82cbf2342c858eeac00000000").unwrap().as_slice()
             )
             .unwrap();
-            let res = chainman.process_block(&block_1);
-            assert!(matches!(
-                res,
-                Err(KernelError::ProcessBlock(ProcessBlockError::Invalid))
-            ));
+            let (accepted, new_block) = chainman.process_block(&block_1);
+            assert!(!accepted);
+            assert!(!new_block);
         }
         unregister_validation_interface(&validation_interface, &context).unwrap();
     }
@@ -211,7 +210,9 @@ mod tests {
 
         for raw_block in block_data.iter() {
             let block = Block::try_from(raw_block.as_slice()).unwrap();
-            chainman.process_block(&block).unwrap();
+            let (accepted, new_block) = chainman.process_block(&block);
+            assert!(accepted);
+            assert!(new_block);
         }
         let block_index_genesis = chainman.get_block_index_genesis();
         let height = block_index_genesis.height();
@@ -282,7 +283,9 @@ mod tests {
 
         for raw_block in block_data.iter() {
             let block = Block::try_from(raw_block.as_slice()).unwrap();
-            chainman.process_block(&block).unwrap();
+            let (accepted, new_block) = chainman.process_block(&block);
+            assert!(accepted);
+            assert!(new_block);
         }
 
         unregister_validation_interface(&validation_interface, &context).unwrap();
@@ -306,10 +309,9 @@ mod tests {
         chainman.import_blocks().unwrap();
         unregister_validation_interface(&validation_interface, &context).unwrap();
         let block_2 = Block::try_from(block_data[1].clone().as_slice()).unwrap();
-        assert!(matches!(
-            chainman.process_block(&block_2),
-            Err(KernelError::ProcessBlock(ProcessBlockError::Invalid))
-        ));
+        let (accepted, new_block) = chainman.process_block(&block_2);
+        assert!(!accepted);
+        assert!(!new_block);
     }
 
     #[test]
