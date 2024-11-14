@@ -41,11 +41,17 @@ The paths are automatically configured and no other options are needed.
 
 #### Common
 
-    apt install bison cmake curl make patch pkg-config python3 xz-utils
+    apt install cmake curl make patch
+
+#### GUI
+
+Skip the following packages if you don't intend to use the GUI and will build with [`NO_QT=1`](#dependency-options):
+
+    apt install bison g++ pkg-config python3 xz-utils
 
 #### For macOS cross compilation
 
-    apt install clang lld llvm g++ zip
+    apt install clang lld llvm zip
 
 Clang 18 or later is required. You must also obtain the macOS SDK before
 proceeding with a cross-compile. Under the depends directory, create a
@@ -112,7 +118,6 @@ The following can be set when running make: `make FOO=bar`
 - `NO_WALLET`: Don't download/build/cache libs needed to enable the wallet
 - `NO_BDB`: Don't download/build/cache BerkeleyDB
 - `NO_SQLITE`: Don't download/build/cache SQLite
-- `NO_UPNP`: Don't download/build/cache packages needed for enabling UPnP
 - `NO_USDT`: Don't download/build/cache packages needed for enabling USDT tracepoints
 - `MULTIPROCESS`: Build libmultiprocess (experimental)
 - `DEBUG`: Disable some optimizations and enable more runtime checking

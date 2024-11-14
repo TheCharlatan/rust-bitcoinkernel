@@ -706,8 +706,6 @@ kernel_BlockValidationResult kernel_get_block_validation_result_from_block_valid
         return kernel_BlockValidationResult::kernel_BLOCK_RESULT_UNSET;
     case BlockValidationResult::BLOCK_CONSENSUS:
         return kernel_BlockValidationResult::kernel_BLOCK_CONSENSUS;
-    case BlockValidationResult::BLOCK_RECENT_CONSENSUS_CHANGE:
-        return kernel_BlockValidationResult::kernel_BLOCK_RECENT_CONSENSUS_CHANGE;
     case BlockValidationResult::BLOCK_CACHED_INVALID:
         return kernel_BlockValidationResult::kernel_BLOCK_CACHED_INVALID;
     case BlockValidationResult::BLOCK_INVALID_HEADER:
@@ -1173,55 +1171,11 @@ bool kernel_chainstate_manager_process_block(
     const kernel_Context* context_,
     kernel_ChainstateManager* chainman_,
     kernel_Block* block_,
-    kernel_ProcessBlockStatus* status)
+    bool* new_block)
 {
     auto& chainman{*cast_chainstate_manager(chainman_)};
 
     auto blockptr{cast_cblocksharedpointer(block_)};
 
-    CBlock& block{**blockptr};
-
-    if (block.vtx.empty() || !block.vtx[0]->IsCoinBase()) {
-        if (status) *status = kernel_PROCESS_BLOCK_ERROR_NO_COINBASE;
-        LogError("Block cannot be processed without a coinbase transaction.\n");
-        return false;
-    }
-
-    uint256 hash{block.GetHash()};
-    {
-        LOCK(cs_main);
-        const CBlockIndex* pindex{chainman.m_blockman.LookupBlockIndex(hash)};
-        if (pindex) {
-            if (pindex->IsValid(BLOCK_VALID_SCRIPTS)) {
-                if (status) *status = kernel_PROCESS_BLOCK_DUPLICATE;
-                LogError("Block was already validated.\n");
-                return false;
-            }
-            if (pindex->nStatus & BLOCK_FAILED_MASK) {
-                if (status) *status = kernel_PROCESS_BLOCK_INVALID_DUPLICATE;
-                LogError("Block was already validated and is invalid.\n");
-                return false;
-            }
-        }
-    }
-
-    {
-        LOCK(cs_main);
-        const CBlockIndex* pindex{chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock)};
-        if (pindex) {
-            chainman.UpdateUncommittedBlockStructures(block, pindex);
-        }
-    }
-
-    bool new_block;
-    bool accepted{chainman.ProcessNewBlock(*blockptr, /*force_processing=*/true, /*min_pow_checked=*/true, /*new_block=*/&new_block)};
-
-    if (!new_block && accepted) {
-        if (status) *status = kernel_PROCESS_BLOCK_DUPLICATE;
-        return false;
-    }
-    if (!accepted) {
-        if (status) *status = kernel_PROCESS_BLOCK_INVALID;
-    }
-    return accepted;
+    return chainman.ProcessNewBlock(*blockptr, /*force_processing=*/true, /*min_pow_checked=*/true, /*new_block=*/new_block);
 }

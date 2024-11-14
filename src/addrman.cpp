@@ -253,7 +253,7 @@ void AddrManImpl::Unserialize(Stream& s_)
         throw InvalidAddrManVersionError(strprintf(
             "Unsupported format of addrman database: %u. It is compatible with formats >=%u, "
             "but the maximum supported by this version of %s is %u.",
-            uint8_t{format}, lowest_compatible, PACKAGE_NAME, uint8_t{FILE_FORMAT}));
+            uint8_t{format}, lowest_compatible, CLIENT_NAME, uint8_t{FILE_FORMAT}));
     }
 
     s >> nKey;
@@ -812,9 +812,11 @@ nid_type AddrManImpl::GetEntry(bool use_tried, size_t bucket, size_t position) c
 std::vector<CAddress> AddrManImpl::GetAddr_(size_t max_addresses, size_t max_pct, std::optional<Network> network, const bool filtered) const
 {
     AssertLockHeld(cs);
+    Assume(max_pct <= 100);
 
     size_t nNodes = vRandom.size();
     if (max_pct != 0) {
+        max_pct = std::min(max_pct, size_t{100});
         nNodes = max_pct * nNodes / 100;
     }
     if (max_addresses != 0) {
@@ -824,6 +826,7 @@ std::vector<CAddress> AddrManImpl::GetAddr_(size_t max_addresses, size_t max_pct
     // gather a list of random nodes, skipping those of low quality
     const auto now{Now<NodeSeconds>()};
     std::vector<CAddress> addresses;
+    addresses.reserve(nNodes);
     for (unsigned int n = 0; n < vRandom.size(); n++) {
         if (addresses.size() >= nNodes)
             break;

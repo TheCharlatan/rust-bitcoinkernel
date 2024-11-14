@@ -56,9 +56,6 @@ public:
             case kernel_BlockValidationResult::kernel_BLOCK_CONSENSUS:
                 std::cout << "invalid by consensus rules (excluding any below reasons)" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_RECENT_CONSENSUS_CHANGE:
-                std::cout << "Invalid by a change to consensus rules more recent than SegWit." << std::endl;
-                break;
             case kernel_BlockValidationResult::kernel_BLOCK_CACHED_INVALID:
                 std::cout << "this block was cached as being invalid and we didn't store the reason why" << std::endl;
                 break;
@@ -186,12 +183,15 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        kernel_ProcessBlockStatus status{kernel_PROCESS_BLOCK_OK};
-        bool accepted = chainman->ProcessBlock(block, status);
+        bool new_block = false;
+        bool accepted = chainman->ProcessBlock(block, &new_block);
         if (accepted) {
             std::cout << "Validated block successfully." << std::endl;
         } else {
             std::cout << "Block was not accepted" << std::endl;
+        }
+        if (!new_block) {
+            std::cout << "Block is a duplicate" << std::endl;
         }
     }
 }

@@ -34,6 +34,7 @@ add_executable(bench_bitcoin
   load_external.cpp
   lockedpool.cpp
   logging.cpp
+  mempool_ephemeral_spends.cpp
   mempool_eviction.cpp
   mempool_stress.cpp
   merkle_root.cpp
@@ -71,6 +72,7 @@ if(ENABLE_WALLET)
       wallet_create_tx.cpp
       wallet_loading.cpp
       wallet_ismine.cpp
+      wallet_migration.cpp
   )
   target_link_libraries(bench_bitcoin bitcoin_wallet)
 endif()

@@ -9,6 +9,7 @@
 #include <chain.h>
 #include <primitives/block.h>
 #include <uint256.h>
+#include <util/check.h>
 
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
@@ -135,14 +136,11 @@ bool PermittedDifficultyTransition(const Consensus::Params& params, int64_t heig
 }
 
 // Bypasses the actual proof of work check during fuzz testing with a simplified validation checking whether
-// the most signficant bit of the last byte of the hash is set.
+// the most significant bit of the last byte of the hash is set.
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params& params)
 {
-#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-    return (hash.data()[31] & 0x80) == 0;
-#else
+    if constexpr (G_FUZZING) return (hash.data()[31] & 0x80) == 0;
     return CheckProofOfWorkImpl(hash, nBits, params);
-#endif
 }
 
 bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Params& params)

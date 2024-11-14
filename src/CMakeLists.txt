@@ -38,6 +38,7 @@ message("Configuring secp256k1 subtree...")
 set(SECP256K1_DISABLE_SHARED ON CACHE BOOL "" FORCE)
 set(SECP256K1_ENABLE_MODULE_ECDH OFF CACHE BOOL "" FORCE)
 set(SECP256K1_ENABLE_MODULE_RECOVERY ON CACHE BOOL "" FORCE)
+set(SECP256K1_ENABLE_MODULE_MUSIG OFF CACHE BOOL "" FORCE)
 set(SECP256K1_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
 set(SECP256K1_BUILD_TESTS ${BUILD_TESTS} CACHE BOOL "" FORCE)
 set(SECP256K1_BUILD_EXHAUSTIVE_TESTS ${BUILD_TESTS} CACHE BOOL "" FORCE)
@@ -246,10 +247,12 @@ add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
   node/psbt.cpp
   node/timeoffsets.cpp
   node/transaction.cpp
+  node/txdownloadman_impl.cpp
   node/txreconciliation.cpp
   node/utxo_snapshot.cpp
   node/warnings.cpp
   noui.cpp
+  policy/ephemeral_policy.cpp
   policy/fees.cpp
   policy/fees_args.cpp
   policy/packages.cpp
@@ -288,14 +291,14 @@ target_link_libraries(bitcoin_node
     core_interface
     bitcoin_common
     bitcoin_util
+    $<TARGET_NAME_IF_EXISTS:bitcoin_zmq>
     leveldb
     minisketch
     univalue
     Boost::headers
-    $<TARGET_NAME_IF_EXISTS:libevent::libevent>
+    libevent::core
+    libevent::extra
     $<TARGET_NAME_IF_EXISTS:libevent::pthreads>
-    $<TARGET_NAME_IF_EXISTS:MiniUPnPc::MiniUPnPc>
-    $<TARGET_NAME_IF_EXISTS:bitcoin_zmq>
     $<TARGET_NAME_IF_EXISTS:USDT::headers>
 )
 
@@ -365,7 +368,8 @@ if(BUILD_CLI)
     bitcoin_cli
     bitcoin_common
     bitcoin_util
-    $<TARGET_NAME_IF_EXISTS:libevent::libevent>
+    libevent::core
+    libevent::extra
   )
   list(APPEND installable_targets bitcoin-cli)
 endif()

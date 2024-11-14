@@ -154,6 +154,10 @@ void initialize()
         std::cerr << "No fuzz target compiled for " << g_fuzz_target << "." << std::endl;
         std::exit(EXIT_FAILURE);
     }
+    if constexpr (!G_FUZZING) {
+        std::cerr << "Must compile with -DBUILD_FOR_FUZZING=ON to execute a fuzz target." << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
     Assert(!g_test_one_input);
     g_test_one_input = &it->second.test_one_input;
     it->second.opts.init();

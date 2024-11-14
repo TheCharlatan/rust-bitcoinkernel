@@ -16,7 +16,7 @@ endif()
 #=============================
 # Project / Package metadata
 #=============================
-set(PACKAGE_NAME "Bitcoin Core")
+set(CLIENT_NAME "Bitcoin Core")
 set(CLIENT_VERSION_MAJOR 28)
 set(CLIENT_VERSION_MINOR 99)
 set(CLIENT_VERSION_BUILD 0)
@@ -47,14 +47,14 @@ project(BitcoinCore
   LANGUAGES NONE
 )
 
-set(PACKAGE_VERSION ${PROJECT_VERSION})
+set(CLIENT_VERSION_STRING ${PROJECT_VERSION})
 if(CLIENT_VERSION_RC GREATER 0)
-  string(APPEND PACKAGE_VERSION "rc${CLIENT_VERSION_RC}")
+  string(APPEND CLIENT_VERSION_STRING "rc${CLIENT_VERSION_RC}")
 endif()
 
 set(COPYRIGHT_HOLDERS "The %s developers")
-set(COPYRIGHT_HOLDERS_FINAL "The ${PACKAGE_NAME} developers")
-set(PACKAGE_BUGREPORT "https://github.com/bitcoin/bitcoin/issues")
+set(COPYRIGHT_HOLDERS_FINAL "The ${CLIENT_NAME} developers")
+set(CLIENT_BUGREPORT "https://github.com/bitcoin/bitcoin/issues")
 
 #=============================
 # Language setup
@@ -122,23 +122,9 @@ option(REDUCE_EXPORTS "Attempt to reduce exported symbols in the resulting execu
 option(WERROR "Treat compiler warnings as errors." OFF)
 option(WITH_CCACHE "Attempt to use ccache for compiling." ON)
 
-option(WITH_MINIUPNPC "Enable UPnP." OFF)
-if(WITH_MINIUPNPC)
-  find_package(MiniUPnPc MODULE REQUIRED)
-endif()
-
 option(WITH_ZMQ "Enable ZMQ notifications." OFF)
 if(WITH_ZMQ)
-  if(VCPKG_TARGET_TRIPLET)
-    find_package(ZeroMQ CONFIG REQUIRED)
-  else()
-    # The ZeroMQ project has provided config files since v4.2.2.
-    # However, mainstream distributions do not yet provide CMake
-    # config files for ZeroMQ packages. If they do in the future,
-    # find_package(ZeroMQ) may be used instead.
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(libzmq REQUIRED IMPORTED_TARGET libzmq>=4)
-  endif()
+  find_package(ZeroMQ 4.0.0 MODULE REQUIRED)
 endif()
 
 option(WITH_USDT "Enable tracepoints for Userspace, Statically Defined Tracing." OFF)
@@ -150,8 +136,7 @@ cmake_dependent_option(ENABLE_EXTERNAL_SIGNER "Enable external signer support." 
 
 cmake_dependent_option(WITH_QRENCODE "Enable QR code support." ON "BUILD_GUI" OFF)
 if(WITH_QRENCODE)
-  find_package(PkgConfig REQUIRED)
-  pkg_check_modules(libqrencode REQUIRED IMPORTED_TARGET libqrencode)
+  find_package(QRencode MODULE REQUIRED)
   set(USE_QRCODE TRUE)
 endif()
 
@@ -236,7 +221,6 @@ if(BUILD_FOR_FUZZING)
   set(BUILD_WALLET_TOOL OFF)
   set(BUILD_GUI OFF)
   set(ENABLE_EXTERNAL_SIGNER OFF)
-  set(WITH_MINIUPNPC OFF)
   set(WITH_ZMQ OFF)
   set(BUILD_TESTS OFF)
   set(BUILD_GUI_TESTS OFF)
@@ -244,7 +228,6 @@ if(BUILD_FOR_FUZZING)
   set(BUILD_FUZZ_BINARY ON)
 
   target_compile_definitions(core_interface INTERFACE
-    ABORT_ON_FAILED_ASSUME
     FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
   )
 endif()
@@ -326,10 +309,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SIZEOF_VOID_P EQUAL 4)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-  target_compile_definitions(core_interface INTERFACE
-    MAC_OSX
-    OBJC_OLD_DISPATCH_PROTOTYPES=0
-  )
+  target_compile_definitions(core_interface INTERFACE OBJC_OLD_DISPATCH_PROTOTYPES=0)
   # These flags are specific to ld64, and may cause issues with other linkers.
   # For example: GNU ld will interpret -dead_strip as -de and then try and use
   # "ad_strip" as the symbol for the entry point.
@@ -457,6 +437,10 @@ configure_file(contrib/filter-lcov.py filter-lcov.py USE_SOURCE_PERMISSIONS COPY
 # Don't allow extended (non-ASCII) symbols in identifiers. This is easier for code review.
 try_append_cxx_flags("-fno-extended-identifiers" TARGET core_interface SKIP_LINK)
 
+try_append_cxx_flags("-ffile-prefix-map=A=B" TARGET core_interface SKIP_LINK
+  IF_CHECK_PASSED "-ffile-prefix-map=${PROJECT_SOURCE_DIR}/src=."
+)
+
 # Currently all versions of gcc are subject to a class of bugs, see the
 # gccbug_90348 test case (only reproduces on GCC 11 and earlier) and
 # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=111843. To work around that, set
@@ -567,6 +551,12 @@ endif()
 if(BUILD_TESTS)
   enable_testing()
 endif()
+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.29)
+  # have "make test" depend on "make all"
+  set(CMAKE_SKIP_TEST_ALL_DEPENDENCY FALSE)
+endif()
+
 # TODO: The `CMAKE_SKIP_BUILD_RPATH` variable setting can be deleted
 #       in the future after reordering Guix script commands to
 #       perform binary checks after the installation step.
@@ -618,7 +608,6 @@ if(ENABLE_WALLET)
   message("   - legacy wallets (Berkeley DB) ..... ${WITH_BDB}")
 endif()
 message("  external signer ..................... ${ENABLE_EXTERNAL_SIGNER}")
-message("  port mapping using UPnP ............. ${WITH_MINIUPNPC}")
 message("  ZeroMQ .............................. ${WITH_ZMQ}")
 message("  USDT tracing ........................ ${WITH_USDT}")
 message("  QR code (GUI) ....................... ${WITH_QRENCODE}")

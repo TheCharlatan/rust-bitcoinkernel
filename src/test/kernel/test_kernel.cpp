@@ -147,9 +147,6 @@ public:
             case kernel_BlockValidationResult::kernel_BLOCK_CONSENSUS:
                 std::cout << "invalid by consensus rules (excluding any below reasons)" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_RECENT_CONSENSUS_CHANGE:
-                std::cout << "Invalid by a change to consensus rules more recent than SegWit." << std::endl;
-                break;
             case kernel_BlockValidationResult::kernel_BLOCK_CACHED_INVALID:
                 std::cout << "this block was cached as being invalid and we didn't store the reason why" << std::endl;
                 break;
@@ -433,9 +430,9 @@ void chainman_in_memory_test()
     for (auto& raw_block : REGTEST_BLOCK_DATA) {
         Block block{raw_block};
         assert(block);
-        auto status{kernel_ProcessBlockStatus::kernel_PROCESS_BLOCK_OK};
-        chainman->ProcessBlock(block, status);
-        assert(status == kernel_PROCESS_BLOCK_OK);
+        bool new_block{false};
+        chainman->ProcessBlock(block, &new_block);
+        assert(new_block == true);
     }
 
     assert(!std::filesystem::exists(in_memory_test_directory.m_directory / "blocks" / "index"));
@@ -470,11 +467,12 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
     auto raw_block = hex_string_to_char_vec("010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e362990101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec11600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf621e73a82cbf2342c858eeac00000000");
     Block block{raw_block};
     assert(block);
+
     validation_interface.m_expected_valid_block.emplace(raw_block);
     assert(block.GetBlockData() == raw_block);
-    auto status{kernel_ProcessBlockStatus::kernel_PROCESS_BLOCK_OK};
-    assert(chainman->ProcessBlock(block, status));
-    assert(status == kernel_PROCESS_BLOCK_OK);
+    bool new_block = false;
+    assert(chainman->ProcessBlock(block, &new_block));
+    assert(new_block == true);
 
     auto tip{chainman->GetBlockIndexFromTip()};
     auto read_block{chainman->ReadBlock(tip)};
@@ -488,8 +486,8 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
     assert(!tip_2.value().GetPreviousBlockIndex().has_value());
 
     // If we try to validate it again, it should be a duplicate
-    assert(!chainman->ProcessBlock(block, status));
-    assert(status == kernel_PROCESS_BLOCK_DUPLICATE);
+    assert(chainman->ProcessBlock(block, &new_block));
+    assert(new_block == false);
 
     assert(validation_interface.Unregister(context));
 }
@@ -511,9 +509,9 @@ void chainman_regtest_validation_test()
         for (size_t i{0}; i < mid; i++) {
             Block block{REGTEST_BLOCK_DATA[i]};
             assert(block);
-            auto status{kernel_ProcessBlockStatus::kernel_PROCESS_BLOCK_OK};
-            assert(chainman->ProcessBlock(block, status));
-            assert(status == kernel_PROCESS_BLOCK_OK);
+            bool new_block{false};
+            assert(chainman->ProcessBlock(block, &new_block));
+            assert(new_block == true);
         }
     }
 
@@ -522,9 +520,9 @@ void chainman_regtest_validation_test()
     for (size_t i{mid}; i < REGTEST_BLOCK_DATA.size(); i++) {
         Block block{REGTEST_BLOCK_DATA[i]};
         assert(block);
-        auto status{kernel_ProcessBlockStatus::kernel_PROCESS_BLOCK_OK};
-        assert(chainman->ProcessBlock(block, status));
-        assert(status == kernel_PROCESS_BLOCK_OK);
+        bool new_block{false};
+        assert(chainman->ProcessBlock(block, &new_block));
+        assert(new_block == true);
     }
 
     auto tip = chainman->GetBlockIndexFromTip();
