@@ -295,14 +295,6 @@ typedef enum {
 typedef enum {
     kernel_BLOCK_RESULT_UNSET = 0, //!< initial value. Block has not yet been rejected
     kernel_BLOCK_CONSENSUS,        //!< invalid by consensus rules (excluding any below reasons)
-    /**
-     * Invalid by a change to consensus rules more recent than SegWit.
-     * Currently unused as there are no such consensus rule changes, and any download
-     * sources realistically need to support SegWit in order to provide useful data,
-     * so differentiating between always-invalid and invalid-by-pre-SegWit-soft-fork
-     * is uninteresting.
-     */
-    kernel_BLOCK_RECENT_CONSENSUS_CHANGE,
     kernel_BLOCK_CACHED_INVALID,  //!< this block was cached as being invalid and we didn't store the reason why
     kernel_BLOCK_INVALID_HEADER,  //!< invalid proof of work or time too old
     kernel_BLOCK_MUTATED,         //!< the block's data didn't match the data committed to by the PoW
@@ -326,9 +318,12 @@ typedef struct {
 } kernel_ValidationInterfaceCallbacks;
 
 /**
- * A struct for holding the kernel notification callbacks. The user data pointer
- * may be used to point to user-defined structures to make processing the
- * notifications easier.
+ * A struct for holding the kernel notification callbacks. The user data
+ * pointer may be used to point to user-defined structures to make processing
+ * the notifications easier. Note that this makes it the user's responsibility
+ * to ensure that the user_data outlives the kernel objects. Notifications can
+ * occur even as kernel objects are deleted, so care has to be taken to ensure
+ * safe unwinding.
  */
 typedef struct {
     void* user_data;                         //!< Holds a user-defined opaque structure that is passed to the notification callbacks.
@@ -424,18 +419,6 @@ typedef enum {
     kernel_CHAIN_TYPE_SIGNET,
     kernel_CHAIN_TYPE_REGTEST,
 } kernel_ChainType;
-
-/**
- * Process block statuses. More detailed information about block verification
- * can also be gathered through a registered validation interface.
- */
-typedef enum {
-    kernel_PROCESS_BLOCK_OK = 0,
-    kernel_PROCESS_BLOCK_INVALID,           //!< The block failed processing.
-    kernel_PROCESS_BLOCK_ERROR_NO_COINBASE, //!< To process a block, a coinbase transaction has to be part of it.
-    kernel_PROCESS_BLOCK_DUPLICATE,         //!< The block has been processed before.
-    kernel_PROCESS_BLOCK_INVALID_DUPLICATE, //!< The block has been process before, and it was invalid.
-} kernel_ProcessBlockStatus;
 
 /**
  * A type-safe block identifier.
@@ -885,24 +868,23 @@ bool kernel_import_blocks(const kernel_Context* context,
 ) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
 
 /**
- * @brief Process and validate the passed in block with the chainstate manager.
- * If processing failed, some information can be retrieved through the status
- * enumeration. More detailed validation information in case of a failure can
- * also be retrieved through a registered validation interface. If the block
- * fails to validate the `block_checked` callback's 'BlockValidationState' will
+ * @brief Process and validate the passed in block with the chainstate
+ * manager. More detailed validation information in case of a failure can also
+ * be retrieved through a registered validation interface. If the block fails
+ * to validate the `block_checked` callback's 'BlockValidationState' will
  * contain details.
  *
  * @param[in] context            Non-null.
  * @param[in] chainstate_manager Non-null.
  * @param[in] block              Non-null, block to be validated.
- * @param[out] status            Nullable, will contain an error/success code for the operation.
- * @return                       True if processing the block was successful.
+ * @param[out] new_block         Nullable, will be set to true if this block was not processed before, and false otherwise.
+ * @return                       True if processing the block was successful. Will also return true for valid, but duplicate blocks.
  */
 bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_process_block(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     kernel_Block* block,
-    kernel_ProcessBlockStatus* status
+    bool* new_block
 ) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
 
 /**

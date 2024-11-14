@@ -117,6 +117,7 @@ add_executable(fuzz
   timeoffsets.cpp
   torcontrol.cpp
   transaction.cpp
+  txdownloadman.cpp
   tx_in.cpp
   tx_out.cpp
   tx_pool.cpp
@@ -139,7 +140,7 @@ target_link_libraries(fuzz
   univalue
   secp256k1
   Boost::headers
-  $<TARGET_NAME_IF_EXISTS:libevent::libevent>
+  libevent::extra
 )
 
 if(ENABLE_WALLET)
