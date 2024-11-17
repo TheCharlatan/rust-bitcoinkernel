@@ -698,6 +698,15 @@ impl UnownedBlock {
     fn new(block: *const kernel_BlockPointer) -> UnownedBlock {
         UnownedBlock { inner: block }
     }
+
+    pub fn get_hash(&self) -> BlockHash {
+        let hash = unsafe {kernel_block_pointer_get_hash(self.inner)};
+        let res = BlockHash {
+            hash: unsafe { (&*hash).hash },
+        };
+        unsafe { kernel_block_hash_destroy(hash) };
+        return res;
+    }
 }
 
 impl Into<Vec<u8>> for UnownedBlock {
@@ -719,6 +728,17 @@ pub struct Block {
 
 unsafe impl Send for Block {}
 unsafe impl Sync for Block {}
+
+impl Block {
+    pub fn get_hash(&self) -> BlockHash {
+        let hash = unsafe {kernel_block_get_hash(self.inner)};
+        let res = BlockHash {
+            hash: unsafe { (&*hash).hash },
+        };
+        unsafe { kernel_block_hash_destroy(hash) };
+        return res;
+    }
+}
 
 impl Into<Vec<u8>> for Block {
     fn into(self) -> Vec<u8> {
@@ -767,7 +787,7 @@ unsafe impl Send for BlockIndex {}
 unsafe impl Sync for BlockIndex {}
 
 /// A type for a Block hash.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct BlockHash {
     pub hash: [u8; 32],
 }
