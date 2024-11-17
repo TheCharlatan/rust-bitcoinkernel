@@ -379,6 +379,7 @@ void chainman_test()
 
     ChainstateManagerOptions chainman_opts{context, test_directory.m_directory};
     assert(chainman_opts);
+    chainman_opts.SetWorkerThreads(4);
     BlockManagerOptions blockman_opts{context, test_directory.m_directory / "blocks"};
     assert(blockman_opts);
 
