@@ -312,6 +312,11 @@ public:
     UnownedBlock(UnownedBlock&&) = delete;
     UnownedBlock& operator=(UnownedBlock&&) = delete;
 
+    kernel_BlockHash* GetHash() const noexcept
+    {
+        return kernel_block_pointer_get_hash(m_block);
+    }
+
     std::vector<unsigned char> GetBlockData() const noexcept
     {
         auto serialized_block{kernel_copy_block_pointer_data(m_block)};
@@ -494,6 +499,11 @@ public:
     explicit operator bool() const noexcept { return bool{m_block}; }
 
     Block(kernel_Block* block) noexcept : m_block{block} {}
+
+    kernel_BlockHash* GetHash() const noexcept
+    {
+        return kernel_block_get_hash(m_block.get());
+    }
 
     std::vector<unsigned char> GetBlockData() const noexcept
     {

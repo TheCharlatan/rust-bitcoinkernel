@@ -980,6 +980,24 @@ kernel_ByteArray* kernel_copy_block_pointer_data(const kernel_BlockPointer* bloc
     return byte_array;
 }
 
+kernel_BlockHash* kernel_block_get_hash(kernel_Block* block_)
+{
+    auto block{cast_cblocksharedpointer(block_)};
+    auto hash{(*block)->GetHash()};
+    auto block_hash = new kernel_BlockHash{};
+    std::memcpy(block_hash->hash, hash.begin(), sizeof(hash));
+    return block_hash;
+}
+
+kernel_BlockHash* kernel_block_pointer_get_hash(const kernel_BlockPointer* block_)
+{
+    auto block{cast_const_cblock(block_)};
+    auto hash{block->GetHash()};
+    auto block_hash = new kernel_BlockHash{};
+    std::memcpy(block_hash->hash, hash.begin(), sizeof(hash));
+    return block_hash;
+}
+
 void kernel_block_destroy(kernel_Block* block)
 {
     if (block) {

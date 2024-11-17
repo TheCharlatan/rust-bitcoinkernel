@@ -567,7 +567,8 @@ void chainman_reindex_test(TestDirectory& test_directory)
     auto tip_index{chainman->GetBlockIndexFromTip()};
     auto tip_block_string{chainman->ReadBlock(tip_index).value().GetBlockData()};
     auto second_index{chainman->GetBlockIndexByHeight(1).value()};
-    auto second_block_string{chainman->ReadBlock(second_index).value().GetBlockData()};
+    auto second_block{chainman->ReadBlock(second_index).value()};
+    auto second_block_string{second_block.GetBlockData()};
     auto second_height{second_index.GetHeight()};
     assert(second_height == 1);
     assert(next_block_string == tip_block_string);
@@ -576,6 +577,8 @@ void chainman_reindex_test(TestDirectory& test_directory)
     auto hash{second_index.GetHash()};
     auto another_second_index{chainman->GetBlockIndexByHash(hash.get())};
     auto another_second_height{another_second_index.GetHeight()};
+    auto block_hash{second_block.GetHash()};
+    assert(std::equal(std::begin(block_hash->hash), std::end(block_hash->hash), std::begin(hash->hash)));
     assert(second_height == another_second_height);
 }
 
