@@ -899,6 +899,16 @@ kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_create(
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
+ * @brief Calculate and return the hash of a block.
+ *
+ * @param[in] block Non-null.
+ * @return    The block hash.
+ */
+kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_get_hash(
+    kernel_Block* block
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
  * Destroy the block.
  */
 void kernel_block_destroy(kernel_Block* block);
@@ -920,6 +930,16 @@ kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_block_data(
  * @return           Allocated byte array holding the block data, or null on error.
  */
 kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_block_pointer_data(
+    const kernel_BlockPointer* block
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Calculate and return the hash of a block.
+ *
+ * @param[in] block Non-null.
+ * @return    The block hash.
+ */
+kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_pointer_get_hash(
     const kernel_BlockPointer* block
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
