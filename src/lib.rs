@@ -895,6 +895,12 @@ impl ChainstateManagerOptions {
         }
         Ok(Self { inner })
     }
+
+    pub fn set_worker_threads(&self, worker_threads: i32) {
+        unsafe {
+            kernel_chainstate_manager_options_set_worker_threads_num(self.inner, worker_threads);
+        }
+    }
 }
 
 impl Drop for ChainstateManagerOptions {
