@@ -159,6 +159,7 @@ int main(int argc, char* argv[])
 
     ChainstateManagerOptions chainman_opts{context, abs_datadir};
     assert(chainman_opts);
+    chainman_opts.SetWorkerThreads(4);
     BlockManagerOptions blockman_opts{context, abs_datadir / "blocks"};
     assert(blockman_opts);
 

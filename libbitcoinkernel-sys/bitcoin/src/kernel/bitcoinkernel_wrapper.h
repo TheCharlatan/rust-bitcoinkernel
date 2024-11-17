@@ -406,6 +406,11 @@ public:
     {
     }
 
+    void SetWorkerThreads(int worker_threads) const noexcept
+    {
+        kernel_chainstate_manager_options_set_worker_threads_num(m_options.get(), worker_threads);
+    }
+
     /** Check whether this ChainstateManagerOptions object is valid. */
     explicit operator bool() const noexcept { return bool{m_options}; }
 
