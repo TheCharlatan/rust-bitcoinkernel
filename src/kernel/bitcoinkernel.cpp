@@ -306,16 +306,22 @@ const Context* cast_const_context(const kernel_Context* context)
     return reinterpret_cast<const Context*>(context);
 }
 
+const ChainstateManager::Options* cast_const_chainstate_manager_options(const kernel_ChainstateManagerOptions* options)
+{
+    assert(options);
+    return reinterpret_cast<const ChainstateManager::Options*>(options);
+}
+
 ChainstateManager::Options* cast_chainstate_manager_options(kernel_ChainstateManagerOptions* options)
 {
     assert(options);
     return reinterpret_cast<ChainstateManager::Options*>(options);
 }
 
-node::BlockManager::Options* cast_block_manager_options(kernel_BlockManagerOptions* options)
+const node::BlockManager::Options* cast_const_block_manager_options(const kernel_BlockManagerOptions* options)
 {
     assert(options);
-    return reinterpret_cast<node::BlockManager::Options*>(options);
+    return reinterpret_cast<const node::BlockManager::Options*>(options);
 }
 
 ChainstateManager* cast_chainstate_manager(kernel_ChainstateManager* chainman)
@@ -328,6 +334,12 @@ node::ChainstateLoadOptions* cast_chainstate_load_options(kernel_ChainstateLoadO
 {
     assert(options);
     return reinterpret_cast<node::ChainstateLoadOptions*>(options);
+}
+
+const node::ChainstateLoadOptions* cast_const_chainstate_load_options(const kernel_ChainstateLoadOptions* options)
+{
+    assert(options);
+    return reinterpret_cast<const node::ChainstateLoadOptions*>(options);
 }
 
 std::shared_ptr<CBlock>* cast_cblocksharedpointer(kernel_Block* block)
@@ -354,16 +366,16 @@ const CBlock* cast_const_cblock(const kernel_BlockPointer* block)
     return reinterpret_cast<const CBlock*>(block);
 }
 
-CBlockIndex* cast_block_index(kernel_BlockIndex* index)
+const CBlockIndex* cast_const_block_index(const kernel_BlockIndex* index)
 {
     assert(index);
-    return reinterpret_cast<CBlockIndex*>(index);
+    return reinterpret_cast<const CBlockIndex*>(index);
 }
 
-CBlockUndo* cast_block_undo(kernel_BlockUndo* undo)
+const CBlockUndo* cast_const_block_undo(const kernel_BlockUndo* undo)
 {
     assert(undo);
-    return reinterpret_cast<CBlockUndo*>(undo);
+    return reinterpret_cast<const CBlockUndo*>(undo);
 }
 
 } // namespace
@@ -412,7 +424,7 @@ void kernel_script_pubkey_destroy(kernel_ScriptPubkey* script_pubkey)
     }
 }
 
-kernel_TransactionOutput* kernel_transaction_output_create(kernel_ScriptPubkey* script_pubkey_, int64_t amount)
+kernel_TransactionOutput* kernel_transaction_output_create(const kernel_ScriptPubkey* script_pubkey_, int64_t amount)
 {
     const auto& script_pubkey{*cast_script_pubkey(script_pubkey_)};
     const CAmount& value{amount};
@@ -593,7 +605,7 @@ kernel_Notifications* kernel_notifications_create(kernel_NotificationInterfaceCa
     return reinterpret_cast<kernel_Notifications*>(new KernelNotifications{callbacks});
 }
 
-void kernel_notifications_destroy(const kernel_Notifications* notifications)
+void kernel_notifications_destroy(kernel_Notifications* notifications)
 {
     if (notifications) {
         delete cast_const_notifications(notifications);
@@ -752,7 +764,7 @@ void kernel_chainstate_manager_options_set_worker_threads_num(kernel_ChainstateM
 void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* options)
 {
     if (options) {
-        delete cast_chainstate_manager_options(options);
+        delete cast_const_chainstate_manager_options(options);
     }
 }
 
@@ -778,17 +790,17 @@ kernel_BlockManagerOptions* kernel_block_manager_options_create(const kernel_Con
 void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* options)
 {
     if (options) {
-        delete cast_block_manager_options(options);
+        delete cast_const_block_manager_options(options);
     }
 }
 
 kernel_ChainstateManager* kernel_chainstate_manager_create(
     const kernel_Context* context_,
-    kernel_ChainstateManagerOptions* chainman_opts_,
-    kernel_BlockManagerOptions* blockman_opts_)
+    const kernel_ChainstateManagerOptions* chainman_opts_,
+    const kernel_BlockManagerOptions* blockman_opts_)
 {
-    auto chainman_opts{cast_chainstate_manager_options(chainman_opts_)};
-    auto blockman_opts{cast_block_manager_options(blockman_opts_)};
+    auto chainman_opts{cast_const_chainstate_manager_options(chainman_opts_)};
+    auto blockman_opts{cast_const_block_manager_options(blockman_opts_)};
     auto context{cast_const_context(context_)};
 
     try {
@@ -840,16 +852,16 @@ void kernel_chainstate_load_options_set_chainstate_db_in_memory(
 void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chainstate_load_opts)
 {
     if (chainstate_load_opts) {
-        delete cast_chainstate_load_options(chainstate_load_opts);
+        delete cast_const_chainstate_load_options(chainstate_load_opts);
     }
 }
 
 bool kernel_chainstate_manager_load_chainstate(const kernel_Context* context_,
-                                               kernel_ChainstateLoadOptions* chainstate_load_opts_,
+                                               const kernel_ChainstateLoadOptions* chainstate_load_opts_,
                                                kernel_ChainstateManager* chainman_)
 {
     try {
-        auto& chainstate_load_opts{*cast_chainstate_load_options(chainstate_load_opts_)};
+        const auto& chainstate_load_opts{*cast_const_chainstate_load_options(chainstate_load_opts_)};
         auto& chainman{*cast_chainstate_manager(chainman_)};
 
         if (chainstate_load_opts.wipe_block_tree_db && !chainstate_load_opts.wipe_chainstate_db) {
@@ -1049,9 +1061,9 @@ kernel_BlockIndex* kernel_get_block_index_by_height(const kernel_Context* contex
     return reinterpret_cast<kernel_BlockIndex*>(chainman->ActiveChain()[height]);
 }
 
-kernel_BlockIndex* kernel_get_next_block_index(const kernel_Context* context_, kernel_BlockIndex* block_index_, kernel_ChainstateManager* chainman_)
+kernel_BlockIndex* kernel_get_next_block_index(const kernel_Context* context_, const kernel_BlockIndex* block_index_, kernel_ChainstateManager* chainman_)
 {
-    auto block_index{cast_block_index(block_index_)};
+    const auto block_index{cast_const_block_index(block_index_)};
     auto chainman{cast_chainstate_manager(chainman_)};
 
     auto next_block_index{WITH_LOCK(::cs_main, return chainman->ActiveChain().Next(block_index))};
@@ -1063,9 +1075,9 @@ kernel_BlockIndex* kernel_get_next_block_index(const kernel_Context* context_, k
     return reinterpret_cast<kernel_BlockIndex*>(next_block_index);
 }
 
-kernel_BlockIndex* kernel_get_previous_block_index(kernel_BlockIndex* block_index_)
+kernel_BlockIndex* kernel_get_previous_block_index(const kernel_BlockIndex* block_index_)
 {
-    CBlockIndex* block_index{cast_block_index(block_index_)};
+    const CBlockIndex* block_index{cast_const_block_index(block_index_)};
 
     if (!block_index->pprev) {
         LogTrace(BCLog::KERNEL, "The block index is the genesis, it has no previous.\n");
@@ -1077,10 +1089,10 @@ kernel_BlockIndex* kernel_get_previous_block_index(kernel_BlockIndex* block_inde
 
 kernel_Block* kernel_read_block_from_disk(const kernel_Context* context_,
                                           kernel_ChainstateManager* chainman_,
-                                          kernel_BlockIndex* block_index_)
+                                          const kernel_BlockIndex* block_index_)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
-    CBlockIndex* block_index{cast_block_index(block_index_)};
+    const CBlockIndex* block_index{cast_const_block_index(block_index_)};
 
     auto block{new std::shared_ptr<CBlock>(new CBlock{})};
     if (!chainman->m_blockman.ReadBlockFromDisk(**block, *block_index)) {
@@ -1092,10 +1104,10 @@ kernel_Block* kernel_read_block_from_disk(const kernel_Context* context_,
 
 kernel_BlockUndo* kernel_read_block_undo_from_disk(const kernel_Context* context_,
                                                    kernel_ChainstateManager* chainman_,
-                                                   kernel_BlockIndex* block_index_)
+                                                   const kernel_BlockIndex* block_index_)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
-    auto block_index{cast_block_index(block_index_)};
+    const auto block_index{cast_const_block_index(block_index_)};
 
     if (block_index->nHeight < 1) {
         LogError("The genesis block does not have undo data.\n");
@@ -1115,30 +1127,30 @@ void kernel_block_index_destroy(kernel_BlockIndex* block_index)
     return;
 }
 
-uint64_t kernel_block_undo_size(kernel_BlockUndo* block_undo_)
+uint64_t kernel_block_undo_size(const kernel_BlockUndo* block_undo_)
 {
-    auto block_undo{cast_block_undo(block_undo_)};
+    const auto block_undo{cast_const_block_undo(block_undo_)};
     return block_undo->vtxundo.size();
 }
 
 void kernel_block_undo_destroy(kernel_BlockUndo* block_undo)
 {
     if (block_undo) {
-        delete cast_block_undo(block_undo);
+        delete cast_const_block_undo(block_undo);
     }
 }
 
-uint64_t kernel_get_transaction_undo_size(kernel_BlockUndo* block_undo_, uint64_t transaction_undo_index)
+uint64_t kernel_get_transaction_undo_size(const kernel_BlockUndo* block_undo_, uint64_t transaction_undo_index)
 {
-    auto block_undo{cast_block_undo(block_undo_)};
+    const auto block_undo{cast_const_block_undo(block_undo_)};
     return block_undo->vtxundo[transaction_undo_index].vprevout.size();
 }
 
-kernel_TransactionOutput* kernel_get_undo_output_by_index(kernel_BlockUndo* block_undo_,
+kernel_TransactionOutput* kernel_get_undo_output_by_index(const kernel_BlockUndo* block_undo_,
                                                           uint64_t transaction_undo_index,
                                                           uint64_t output_index)
 {
-    auto block_undo{cast_block_undo(block_undo_)};
+    const auto block_undo{cast_const_block_undo(block_undo_)};
 
     if (transaction_undo_index >= block_undo->vtxundo.size()) {
         LogInfo("transaction undo index is out of bounds.\n");
@@ -1156,15 +1168,15 @@ kernel_TransactionOutput* kernel_get_undo_output_by_index(kernel_BlockUndo* bloc
     return reinterpret_cast<kernel_TransactionOutput*>(prevout);
 }
 
-int32_t kernel_block_index_get_height(kernel_BlockIndex* block_index_)
+int32_t kernel_block_index_get_height(const kernel_BlockIndex* block_index_)
 {
-    auto block_index{cast_block_index(block_index_)};
+    auto block_index{cast_const_block_index(block_index_)};
     return block_index->nHeight;
 }
 
-kernel_BlockHash* kernel_block_index_get_block_hash(kernel_BlockIndex* block_index_)
+kernel_BlockHash* kernel_block_index_get_block_hash(const kernel_BlockIndex* block_index_)
 {
-    auto block_index{cast_block_index(block_index_)};
+    auto block_index{cast_const_block_index(block_index_)};
     if (block_index->phashBlock == nullptr) {
         return nullptr;
     }

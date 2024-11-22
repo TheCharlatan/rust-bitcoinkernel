@@ -173,7 +173,7 @@ class KernelNotifications
 {
 private:
     struct Deleter {
-        void operator()(const kernel_Notifications* ptr) const
+        void operator()(kernel_Notifications* ptr) const
         {
             kernel_notifications_destroy(ptr);
         }
@@ -201,7 +201,7 @@ private:
         };
     }
 
-    std::unique_ptr<const kernel_Notifications, Deleter> m_notifications;
+    std::unique_ptr<kernel_Notifications, Deleter> m_notifications;
 
 public:
     KernelNotifications() : m_notifications{kernel_notifications_create(MakeCallbacks())} {}
