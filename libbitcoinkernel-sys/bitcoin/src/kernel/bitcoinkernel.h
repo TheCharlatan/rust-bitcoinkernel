@@ -486,7 +486,7 @@ void kernel_script_pubkey_destroy(kernel_ScriptPubkey* script_pubkey);
  * @return                  The transaction output.
  */
 kernel_TransactionOutput* kernel_transaction_output_create(
-    kernel_ScriptPubkey* script_pubkey,
+    const kernel_ScriptPubkey* script_pubkey,
     int64_t amount
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -610,7 +610,7 @@ kernel_Notifications* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_notifications_crea
 /**
  * Destroy the kernel notifications.
  */
-void kernel_notifications_destroy(const kernel_Notifications* notifications);
+void kernel_notifications_destroy(kernel_Notifications* notifications);
 
 /**
  * Creates an empty context options.
@@ -741,8 +741,8 @@ void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* block_mana
  */
 kernel_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_create(
     const kernel_Context* context,
-    kernel_ChainstateManagerOptions* chainstate_manager_options,
-    kernel_BlockManagerOptions* block_manager_options
+    const kernel_ChainstateManagerOptions* chainstate_manager_options,
+    const kernel_BlockManagerOptions* block_manager_options
 ) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
@@ -863,7 +863,7 @@ void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chains
  */
 bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_load_chainstate(
     const kernel_Context* context,
-    kernel_ChainstateLoadOptions* chainstate_load_options,
+    const kernel_ChainstateLoadOptions* chainstate_load_options,
     kernel_ChainstateManager* chainstate_manager
 ) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
@@ -1045,7 +1045,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_by_he
  */
 kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_next_block_index(
     const kernel_Context* context,
-    kernel_BlockIndex* block_index,
+    const kernel_BlockIndex* block_index,
     kernel_ChainstateManager* chainstate_manager
 ) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
@@ -1057,7 +1057,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_next_block_index(
  * @return                The previous block index, or null on error or if the current block index is the genesis block.
  */
 kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_previous_block_index(
-    kernel_BlockIndex* block_index
+    const kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
@@ -1072,7 +1072,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_previous_block_in
 kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_from_disk(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
-    kernel_BlockIndex* block_index
+    const kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
@@ -1087,7 +1087,7 @@ kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_from_disk(
 kernel_BlockUndo* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_undo_from_disk(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
-    kernel_BlockIndex* block_index
+    const kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
@@ -1103,7 +1103,7 @@ void kernel_block_index_destroy(kernel_BlockIndex* block_index);
  * @return               The number of transaction undo data in the block undo.
  */
 uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_undo_size(
-    kernel_BlockUndo* block_undo
+    const kernel_BlockUndo* block_undo
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
@@ -1120,7 +1120,7 @@ void kernel_block_undo_destroy(kernel_BlockUndo* block_undo);
  * @return                           The number of previous transaction outputs in the transaction.
  */
 uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_transaction_undo_size(
-    kernel_BlockUndo* block_undo,
+    const kernel_BlockUndo* block_undo,
     uint64_t transaction_undo_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -1135,7 +1135,7 @@ uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_transaction_undo_size(
  * @return                           A transaction output pointer, or null on error.
  */
 kernel_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_undo_output_by_index(
-    kernel_BlockUndo* block_undo,
+    const kernel_BlockUndo* block_undo,
     uint64_t transaction_undo_index,
     uint64_t output_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
@@ -1147,7 +1147,7 @@ kernel_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_undo_outpu
  * @return                The block height.
  */
 int32_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_height(
-    kernel_BlockIndex* block_index
+    const kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
@@ -1157,7 +1157,7 @@ int32_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_height(
  * @return    The block hash.
  */
 kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_block_hash(
-    kernel_BlockIndex* block_index
+    const kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
