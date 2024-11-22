@@ -215,7 +215,7 @@ pub struct KernelNotificationInterfaceCallbackHolder {
 unsafe extern "C" fn kn_block_tip_wrapper(
     user_data: *mut c_void,
     state: kernel_SynchronizationState,
-    block_index: *mut kernel_BlockIndex,
+    block_index: *const kernel_BlockIndex,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
     let hash = kernel_block_index_get_block_hash(block_index);
@@ -1023,9 +1023,9 @@ impl<'a> ChainstateManager {
     ) -> Result<Self, KernelError> {
         let inner = unsafe {
             kernel_chainstate_manager_create(
+                context.inner,
                 chainman_opts.inner,
                 blockman_opts.inner,
-                context.inner,
             )
         };
         if inner.is_null() {
