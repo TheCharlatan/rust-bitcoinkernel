@@ -31,7 +31,7 @@
 #define BITCOINKERNEL_WARN_UNUSED_RESULT
 #endif
 #if !defined(BITCOINKERNEL_BUILD) && defined(__GNUC__) && BITCOINKERNEL_GNUC_PREREQ(3, 4)
-#define BITCOINKERNEL_ARG_NONNULL(_x) __attribute__((__nonnull__(_x)))
+#define BITCOINKERNEL_ARG_NONNULL(...) __attribute__((__nonnull__(__VA_ARGS__)))
 #else
 #define BITCOINKERNEL_ARG_NONNULL(_x)
 #endif
@@ -43,13 +43,14 @@ extern "C" {
 /**
  * ------ Context ------
  *
- * The library provides a built-in static constant kernel context. This context
- * offers only limited functionality. It detects and self-checks the correct
- * sha256 implementation, initializes the random number generator and
- * self-checks the secp256k1 static context. It is used internally for otherwise
- * "context-free" operations.
+ * The library provides a built-in static constant kernel context. This static
+ * context offers only limited functionality. It detects and self-checks the
+ * correct sha256 implementation, initializes the random number generator and
+ * self-checks the secp256k1 static context. It is used internally for
+ * otherwise "context-free" operations. This means that the user is not
+ * required to initialize their own context before using the library.
  *
- * The user can create their own context for passing it to state-rich validation
+ * The user should create their own context for passing it to state-rich validation
  * functions and holding callbacks for kernel events.
  *
  * ------ Error handling ------
@@ -73,11 +74,13 @@ extern "C" {
  * returned by functions. Typically pointers returned by *_create(...) functions
  * can be de-allocated by corresponding *_destroy(...) functions.
  *
- * Pointer arguments make no assumptions on their lifetime. Once the function
- * returns the user can safely de-allocate the passed in arguments.
+ * A function that takes pointer arguments makes no assumptions on their
+ * lifetime. Once the function returns the user can safely de-allocate the
+ * passed in arguments.
  *
- * Pointers passed by callbacks are not owned by the user and are only valid for
- * the duration of it. They should not be de-allocated by the user.
+ * Pointers passed by callbacks are not owned by the user and are only valid
+ * for the duration of the callback. They are always marked as `const` and must
+ * not be de-allocated by the user.
  *
  * Array lengths follow the pointer argument they describe.
  */
@@ -128,8 +131,9 @@ typedef struct kernel_Notifications kernel_Notifications;
  *
  * Once a kernel context has been created from these options, they may be
  * destroyed. The options hold the notification callbacks as well as the
- * selected chain type until they are passed to the context. Their content and
- * scope can be expanded over time.
+ * selected chain type until they are passed to the context. If no options are
+ * configured, the context will be instantiated with no callbacks and for
+ * mainnet. Their content and scope can be expanded over time.
  */
 typedef struct kernel_ContextOptions kernel_ContextOptions;
 
@@ -266,7 +270,7 @@ typedef void (*kernel_LogCallback)(void* user_data, const char* message);
 /**
  * Function signatures for the kernel notifications.
  */
-typedef void (*kernel_NotifyBlockTip)(void* user_data, kernel_SynchronizationState state, kernel_BlockIndex* index);
+typedef void (*kernel_NotifyBlockTip)(void* user_data, kernel_SynchronizationState state, const kernel_BlockIndex* index);
 typedef void (*kernel_NotifyHeaderTip)(void* user_data, kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync);
 typedef void (*kernel_NotifyProgress)(void* user_data, const char* title, int progress_percent, bool resume_possible);
 typedef void (*kernel_NotifyWarningSet)(void* user_data, kernel_Warning warning, const char* message);
@@ -311,7 +315,7 @@ typedef enum {
  * callbacks easier.
  */
 typedef struct {
-    void* user_data;                                      //!< Holds a user-defined opaque structure that is passed to the validation
+    const void* user_data;                                //!< Holds a user-defined opaque structure that is passed to the validation
                                                           //!< interface callbacks.
     kernel_ValidationInterfaceBlockChecked block_checked; //!< Called when a new block has been checked. Contains the
                                                           //!< result of its validation.
@@ -326,7 +330,7 @@ typedef struct {
  * safe unwinding.
  */
 typedef struct {
-    void* user_data;                         //!< Holds a user-defined opaque structure that is passed to the notification callbacks.
+    const void* user_data;                   //!< Holds a user-defined opaque structure that is passed to the notification callbacks.
     kernel_NotifyBlockTip block_tip;         //!< The chain's tip was updated to the provided block index.
     kernel_NotifyHeaderTip header_tip;       //!< A new best block header was added.
     kernel_NotifyProgress progress;          //!< Reports on current block synchronization progress.
@@ -493,7 +497,8 @@ void kernel_transaction_output_destroy(kernel_TransactionOutput* transaction_out
 
 /**
  * @brief Verify if the input at input_index of tx_to spends the script pubkey
- * under the constraints specified by flags. If the witness flag is set the
+ * under the constraints specified by flags. If the
+ * `kernel_SCRIPT_FLAGS_VERIFY_WITNESS` flag is set in the flags bitfield, the
  * amount parameter is used. If the taproot flag is set, the spent outputs
  * parameter is used to validate taproot transactions.
  *
@@ -518,7 +523,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_verify_script(
     unsigned int input_index,
     unsigned int flags,
     kernel_ScriptVerifyStatus* status
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(3);
+) BITCOINKERNEL_ARG_NONNULL(1, 3);
 
 /**
  * @brief This disables the global internal logger. No log messages will be
@@ -570,7 +575,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_disable_log_category(const kernel_L
  */
 kernel_LoggingConnection* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_logging_connection_create(
     kernel_LogCallback callback,
-    void* user_data,
+    const void* user_data,
     const kernel_LoggingOptions options
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -622,7 +627,7 @@ kernel_ContextOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_c
 void kernel_context_options_set_chainparams(
     kernel_ContextOptions* context_options,
     const kernel_ChainParameters* chain_parameters
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * @brief Set the kernel notifications for the context options. The context
@@ -634,7 +639,7 @@ void kernel_context_options_set_chainparams(
 void kernel_context_options_set_notifications(
     kernel_ContextOptions* context_options,
     const kernel_Notifications* notifications
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * Destroy the context options.
@@ -682,7 +687,7 @@ void kernel_context_destroy(kernel_Context* context);
 kernel_ChainstateManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_options_create(
     const kernel_Context* context,
     const char* data_directory
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * Destroy the chainstate manager options.
@@ -703,7 +708,7 @@ void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* 
 kernel_BlockManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_manager_options_create(
     const kernel_Context* context,
     const char* blocks_directory
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * @brief Set the number of available worker threads used during validation.
@@ -735,10 +740,10 @@ void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* block_mana
  * @return                               The allocated chainstate manager, or null on error.
  */
 kernel_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_create(
+    const kernel_Context* context,
     kernel_ChainstateManagerOptions* chainstate_manager_options,
-    kernel_BlockManagerOptions* block_manager_options,
-    const kernel_Context* context
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
+    kernel_BlockManagerOptions* block_manager_options
+) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
  * Destroy the chainstate manager.
@@ -770,7 +775,7 @@ kernel_ValidationInterface* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_validation_i
 bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_validation_interface_register(
     kernel_Context* context,
     kernel_ValidationInterface* validation_interface
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * @brief Unregister a validation interface from the internal task runner
@@ -784,7 +789,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_validation_interface_register(
 bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_validation_interface_unregister(
     kernel_Context* context,
     kernel_ValidationInterface* validation_interface
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * Destroy the validation interface. This should be done after unregistering it
@@ -860,7 +865,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_load_chainstate(
     const kernel_Context* context,
     kernel_ChainstateLoadOptions* chainstate_load_options,
     kernel_ChainstateManager* chainstate_manager
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
+) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
  * @brief May be called after kernel_chainstate_manager_load_chainstate to
@@ -877,7 +882,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_load_chainstate(
 bool kernel_import_blocks(const kernel_Context* context,
                           kernel_ChainstateManager* chainstate_manager,
                           const char** block_file_paths, size_t block_file_paths_len
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * @brief Process and validate the passed in block with the chainstate
@@ -897,7 +902,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_process_block(
     kernel_ChainstateManager* chainstate_manager,
     kernel_Block* block,
     bool* new_block
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
+) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
  * @brief Parse a serialized raw block into a new block object.
@@ -985,7 +990,7 @@ kernel_BlockValidationResult kernel_get_block_validation_result_from_block_valid
 kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_tip(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * @brief Get the block index entry of the genesis block.
@@ -997,7 +1002,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_
 kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_genesis(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * @brief Retrieve a block index by its block hash.
@@ -1011,7 +1016,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_by_ha
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     kernel_BlockHash* block_hash
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
+) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
  * @brief Retrieve a block index by its height in the currently active chain.
@@ -1026,7 +1031,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_by_he
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     int block_height
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2);
+) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * @brief Return the next block index in the currently active chain, or null if
@@ -1042,7 +1047,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_next_block_index(
     const kernel_Context* context,
     kernel_BlockIndex* block_index,
     kernel_ChainstateManager* chainstate_manager
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
+) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
  * @brief Returns the previous block index in the chain, or null if the current
@@ -1068,7 +1073,7 @@ kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_from_disk(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     kernel_BlockIndex* block_index
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
+) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
  * @brief Reads the block undo data the passed in block index points to from
@@ -1083,7 +1088,7 @@ kernel_BlockUndo* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_undo_from_d
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     kernel_BlockIndex* block_index
-) BITCOINKERNEL_ARG_NONNULL(1) BITCOINKERNEL_ARG_NONNULL(2) BITCOINKERNEL_ARG_NONNULL(3);
+) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
  * @brief Destroy the block index.
