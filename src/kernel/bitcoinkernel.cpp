@@ -167,28 +167,28 @@ public:
 
     kernel::InterruptResult blockTip(SynchronizationState state, CBlockIndex& index) override
     {
-        if (m_cbs.block_tip) m_cbs.block_tip(m_cbs.user_data, cast_state(state), reinterpret_cast<kernel_BlockIndex*>(&index));
+        if (m_cbs.block_tip) m_cbs.block_tip((void*) m_cbs.user_data, cast_state(state), reinterpret_cast<const kernel_BlockIndex*>(&index));
         return {};
     }
     void headerTip(SynchronizationState state, int64_t height, int64_t timestamp, bool presync) override
     {
-        if (m_cbs.header_tip) m_cbs.header_tip(m_cbs.user_data, cast_state(state), height, timestamp, presync);
+        if (m_cbs.header_tip) m_cbs.header_tip((void*) m_cbs.user_data, cast_state(state), height, timestamp, presync);
     }
     void warningSet(kernel::Warning id, const bilingual_str& message) override
     {
-        if (m_cbs.warning_set) m_cbs.warning_set(m_cbs.user_data, cast_kernel_warning(id), message.original.c_str());
+        if (m_cbs.warning_set) m_cbs.warning_set((void*) m_cbs.user_data, cast_kernel_warning(id), message.original.c_str());
     }
     void warningUnset(kernel::Warning id) override
     {
-        if (m_cbs.warning_unset) m_cbs.warning_unset(m_cbs.user_data, cast_kernel_warning(id));
+        if (m_cbs.warning_unset) m_cbs.warning_unset((void*) m_cbs.user_data, cast_kernel_warning(id));
     }
     void flushError(const bilingual_str& message) override
     {
-        if (m_cbs.flush_error) m_cbs.flush_error(m_cbs.user_data, message.original.c_str());
+        if (m_cbs.flush_error) m_cbs.flush_error((void*) m_cbs.user_data, message.original.c_str());
     }
     void fatalError(const bilingual_str& message) override
     {
-        if (m_cbs.fatal_error) m_cbs.fatal_error(m_cbs.user_data, message.original.c_str());
+        if (m_cbs.fatal_error) m_cbs.fatal_error((void*) m_cbs.user_data, message.original.c_str());
     }
 };
 
@@ -245,7 +245,7 @@ protected:
     void BlockChecked(const CBlock& block, const BlockValidationState& stateIn) override
     {
         if (m_cbs.block_checked) {
-            m_cbs.block_checked(m_cbs.user_data,
+            m_cbs.block_checked((void*) m_cbs.user_data,
                                 reinterpret_cast<const kernel_BlockPointer*>(&block),
                                 reinterpret_cast<const kernel_BlockValidationState*>(&stateIn));
         }
@@ -511,7 +511,7 @@ void kernel_disable_logging()
 }
 
 kernel_LoggingConnection* kernel_logging_connection_create(kernel_LogCallback callback,
-                                                           void* user_data,
+                                                           const void* user_data,
                                                            const kernel_LoggingOptions options)
 {
     LogInstance().m_log_timestamps = options.log_timestamps;
@@ -520,7 +520,7 @@ kernel_LoggingConnection* kernel_logging_connection_create(kernel_LogCallback ca
     LogInstance().m_log_sourcelocations = options.log_sourcelocations;
     LogInstance().m_always_print_category_level = options.always_print_category_levels;
 
-    auto connection{LogInstance().PushBackCallback([callback, user_data](const std::string& str) { callback(user_data, str.c_str()); })};
+    auto connection{LogInstance().PushBackCallback([callback, user_data](const std::string& str) { callback((void*) user_data, str.c_str()); })};
 
     try {
         // Only start logging if we just added the connection.
@@ -783,9 +783,9 @@ void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* options)
 }
 
 kernel_ChainstateManager* kernel_chainstate_manager_create(
+    const kernel_Context* context_,
     kernel_ChainstateManagerOptions* chainman_opts_,
-    kernel_BlockManagerOptions* blockman_opts_,
-    const kernel_Context* context_)
+    kernel_BlockManagerOptions* blockman_opts_)
 {
     auto chainman_opts{cast_chainstate_manager_options(chainman_opts_)};
     auto blockman_opts{cast_block_manager_options(blockman_opts_)};

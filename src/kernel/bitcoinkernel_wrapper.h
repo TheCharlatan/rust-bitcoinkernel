@@ -183,7 +183,7 @@ private:
     {
         return kernel_NotificationInterfaceCallbacks{
             .user_data = this,
-            .block_tip = [](void* user_data, kernel_SynchronizationState state, kernel_BlockIndex* index) {
+            .block_tip = [](void* user_data, kernel_SynchronizationState state, const kernel_BlockIndex* index) {
                 static_cast<T*>(user_data)->BlockTipHandler(state, index);
             },
             .header_tip = [](void* user_data, kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync) {
@@ -208,7 +208,7 @@ public:
 
     virtual ~KernelNotifications() = default;
 
-    virtual void BlockTipHandler(kernel_SynchronizationState state, kernel_BlockIndex* index) {}
+    virtual void BlockTipHandler(kernel_SynchronizationState state, const kernel_BlockIndex* index) {}
 
     virtual void HeaderTipHandler(kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync) {}
 
@@ -622,7 +622,7 @@ private:
 
 public:
     ChainMan(const Context& context, const ChainstateManagerOptions& chainman_opts, const BlockManagerOptions& blockman_opts) noexcept
-        : m_chainman{kernel_chainstate_manager_create(chainman_opts.m_options.get(), blockman_opts.m_options.get(), context.m_context.get())},
+        : m_chainman{kernel_chainstate_manager_create(context.m_context.get(), chainman_opts.m_options.get(), blockman_opts.m_options.get())},
           m_context{context}
     {
     }
