@@ -192,9 +192,28 @@ public:
     }
 };
 
+class KernelValidationInterface final : public CValidationInterface
+{
+public:
+    const kernel_ValidationInterfaceCallbacks m_cbs;
+
+    explicit KernelValidationInterface(const kernel_ValidationInterfaceCallbacks vi_cbs) : m_cbs{vi_cbs} {}
+
+protected:
+    void BlockChecked(const CBlock& block, const BlockValidationState& stateIn) override
+    {
+        if (m_cbs.block_checked) {
+            m_cbs.block_checked((void*) m_cbs.user_data,
+                                reinterpret_cast<const kernel_BlockPointer*>(&block),
+                                reinterpret_cast<const kernel_BlockValidationState*>(&stateIn));
+        }
+    }
+};
+
 struct ContextOptions {
     std::unique_ptr<const KernelNotifications> m_notifications;
     std::unique_ptr<const CChainParams> m_chainparams;
+    std::unique_ptr<const KernelValidationInterface> m_validation_interface;
 };
 
 class Context
@@ -209,6 +228,8 @@ public:
     std::unique_ptr<ValidationSignals> m_signals;
 
     std::unique_ptr<const CChainParams> m_chainparams;
+
+    std::unique_ptr<KernelValidationInterface> m_validation_interface;
 
     Context(const ContextOptions* options, bool& sane)
         : m_context{std::make_unique<kernel::Context>()},
@@ -228,27 +249,19 @@ public:
             m_chainparams = CChainParams::Main();
         }
 
+        if (options && options->m_validation_interface) {
+            m_validation_interface = std::make_unique<KernelValidationInterface>(*options->m_validation_interface);
+            m_signals->RegisterValidationInterface(m_validation_interface.get());
+        }
+
         if (!kernel::SanityChecks(*m_context)) {
             sane = false;
         }
     }
-};
 
-class KernelValidationInterface final : public CValidationInterface
-{
-public:
-    const kernel_ValidationInterfaceCallbacks m_cbs;
-
-    explicit KernelValidationInterface(const kernel_ValidationInterfaceCallbacks vi_cbs) : m_cbs{vi_cbs} {}
-
-protected:
-    void BlockChecked(const CBlock& block, const BlockValidationState& stateIn) override
+    ~Context()
     {
-        if (m_cbs.block_checked) {
-            m_cbs.block_checked((void*) m_cbs.user_data,
-                                reinterpret_cast<const kernel_BlockPointer*>(&block),
-                                reinterpret_cast<const kernel_BlockValidationState*>(&stateIn));
-        }
+        m_signals->UnregisterValidationInterface(m_validation_interface.get());
     }
 };
 
@@ -346,12 +359,6 @@ std::shared_ptr<CBlock>* cast_cblocksharedpointer(kernel_Block* block)
 {
     assert(block);
     return reinterpret_cast<std::shared_ptr<CBlock>*>(block);
-}
-
-std::shared_ptr<KernelValidationInterface>* cast_validation_interface(kernel_ValidationInterface* interface)
-{
-    assert(interface);
-    return reinterpret_cast<std::shared_ptr<KernelValidationInterface>*>(interface);
 }
 
 const BlockValidationState* cast_block_validation_state(const kernel_BlockValidationState* block_validation_state)
@@ -633,6 +640,13 @@ void kernel_context_options_set_notifications(kernel_ContextOptions* options_, c
     options->m_notifications = std::make_unique<const KernelNotifications>(*notifications);
 }
 
+void kernel_context_options_set_validation_interface(kernel_ContextOptions* options_, kernel_ValidationInterfaceCallbacks vi_cbs)
+{
+    auto options{cast_context_options(options_)};
+    options->m_validation_interface = std::make_unique<KernelValidationInterface>(KernelValidationInterface(vi_cbs));
+    // return reinterpret_cast<kernel_ValidationInterface*>(new std::shared_ptr<KernelValidationInterface>(new KernelValidationInterface(vi_cbs)));
+}
+
 void kernel_context_options_destroy(kernel_ContextOptions* options)
 {
     if (options) {
@@ -663,42 +677,6 @@ void kernel_context_destroy(kernel_Context* context)
 {
     if (context) {
         delete cast_context(context);
-    }
-}
-
-kernel_ValidationInterface* kernel_validation_interface_create(kernel_ValidationInterfaceCallbacks vi_cbs)
-{
-    return reinterpret_cast<kernel_ValidationInterface*>(new std::shared_ptr<KernelValidationInterface>(new KernelValidationInterface(vi_cbs)));
-}
-
-bool kernel_validation_interface_register(kernel_Context* context_, kernel_ValidationInterface* validation_interface_)
-{
-    auto context{cast_context(context_)};
-    auto validation_interface{cast_validation_interface(validation_interface_)};
-    if (!context->m_signals) {
-        LogError("Cannot register validation interface with context that has no validation signals.\n");
-        return false;
-    }
-    context->m_signals->RegisterSharedValidationInterface(*validation_interface);
-    return true;
-}
-
-bool kernel_validation_interface_unregister(kernel_Context* context_, kernel_ValidationInterface* validation_interface_)
-{
-    auto context{cast_context(context_)};
-    auto validation_interface{cast_validation_interface(validation_interface_)};
-    if (!context->m_signals) {
-        LogError("Cannot de-register validation interface with context that has no validation signals.\n");
-        return false;
-    }
-    context->m_signals->UnregisterSharedValidationInterface(*validation_interface);
-    return true;
-}
-
-void kernel_validation_interface_destroy(kernel_ValidationInterface* validation_interface)
-{
-    if (validation_interface) {
-        delete cast_validation_interface(validation_interface);
     }
 }
 
@@ -1035,7 +1013,7 @@ kernel_BlockIndex* kernel_get_block_index_from_genesis(const kernel_Context* con
     return reinterpret_cast<kernel_BlockIndex*>(WITH_LOCK(::cs_main, return chainman->ActiveChain().Genesis()));
 }
 
-kernel_BlockIndex* kernel_get_block_index_by_hash(const kernel_Context* context_, kernel_ChainstateManager* chainman_, kernel_BlockHash* block_hash)
+kernel_BlockIndex* kernel_get_block_index_from_hash(const kernel_Context* context_, kernel_ChainstateManager* chainman_, kernel_BlockHash* block_hash)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
 
@@ -1048,7 +1026,7 @@ kernel_BlockIndex* kernel_get_block_index_by_hash(const kernel_Context* context_
     return reinterpret_cast<kernel_BlockIndex*>(block_index);
 }
 
-kernel_BlockIndex* kernel_get_block_index_by_height(const kernel_Context* context_, kernel_ChainstateManager* chainman_, int height)
+kernel_BlockIndex* kernel_get_block_index_from_height(const kernel_Context* context_, kernel_ChainstateManager* chainman_, int height)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
 
@@ -1061,7 +1039,7 @@ kernel_BlockIndex* kernel_get_block_index_by_height(const kernel_Context* contex
     return reinterpret_cast<kernel_BlockIndex*>(chainman->ActiveChain()[height]);
 }
 
-kernel_BlockIndex* kernel_get_next_block_index(const kernel_Context* context_, const kernel_BlockIndex* block_index_, kernel_ChainstateManager* chainman_)
+kernel_BlockIndex* kernel_get_next_block_index(const kernel_Context* context_, kernel_ChainstateManager* chainman_, const kernel_BlockIndex* block_index_)
 {
     const auto block_index{cast_const_block_index(block_index_)};
     auto chainman{cast_chainstate_manager(chainman_)};

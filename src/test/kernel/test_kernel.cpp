@@ -350,12 +350,15 @@ void context_test()
     }
 }
 
-Context create_context(TestKernelNotifications& notifications, kernel_ChainType chain_type)
+Context create_context(TestKernelNotifications& notifications, kernel_ChainType chain_type, TestValidationInterface* validation_interface = nullptr)
 {
     ContextOptions options{};
     ChainParams params{chain_type};
     options.SetChainParams(params);
     options.SetNotifications(notifications);
+    if (validation_interface) {
+        options.SetValidationInterface(*validation_interface);
+    }
     return Context{options};
 }
 
@@ -443,11 +446,9 @@ void chainman_in_memory_test()
 void chainman_mainnet_validation_test(TestDirectory& test_directory)
 {
     TestKernelNotifications notifications{};
-
-    auto context{create_context(notifications, kernel_ChainType::kernel_CHAIN_TYPE_MAINNET)};
-
     TestValidationInterface validation_interface{};
-    assert(validation_interface.Register(context));
+
+    auto context{create_context(notifications, kernel_ChainType::kernel_CHAIN_TYPE_MAINNET, &validation_interface)};
 
     auto chainman{create_chainman(test_directory, false, false, false, false, context)};
 
@@ -489,8 +490,6 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
     // If we try to validate it again, it should be a duplicate
     assert(chainman->ProcessBlock(block, &new_block));
     assert(new_block == false);
-
-    assert(validation_interface.Unregister(context));
 }
 
 void chainman_regtest_validation_test()

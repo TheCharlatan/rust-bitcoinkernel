@@ -225,6 +225,87 @@ public:
     friend class ContextOptions;
 };
 
+struct BlockHashDeleter {
+    void operator()(kernel_BlockHash* ptr) const
+    {
+        kernel_block_hash_destroy(ptr);
+    }
+};
+
+class UnownedBlock
+{
+private:
+    const kernel_BlockPointer* m_block;
+
+public:
+    UnownedBlock(const kernel_BlockPointer* block) noexcept : m_block{block} {}
+
+    UnownedBlock(const UnownedBlock&) = delete;
+    UnownedBlock& operator=(const UnownedBlock&) = delete;
+    UnownedBlock(UnownedBlock&&) = delete;
+    UnownedBlock& operator=(UnownedBlock&&) = delete;
+
+    std::unique_ptr<kernel_BlockHash, BlockHashDeleter> GetHash() const noexcept
+    {
+        return std::unique_ptr<kernel_BlockHash, BlockHashDeleter>(kernel_block_pointer_get_hash(m_block));
+    }
+
+    std::vector<unsigned char> GetBlockData() const noexcept
+    {
+        auto serialized_block{kernel_copy_block_pointer_data(m_block)};
+        std::vector<unsigned char> vec{serialized_block->data, serialized_block->data + serialized_block->size};
+        kernel_byte_array_destroy(serialized_block);
+        return vec;
+    }
+};
+
+class BlockValidationState
+{
+private:
+    const kernel_BlockValidationState* m_state;
+
+public:
+    BlockValidationState(const kernel_BlockValidationState* state) noexcept : m_state{state} {}
+
+    BlockValidationState(const BlockValidationState&) = delete;
+    BlockValidationState& operator=(const BlockValidationState&) = delete;
+    BlockValidationState(BlockValidationState&&) = delete;
+    BlockValidationState& operator=(BlockValidationState&&) = delete;
+
+    kernel_ValidationMode ValidationMode() const noexcept
+    {
+        return kernel_get_validation_mode_from_block_validation_state(m_state);
+    }
+
+    kernel_BlockValidationResult BlockValidationResult() const noexcept
+    {
+        return kernel_get_block_validation_result_from_block_validation_state(m_state);
+    }
+};
+
+template <typename T>
+class ValidationInterface
+{
+private:
+    const kernel_ValidationInterfaceCallbacks m_validation_interface;
+
+public:
+    ValidationInterface() noexcept : m_validation_interface{kernel_ValidationInterfaceCallbacks{
+                                .user_data = this,
+                                .block_checked = [](void* user_data, const kernel_BlockPointer* block, const kernel_BlockValidationState* state) {
+                                    static_cast<T*>(user_data)->BlockChecked(UnownedBlock{block}, BlockValidationState{state});
+                                },
+                            }}
+    {
+    }
+
+    virtual ~ValidationInterface() = default;
+
+    virtual void BlockChecked(UnownedBlock block, const BlockValidationState state) {}
+
+    friend class ContextOptions;
+};
+
 class ChainParams
 {
 private:
@@ -269,6 +350,12 @@ public:
         kernel_context_options_set_notifications(m_options.get(), notifications.m_notifications.get());
     }
 
+    template <typename T>
+    void SetValidationInterface(ValidationInterface<T>& validation_interface) const noexcept
+    {
+        kernel_context_options_set_validation_interface(m_options.get(), validation_interface.m_validation_interface);
+    }
+
     friend class Context;
 };
 
@@ -297,95 +384,6 @@ public:
 
     /** Check whether this Context object is valid. */
     explicit operator bool() const noexcept { return bool{m_context}; }
-};
-
-class UnownedBlock
-{
-private:
-    const kernel_BlockPointer* m_block;
-
-public:
-    UnownedBlock(const kernel_BlockPointer* block) noexcept : m_block{block} {}
-
-    UnownedBlock(const UnownedBlock&) = delete;
-    UnownedBlock& operator=(const UnownedBlock&) = delete;
-    UnownedBlock(UnownedBlock&&) = delete;
-    UnownedBlock& operator=(UnownedBlock&&) = delete;
-
-    kernel_BlockHash* GetHash() const noexcept
-    {
-        return kernel_block_pointer_get_hash(m_block);
-    }
-
-    std::vector<unsigned char> GetBlockData() const noexcept
-    {
-        auto serialized_block{kernel_copy_block_pointer_data(m_block)};
-        std::vector<unsigned char> vec{serialized_block->data, serialized_block->data + serialized_block->size};
-        kernel_byte_array_destroy(serialized_block);
-        return vec;
-    }
-};
-
-class BlockValidationState
-{
-private:
-    const kernel_BlockValidationState* m_state;
-
-public:
-    BlockValidationState(const kernel_BlockValidationState* state) noexcept : m_state{state} {}
-
-    BlockValidationState(const BlockValidationState&) = delete;
-    BlockValidationState& operator=(const BlockValidationState&) = delete;
-    BlockValidationState(BlockValidationState&&) = delete;
-    BlockValidationState& operator=(BlockValidationState&&) = delete;
-
-    kernel_ValidationMode ValidationMode() const noexcept
-    {
-        return kernel_get_validation_mode_from_block_validation_state(m_state);
-    }
-
-    kernel_BlockValidationResult BlockValidationResult() const noexcept
-    {
-        return kernel_get_block_validation_result_from_block_validation_state(m_state);
-    }
-};
-
-template <typename T>
-class ValidationInterface
-{
-private:
-    struct Deleter {
-        void operator()(kernel_ValidationInterface* ptr) const
-        {
-            kernel_validation_interface_destroy(ptr);
-        }
-    };
-
-    const std::unique_ptr<kernel_ValidationInterface, Deleter> m_validation_interface;
-
-public:
-    ValidationInterface() noexcept : m_validation_interface{kernel_validation_interface_create(kernel_ValidationInterfaceCallbacks{
-                                .user_data = this,
-                                .block_checked = [](void* user_data, const kernel_BlockPointer* block, const kernel_BlockValidationState* state) {
-                                    static_cast<T*>(user_data)->BlockChecked(UnownedBlock{block}, BlockValidationState{state});
-                                },
-                            })}
-    {
-    }
-
-    virtual ~ValidationInterface() = default;
-
-    virtual void BlockChecked(UnownedBlock block, const BlockValidationState state) {}
-
-    bool Register(Context& context) const noexcept
-    {
-        return kernel_validation_interface_register(context.m_context.get(), m_validation_interface.get());
-    }
-
-    bool Unregister(Context& context) const noexcept
-    {
-        return kernel_validation_interface_unregister(context.m_context.get(), m_validation_interface.get());
-    }
 };
 
 class ChainstateManagerOptions
@@ -505,9 +503,9 @@ public:
 
     Block(kernel_Block* block) noexcept : m_block{block} {}
 
-    kernel_BlockHash* GetHash() const noexcept
+    std::unique_ptr<kernel_BlockHash, BlockHashDeleter> GetHash() const noexcept
     {
-        return kernel_block_get_hash(m_block.get());
+        return std::unique_ptr<kernel_BlockHash, BlockHashDeleter>(kernel_block_get_hash(m_block.get()));
     }
 
     std::vector<unsigned char> GetBlockData() const noexcept
@@ -555,13 +553,6 @@ public:
         uint64_t tx_prevout_index) const noexcept
     {
         return TransactionOutput{kernel_get_undo_output_by_index(m_block_undo.get(), tx_undo_index, tx_prevout_index)};
-    }
-};
-
-struct BlockHashDeleter {
-    void operator()(kernel_BlockHash* ptr) const
-    {
-        kernel_block_hash_destroy(ptr);
     }
 };
 
@@ -666,19 +657,19 @@ public:
 
     BlockIndex GetBlockIndexByHash(kernel_BlockHash* block_hash) const noexcept
     {
-        return kernel_get_block_index_by_hash(m_context.m_context.get(), m_chainman, block_hash);
+        return kernel_get_block_index_from_hash(m_context.m_context.get(), m_chainman, block_hash);
     }
 
     std::optional<BlockIndex> GetBlockIndexByHeight(int height) const noexcept
     {
-        auto index{kernel_get_block_index_by_height(m_context.m_context.get(), m_chainman, height)};
+        auto index{kernel_get_block_index_from_height(m_context.m_context.get(), m_chainman, height)};
         if (!index) return std::nullopt;
         return index;
     }
 
     std::optional<BlockIndex> GetNextBlockIndex(BlockIndex& block_index) const noexcept
     {
-        auto index{kernel_get_next_block_index(m_context.m_context.get(), block_index.m_block_index.get(), m_chainman)};
+        auto index{kernel_get_next_block_index(m_context.m_context.get(), m_chainman, block_index.m_block_index.get())};
         if (!index) return std::nullopt;
         return index;
     }

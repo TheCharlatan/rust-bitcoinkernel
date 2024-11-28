@@ -642,6 +642,21 @@ void kernel_context_options_set_notifications(
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
+ * @brief Set the validation interface callbacks for the context options. The
+ * context created with the options will be configured for these validation
+ * interface callbacks. The callbacks will then be triggered from validation
+ * events issued by the chainstate manager created from the same context.
+ *
+ * @param[in] context_options                Non-null, previously created with kernel_context_options_create.
+ * @param[in] validation_interface_callbacks The callbacks used for passing validation information to the
+ *                                           user.
+ */
+void kernel_context_options_set_validation_interface(
+    kernel_ContextOptions* context_options,
+    kernel_ValidationInterfaceCallbacks validation_interface_callbacks
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
  * Destroy the context options.
  */
 void kernel_context_options_destroy(kernel_ContextOptions* context_options);
@@ -715,7 +730,8 @@ kernel_BlockManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_manage
  *
  * @param[in] chainstate_manager_options Non-null, options to be set.
  * @param[in] worker_threads The number of worker threads that should be spawned in the thread pool
- *                           used for validation. The number should be greater than 0.
+ *                           used for validation. The number must not be negative. When set to zero
+ *                           no parallel verification is done.
  */
 void kernel_chainstate_manager_options_set_worker_threads_num(
         kernel_ChainstateManagerOptions* chainstate_manager_options,
@@ -749,54 +765,6 @@ kernel_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_man
  * Destroy the chainstate manager.
  */
 void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainstate_manager, const kernel_Context* context);
-
-/**
- * @brief Creates a new validation interface for consuming events issued by the
- * chainstate manager. The interface should be created and registered before the
- * chainstate manager is created to avoid missing validation events.
- *
- * @param[in] validation_interface_callbacks The callbacks used for passing validation information to the
- *                                           user.
- * @return                                   A validation interface. This should remain in memory for as
- *                                           long as the user expects to receive validation events.
- */
-kernel_ValidationInterface* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_validation_interface_create(
-    kernel_ValidationInterfaceCallbacks validation_interface_callbacks);
-
-/**
- * @brief Register a validation interface with the internal task runner
- * associated with this context. This also registers it with the chainstate
- * manager if the chainstate manager is subsequently created with this context.
- *
- * @param[in] context              Non-null, will register the validation interface with this context.
- * @param[in] validation_interface Non-null.
- * @return                         True on success.
- */
-bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_validation_interface_register(
-    kernel_Context* context,
-    kernel_ValidationInterface* validation_interface
-) BITCOINKERNEL_ARG_NONNULL(1, 2);
-
-/**
- * @brief Unregister a validation interface from the internal task runner
- * associated with this context. This should be done before destroying the
- * kernel context it was previously registered with.
- *
- * @param[in] context              Non-null, will deregister the validation interface from this context.
- * @param[in] validation_interface Non-null.
- * @return                         True on success.
- */
-bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_validation_interface_unregister(
-    kernel_Context* context,
-    kernel_ValidationInterface* validation_interface
-) BITCOINKERNEL_ARG_NONNULL(1, 2);
-
-/**
- * Destroy the validation interface. This should be done after unregistering it
- * if the validation interface was previously registered with a chainstate
- * manager.
- */
-void kernel_validation_interface_destroy(kernel_ValidationInterface* validation_interface);
 
 /**
  * Create options for loading the chainstate.
@@ -1012,7 +980,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_
  * @param[in] block_hash         Non-null.
  * @return                       The block index of the block with the passed in hash, or null on error.
  */
-kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_by_hash(
+kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_hash(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     kernel_BlockHash* block_hash
@@ -1027,7 +995,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_by_ha
  * @param[in] block_height       Height in the chain of the to be retrieved block index.
  * @return                       The block index at a certain height in the currently active chain, or null on error.
  */
-kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_by_height(
+kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_height(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     int block_height
@@ -1045,8 +1013,8 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_by_he
  */
 kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_next_block_index(
     const kernel_Context* context,
-    const kernel_BlockIndex* block_index,
-    kernel_ChainstateManager* chainstate_manager
+    kernel_ChainstateManager* chainstate_manager,
+    const kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1, 2, 3);
 
 /**
