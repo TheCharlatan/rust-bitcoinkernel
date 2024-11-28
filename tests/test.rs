@@ -2,11 +2,11 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use bitcoinkernel::{
-        register_validation_interface, unregister_validation_interface, verify, Block, BlockHash,
-        BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions,
-        ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-        KernelNotificationInterfaceCallbackHolder, Log, Logger, ScriptPubkey, Transaction, TxOut,
-        ValidationInterfaceCallbackHolder, ValidationInterfaceWrapper, VERIFY_ALL_PRE_TAPROOT,
+        verify, Block, BlockHash, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
+        ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
+        ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
+        ScriptPubkey, Transaction, TxOut, ValidationInterfaceCallbackHolder,
+        VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -62,35 +62,24 @@ mod tests {
                 kn_fatal_error: Box::new(|message| {
                     log::info!("Fatal Error! {message}");
                 }),
-            }));
-        builder.build().unwrap()
-    }
-
-    fn setup_validation_interface(context: &Context) -> ValidationInterfaceWrapper {
-        let validation_interface =
-            ValidationInterfaceWrapper::new(Box::new(ValidationInterfaceCallbackHolder {
+            }))
+            .validation_interface(Box::new(ValidationInterfaceCallbackHolder {
                 block_checked: Box::new(|_block, _mode, _result| {
                     log::info!("Block checked!");
                 }),
             }));
-        register_validation_interface(&validation_interface, &context).unwrap();
-        validation_interface
+        builder.build().unwrap()
     }
 
-    fn testing_setup() -> (Arc<Context>, ValidationInterfaceWrapper, String) {
+    fn testing_setup() -> (Arc<Context>, String) {
         START.call_once(|| {
             setup_logging();
         });
         let context = Arc::new(create_context());
-        let validation_interface = setup_validation_interface(&context);
 
         let temp_dir = TempDir::new("test_chainman_regtest").unwrap();
         let data_dir = temp_dir.path();
-        (
-            context,
-            validation_interface,
-            data_dir.to_str().unwrap().to_string(),
-        )
+        (context, data_dir.to_str().unwrap().to_string())
     }
 
     fn read_block_data() -> Vec<Vec<u8>> {
@@ -105,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_reindex() {
-        let (context, validation_interface, data_dir) = testing_setup();
+        let (context, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         {
             let block_data = read_block_data();
@@ -138,12 +127,11 @@ mod tests {
             .unwrap();
         chainman.import_blocks().unwrap();
         drop(chainman);
-        unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
     #[test]
     fn test_invalid_block() {
-        let (context, validation_interface, data_dir) = testing_setup();
+        let (context, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         for _ in 0..10 {
             let chainman = ChainstateManager::new(
@@ -175,7 +163,6 @@ mod tests {
             assert!(!accepted);
             assert!(!new_block);
         }
-        unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
     #[test]
@@ -195,7 +182,7 @@ mod tests {
             outs: Vec<Vec<u8>>,
         }
 
-        let (context, validation_interface, data_dir) = testing_setup();
+        let (context, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
@@ -263,12 +250,11 @@ mod tests {
             }
             println!("helper: {:?}", helper);
         }
-        unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
     #[test]
     fn test_process_data() {
-        let (context, validation_interface, data_dir) = testing_setup();
+        let (context, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
@@ -287,13 +273,11 @@ mod tests {
             assert!(accepted);
             assert!(new_block);
         }
-
-        unregister_validation_interface(&validation_interface, &context).unwrap();
     }
 
     #[test]
     fn test_validate_any() {
-        let (context, validation_interface, data_dir) = testing_setup();
+        let (context, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
@@ -307,7 +291,6 @@ mod tests {
             .unwrap();
 
         chainman.import_blocks().unwrap();
-        unregister_validation_interface(&validation_interface, &context).unwrap();
         let block_2 = Block::try_from(block_data[1].clone().as_slice()).unwrap();
         let (accepted, new_block) = chainman.process_block(&block_2);
         assert!(!accepted);
@@ -316,7 +299,7 @@ mod tests {
 
     #[test]
     fn test_logger() {
-        let (_, _, _) = testing_setup();
+        let (_, _) = testing_setup();
 
         let logger_1 = Some(Logger::new(TestLog {}).unwrap());
         let logger_2 = Some(Logger::new(TestLog {}).unwrap());

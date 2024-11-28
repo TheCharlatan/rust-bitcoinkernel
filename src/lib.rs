@@ -222,6 +222,7 @@ unsafe extern "C" fn kn_block_tip_wrapper(
     let res = BlockHash {
         hash: (&*hash).hash,
     };
+    kernel_block_hash_destroy(hash);
     (holder.kn_block_tip)(state.into(), res);
 }
 
@@ -295,6 +296,27 @@ impl Drop for ChainParams {
     }
 }
 
+/// Exposes the result after validating a block.
+pub trait VIBlockCheckedFn: Fn(UnownedBlock, ValidationMode, BlockValidationResult) {}
+impl<F: Fn(UnownedBlock, ValidationMode, BlockValidationResult)> VIBlockCheckedFn for F {}
+
+/// A holder struct for validation interface callbacks
+pub struct ValidationInterfaceCallbackHolder {
+    /// Called after a block has completed validation and communicates its validation state.
+    pub block_checked: Box<dyn VIBlockCheckedFn>,
+}
+
+unsafe extern "C" fn vi_block_checked_wrapper(
+    user_data: *mut c_void,
+    block: *const kernel_BlockPointer,
+    stateIn: *const kernel_BlockValidationState,
+) {
+    let holder = &*(user_data as *mut ValidationInterfaceCallbackHolder);
+    let result = kernel_get_block_validation_result_from_block_validation_state(stateIn);
+    let mode = kernel_get_validation_mode_from_block_validation_state(stateIn);
+    (holder.block_checked)(UnownedBlock::new(block), mode.into(), result.into());
+}
+
 /// The main context struct. This should be setup through the [`ContextBuilder`] and
 /// has to be kept in memory for the duration of context-dependent library
 /// operations.
@@ -304,6 +326,8 @@ pub struct Context {
     // We need something to hold this in memory.
     #[allow(dead_code)]
     kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
+    #[allow(dead_code)]
+    vi_callbacks: Option<Box<ValidationInterfaceCallbackHolder>>,
 }
 
 unsafe impl Send for Context {}
@@ -330,6 +354,7 @@ impl Drop for Context {
 pub struct ContextBuilder {
     inner: *mut kernel_ContextOptions,
     kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
+    vi_callbacks: Option<Box<ValidationInterfaceCallbackHolder>>,
 }
 
 impl ContextBuilder {
@@ -337,6 +362,7 @@ impl ContextBuilder {
         let context = ContextBuilder {
             inner: unsafe { kernel_context_options_create() },
             kn_callbacks: None,
+            vi_callbacks: None,
         };
         context
     }
@@ -355,6 +381,7 @@ impl ContextBuilder {
         Ok(Context {
             inner,
             kn_callbacks: self.kn_callbacks,
+            vi_callbacks: self.vi_callbacks,
         })
     }
 
@@ -387,6 +414,23 @@ impl ContextBuilder {
     pub fn chain_type(self, chain_type: ChainType) -> ContextBuilder {
         let chain_params = ChainParams::new(chain_type);
         unsafe { kernel_context_options_set_chainparams(self.inner, chain_params.inner) };
+        self
+    }
+
+    /// Sets the validation interface callbacks
+    pub fn validation_interface(
+        mut self,
+        vi_callbacks: Box<ValidationInterfaceCallbackHolder>,
+    ) -> ContextBuilder {
+        let vi_pointer = Box::into_raw(vi_callbacks);
+        unsafe {
+            let holder = kernel_ValidationInterfaceCallbacks {
+                user_data: vi_pointer as *mut c_void,
+                block_checked: Some(vi_block_checked_wrapper),
+            };
+            kernel_context_options_set_validation_interface(self.inner, holder);
+        }
+        self.vi_callbacks = unsafe { Some(Box::from_raw(vi_pointer)) };
         self
     }
 }
@@ -492,92 +536,6 @@ impl From<kernel_BlockValidationResult> for BlockValidationResult {
     }
 }
 
-/// Exposes the result after validating a block.
-pub trait VIBlockCheckedFn: Fn(UnownedBlock, ValidationMode, BlockValidationResult) {}
-impl<F: Fn(UnownedBlock, ValidationMode, BlockValidationResult)> VIBlockCheckedFn for F {}
-
-/// A holder struct for validation interface callbacks
-pub struct ValidationInterfaceCallbackHolder {
-    /// Called after a block has completed validation and communicates its validation state.
-    pub block_checked: Box<dyn VIBlockCheckedFn>,
-}
-
-unsafe extern "C" fn vi_block_checked_wrapper(
-    user_data: *mut c_void,
-    block: *const kernel_BlockPointer,
-    stateIn: *const kernel_BlockValidationState,
-) {
-    let holder = &*(user_data as *mut ValidationInterfaceCallbackHolder);
-    let result = kernel_get_block_validation_result_from_block_validation_state(stateIn);
-    let mode = kernel_get_validation_mode_from_block_validation_state(stateIn);
-    (holder.block_checked)(UnownedBlock::new(block), mode.into(), result.into());
-}
-
-/// A wrapper for the validation interface. This is the struct that has to be
-/// registered with a [`Context`] in order to receive validation interface events.
-pub struct ValidationInterfaceWrapper {
-    inner: *mut kernel_ValidationInterface,
-    pub vi_callbacks: Box<ValidationInterfaceCallbackHolder>,
-}
-
-impl ValidationInterfaceWrapper {
-    /// Create a new ValidationInterface wrapper configured with the passed in callbacks.
-    pub fn new(vi_callbacks: Box<ValidationInterfaceCallbackHolder>) -> ValidationInterfaceWrapper {
-        let vi_pointer = Box::into_raw(vi_callbacks);
-        let inner = unsafe {
-            kernel_validation_interface_create(kernel_ValidationInterfaceCallbacks {
-                user_data: vi_pointer as *mut c_void,
-                block_checked: Some(vi_block_checked_wrapper),
-            })
-        };
-
-        let vi_callbacks = unsafe { Box::from_raw(vi_pointer) };
-        Self {
-            inner,
-            vi_callbacks,
-        }
-    }
-}
-
-/// Register a validation interface with a [`Context`].
-pub fn register_validation_interface(
-    vi: &ValidationInterfaceWrapper,
-    context: &Context,
-) -> Result<(), KernelError> {
-    unsafe {
-        if !kernel_validation_interface_register(context.inner, vi.inner) {
-            return Err(KernelError::Internal(
-                "Failed to register validation interface.".to_string(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// De-register a validation interface with a previously registered [`Context`].
-/// This should be done before destroying the [`Context`].
-pub fn unregister_validation_interface(
-    vi: &ValidationInterfaceWrapper,
-    context: &Context,
-) -> Result<(), KernelError> {
-    unsafe {
-        if !kernel_validation_interface_unregister(context.inner, vi.inner) {
-            return Err(KernelError::Internal(
-                "Failed to unregister validation interface.".to_string(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-impl Drop for ValidationInterfaceWrapper {
-    fn drop(&mut self) {
-        unsafe {
-            kernel_validation_interface_destroy(self.inner);
-        }
-    }
-}
-
 /// A single script pubkey
 #[derive(Debug, Clone)]
 pub struct ScriptPubkey {
@@ -590,13 +548,15 @@ unsafe impl Sync for ScriptPubkey {}
 impl ScriptPubkey {
     pub fn get(&self) -> Vec<u8> {
         let script_pubkey = unsafe { kernel_copy_script_pubkey_data(self.inner) };
-        unsafe {
+        let res = unsafe {
             std::slice::from_raw_parts(
                 (*script_pubkey).data,
                 (*script_pubkey).size.try_into().unwrap(),
             )
         }
-        .to_vec()
+        .to_vec();
+        unsafe {kernel_byte_array_destroy(script_pubkey)};
+        res
     }
 }
 
@@ -700,7 +660,7 @@ impl UnownedBlock {
     }
 
     pub fn get_hash(&self) -> BlockHash {
-        let hash = unsafe {kernel_block_pointer_get_hash(self.inner)};
+        let hash = unsafe { kernel_block_pointer_get_hash(self.inner) };
         let res = BlockHash {
             hash: unsafe { (&*hash).hash },
         };
@@ -731,7 +691,7 @@ unsafe impl Sync for Block {}
 
 impl Block {
     pub fn get_hash(&self) -> BlockHash {
-        let hash = unsafe {kernel_block_get_hash(self.inner)};
+        let hash = unsafe { kernel_block_get_hash(self.inner) };
         let res = BlockHash {
             hash: unsafe { (&*hash).hash },
         };
@@ -1103,7 +1063,7 @@ impl<'a> ChainstateManager {
     /// Once retrieved there is no guarantee that it remains in the active chain.
     pub fn get_block_index_by_height(&self, block_height: i32) -> Result<BlockIndex, KernelError> {
         let inner = unsafe {
-            kernel_get_block_index_by_height(self.context.inner, self.inner, block_height)
+            kernel_get_block_index_from_height(self.context.inner, self.inner, block_height)
         };
         if inner.is_null() {
             return Err(KernelError::OutOfBounds);
@@ -1118,7 +1078,7 @@ impl<'a> ChainstateManager {
     pub fn get_block_index_by_hash(&self, hash: BlockHash) -> Result<BlockIndex, KernelError> {
         let mut block_hash = kernel_BlockHash { hash: hash.hash };
         let inner = unsafe {
-            kernel_get_block_index_by_hash(self.context.inner, self.inner, &mut block_hash)
+            kernel_get_block_index_from_hash(self.context.inner, self.inner, &mut block_hash)
         };
         if inner.is_null() {
             return Err(KernelError::Internal(
@@ -1135,7 +1095,7 @@ impl<'a> ChainstateManager {
     /// otherwise a leaf in the block tree, return an error.
     pub fn get_next_block_index(&self, block_index: BlockIndex) -> Result<BlockIndex, KernelError> {
         let inner = unsafe {
-            kernel_get_next_block_index(self.context.inner, block_index.inner, self.inner)
+            kernel_get_next_block_index(self.context.inner, self.inner, block_index.inner)
         };
         if inner.is_null() {
             return Err(KernelError::OutOfBounds);
