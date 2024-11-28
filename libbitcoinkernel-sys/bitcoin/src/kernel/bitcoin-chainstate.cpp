@@ -153,6 +153,8 @@ int main(int argc, char* argv[])
 
     TestKernelNotifications notifications{};
     options.SetNotifications(notifications);
+    TestValidationInterface validation_interface{};
+    options.SetValidationInterface(validation_interface);
 
     Context context{options};
     assert(context);
