@@ -5,7 +5,7 @@
 use std::ffi::{CStr, CString, NulError};
 use std::fmt;
 use std::marker::PhantomData;
-use std::os::raw::{c_char, c_void};
+use std::os::raw::{c_char, c_uchar, c_uint, c_void};
 use std::sync::Arc;
 
 use libbitcoinkernel_sys::*;
@@ -169,6 +169,64 @@ impl From<ChainType> for kernel_ChainType {
             ChainType::TESTNET => kernel_ChainType_kernel_CHAIN_TYPE_TESTNET,
             ChainType::SIGNET => kernel_ChainType_kernel_CHAIN_TYPE_SIGNET,
             ChainType::REGTEST => kernel_ChainType_kernel_CHAIN_TYPE_REGTEST,
+        }
+    }
+}
+
+// stack, script, script_pos, alt_stack
+pub trait ScriptDebugFn: Fn(Vec<Vec<u8>>, Vec<u8>, u32, Vec<Vec<u8>>) {}
+impl<F: Fn(Vec<Vec<u8>>, Vec<u8>, u32, Vec<Vec<u8>>)> ScriptDebugFn for F {}
+
+pub struct ScriptDebugCallbackHolder {
+    pub script_debug: Box<dyn ScriptDebugFn>,
+}
+
+unsafe extern "C" fn script_debug_wrapper(
+    user_data: *mut c_void,
+    stack_items: *const *const c_uchar,
+    stack_item_sizes: *const usize,
+    stack_size: usize,
+    script_data: *const c_uchar,
+    script_size: usize,
+    opcode_pos: c_uint,
+    altstack_items: *const *const c_uchar,
+    altstack_item_sizes: *const usize,
+    altstack_size: usize
+) {
+    let holder = &*(user_data as *mut ScriptDebugCallbackHolder);
+    let mut stack = Vec::with_capacity(stack_size);
+    for i in 0..stack_size {
+        let item_ptr = *stack_items.add(i);
+        let item_size = *stack_item_sizes.add(i);
+        let item = std::slice::from_raw_parts(item_ptr, item_size);
+        stack.push(item.to_vec());
+    }
+
+    let script = std::slice::from_raw_parts(script_data, script_size).to_vec();
+
+    let mut altstack = Vec::with_capacity(altstack_size);
+    for i in 0..altstack_size {
+        let item_ptr = *altstack_items.add(i);
+        let item_size = *altstack_item_sizes.add(i);
+        let item = std::slice::from_raw_parts(item_ptr, item_size);
+        altstack.push(item.to_vec());
+    }
+
+    (holder.script_debug)(stack, script, opcode_pos, altstack);
+}
+
+pub struct ScriptDebugger{
+    holder: Box<ScriptDebugCallbackHolder>
+}
+
+impl ScriptDebugger {
+    pub fn new(holder: Box<ScriptDebugCallbackHolder>) -> Self {
+        let holder_pointer = Box::into_raw(holder);
+        unsafe {
+        kernel_register_script_debug_cb(holder_pointer as *mut c_void, Some(script_debug_wrapper));
+        }
+        Self {
+            holder: unsafe {Box::from_raw(holder_pointer)},
         }
     }
 }

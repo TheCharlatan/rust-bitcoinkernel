@@ -2,11 +2,7 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use bitcoinkernel::{
-        verify, Block, BlockHash, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
-        ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
-        ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
-        ScriptPubkey, Transaction, TxOut, ValidationInterfaceCallbackHolder,
-        VERIFY_ALL_PRE_TAPROOT,
+        verify, Block, BlockHash, BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger, ScriptDebugCallbackHolder, ScriptDebugger, ScriptPubkey, Transaction, TxOut, ValidationInterfaceCallbackHolder, VERIFY_ALL_PRE_TAPROOT
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -374,6 +370,23 @@ mod tests {
             Some(VERIFY_ALL_PRE_TAPROOT),
             &outputs,
         )
+    }
+
+    #[test]
+    fn script_debug_test() {
+        let debug_cb = Box::new(|stack: Vec<Vec<u8>>, script: Vec<u8>, pos: u32, altstack: Vec<Vec<u8>>| {
+            println!("Position {} - Stack size: {}, Altstack size: {}, script size: {}", 
+                pos, stack.len(), altstack.len(), script.len());
+        });
+        let holder = Box::new(ScriptDebugCallbackHolder { script_debug: debug_cb});
+        
+        let _debugger = ScriptDebugger::new(holder);
+        // a random old-style transaction from the blockchain
+        verify_test (
+            "76a9144bfbaf6afb76cc5771bc6404810d1cc041a6933988ac",
+            "02000000013f7cebd65c27431a90bba7f796914fe8cc2ddfc3f2cbd6f7e5f2fc854534da95000000006b483045022100de1ac3bcdfb0332207c4a91f3832bd2c2915840165f876ab47c5f8996b971c3602201c6c053d750fadde599e6f5c4e1963df0f01fc0d97815e8157e3d59fe09ca30d012103699b464d1d8bc9e47d4fb1cdaa89a1c5783d68363c4dbc4b524ed3d857148617feffffff02836d3c01000000001976a914fc25d6d5c94003bf5b0c7b640a248e2c637fcfb088ac7ada8202000000001976a914fbed3d9b11183209a57999d54d59f67c019e756c88ac6acb0700",
+            0, 0
+        ).unwrap();
     }
 
     #[test]
