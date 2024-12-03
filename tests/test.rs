@@ -2,7 +2,11 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use bitcoinkernel::{
-        verify, Block, BlockHash, BlockManagerOptions, BlockUndo, ChainParams, ChainType, ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger, ScriptDebugCallbackHolder, ScriptDebugger, ScriptPubkey, Transaction, TxOut, ValidationInterfaceCallbackHolder, VERIFY_ALL_PRE_TAPROOT
+        verify, Block, BlockHash, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
+        ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
+        ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
+        ScriptDebugCallbackHolder, ScriptDebugger, ScriptPubkey, Transaction, TxOut,
+        ValidationInterfaceCallbackHolder, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -374,12 +378,21 @@ mod tests {
 
     #[test]
     fn script_debug_test() {
-        let debug_cb = Box::new(|stack: Vec<Vec<u8>>, script: Vec<u8>, pos: u32, altstack: Vec<Vec<u8>>| {
-            println!("Position {} - Stack size: {}, Altstack size: {}, script size: {}", 
-                pos, stack.len(), altstack.len(), script.len());
+        let debug_cb = Box::new(
+            |stack: Vec<Vec<u8>>, script: Vec<u8>, pos: u32, altstack: Vec<Vec<u8>>| {
+                println!(
+                    "Position {} - Stack size: {}, Altstack size: {}, script size: {}",
+                    pos,
+                    stack.len(),
+                    altstack.len(),
+                    script.len()
+                );
+            },
+        );
+        let holder = Box::new(ScriptDebugCallbackHolder {
+            script_debug: debug_cb,
         });
-        let holder = Box::new(ScriptDebugCallbackHolder { script_debug: debug_cb});
-        
+
         let _debugger = ScriptDebugger::new(holder);
         // a random old-style transaction from the blockchain
         verify_test (

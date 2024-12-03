@@ -191,7 +191,7 @@ unsafe extern "C" fn script_debug_wrapper(
     opcode_pos: c_uint,
     altstack_items: *const *const c_uchar,
     altstack_item_sizes: *const usize,
-    altstack_size: usize
+    altstack_size: usize,
 ) {
     let holder = &*(user_data as *mut ScriptDebugCallbackHolder);
     let mut stack = Vec::with_capacity(stack_size);
@@ -215,18 +215,22 @@ unsafe extern "C" fn script_debug_wrapper(
     (holder.script_debug)(stack, script, opcode_pos, altstack);
 }
 
-pub struct ScriptDebugger{
-    holder: Box<ScriptDebugCallbackHolder>
+pub struct ScriptDebugger {
+    #[allow(dead_code)]
+    holder: Box<ScriptDebugCallbackHolder>,
 }
 
 impl ScriptDebugger {
     pub fn new(holder: Box<ScriptDebugCallbackHolder>) -> Self {
         let holder_pointer = Box::into_raw(holder);
         unsafe {
-        kernel_register_script_debug_cb(holder_pointer as *mut c_void, Some(script_debug_wrapper));
+            kernel_register_script_debug_cb(
+                holder_pointer as *mut c_void,
+                Some(script_debug_wrapper),
+            );
         }
         Self {
-            holder: unsafe {Box::from_raw(holder_pointer)},
+            holder: unsafe { Box::from_raw(holder_pointer) },
         }
     }
 }
@@ -613,7 +617,7 @@ impl ScriptPubkey {
             )
         }
         .to_vec();
-        unsafe {kernel_byte_array_destroy(script_pubkey)};
+        unsafe { kernel_byte_array_destroy(script_pubkey) };
         res
     }
 }
