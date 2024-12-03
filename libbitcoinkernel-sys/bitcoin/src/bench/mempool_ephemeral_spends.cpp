@@ -11,6 +11,7 @@
 #include <script/script.h>
 #include <sync.h>
 #include <test/util/setup_common.h>
+#include <test/util/txmempool.h>
 #include <txmempool.h>
 #include <util/check.h>
 
@@ -28,7 +29,7 @@ static void AddTx(const CTransactionRef& tx, CTxMemPool& pool) EXCLUSIVE_LOCKS_R
     unsigned int sigOpCost{4};
     uint64_t fee{0};
     LockPoints lp;
-    pool.addUnchecked(CTxMemPoolEntry(
+    AddToMempool(pool, CTxMemPoolEntry(
         tx, fee, nTime, nHeight, sequence,
         spendsCoinbase, sigOpCost, lp));
 }
@@ -43,7 +44,7 @@ static void MempoolCheckEphemeralSpends(benchmark::Bench& bench)
     }
 
     // Tx with many outputs
-    CMutableTransaction tx1 = CMutableTransaction();
+    CMutableTransaction tx1;
     tx1.vin.resize(1);
     tx1.vout.resize(number_outputs);
     for (size_t i = 0; i < tx1.vout.size(); i++) {
@@ -55,7 +56,7 @@ static void MempoolCheckEphemeralSpends(benchmark::Bench& bench)
     const auto& parent_txid = tx1.GetHash();
 
     // Spends all outputs of tx1, other details don't matter
-    CMutableTransaction tx2 = CMutableTransaction();
+    CMutableTransaction tx2;
     tx2.vin.resize(tx1.vout.size());
     for (size_t i = 0; i < tx2.vin.size(); i++) {
         tx2.vin[0].prevout.hash = parent_txid;
@@ -73,9 +74,12 @@ static void MempoolCheckEphemeralSpends(benchmark::Bench& bench)
 
     uint32_t iteration{0};
 
+    TxValidationState dummy_state;
+    Txid dummy_txid;
+
     bench.run([&]() NO_THREAD_SAFETY_ANALYSIS {
 
-        CheckEphemeralSpends({tx2_r}, /*dust_relay_rate=*/CFeeRate(iteration * COIN / 10), pool);
+        CheckEphemeralSpends({tx2_r}, /*dust_relay_rate=*/CFeeRate(iteration * COIN / 10), pool, dummy_state, dummy_txid);
         iteration++;
     });
 }

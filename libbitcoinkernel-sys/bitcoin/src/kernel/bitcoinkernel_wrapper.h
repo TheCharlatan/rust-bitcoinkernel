@@ -169,6 +169,54 @@ public:
 };
 
 template <typename T>
+concept ScriptDebug = requires(T a,
+                               const std::vector<std::vector<unsigned char>>& stack,
+                               const std::vector<unsigned char>& script,
+                               uint32_t opcode_pos,
+                               const std::vector<std::vector<unsigned char>>& altstack) {
+    { a.ScriptDebug(stack, script, opcode_pos, altstack) } -> std::same_as<void>;
+};
+
+template <ScriptDebug T>
+class ScriptDebugger
+{
+private:
+    std::unique_ptr<T> m_debugger;
+public:
+    ScriptDebugger(std::unique_ptr<T> debugger) noexcept
+        : m_debugger{std::move(debugger)}
+    {
+        kernel_register_script_debug_cb(nullptr, [](
+            void* user_data,
+            const unsigned char* const* stack_items,
+            const size_t* stack_item_sizes,
+            size_t stack_size,
+            const unsigned char* script_data,
+            size_t script_size,
+            uint32_t opcode_pos,
+            const unsigned char* const* altstack_items,
+            const size_t* altstack_item_sizes,
+            size_t altstack_size) {
+                std::vector<std::vector<unsigned char>> stack;
+                stack.reserve(stack_size);
+                for (size_t i = 0; i < stack_size; ++i) {
+                    stack.emplace_back(stack_items[i], stack_items[i] + stack_item_sizes[i]);
+                }
+
+                std::vector<unsigned char> script(script_data, script_data + script_size);
+
+                std::vector<std::vector<unsigned char>> altstack;
+                altstack.reserve(altstack_size);
+                for (size_t i = 0; i < altstack_size; ++i) {
+                    altstack.emplace_back(altstack_items[i], altstack_items[i] + altstack_item_sizes[i]);
+                }
+
+                static_cast<T*>(user_data)->ScriptDebug(stack, script, opcode_pos, altstack);
+            });
+    }
+};
+
+template <typename T>
 class KernelNotifications
 {
 private:
