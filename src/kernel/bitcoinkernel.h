@@ -455,6 +455,21 @@ kernel_Transaction* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_transaction_create(
  */
 void kernel_transaction_destroy(kernel_Transaction* transaction);
 
+typedef void (*kernel_ScriptDebugCallback)(
+        void* user_data,
+        const unsigned char* const* stack_items,
+        const size_t* stack_item_sizes,
+        size_t stack_size,
+        const unsigned char* script,
+        size_t script_size,
+        uint32_t opcode_pos,
+        const unsigned char* const* altstack_items,
+        const size_t* altstack_item_sizes,
+        size_t altstack_size
+);
+
+void kernel_register_script_debug_cb(void* user_data, kernel_ScriptDebugCallback callback);
+
 /**
  * @brief Create a script pubkey from serialized data.
  * @param[in] script_pubkey     Non-null.

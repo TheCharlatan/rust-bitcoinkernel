@@ -9,6 +9,7 @@
 #include <crypto/sha1.h>
 #include <crypto/sha256.h>
 #include <pubkey.h>
+#include <script/debug.h>
 #include <script/script.h>
 #include <uint256.h>
 
@@ -436,6 +437,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
     try
     {
         for (; pc < pend; ++opcode_pos) {
+            DEBUG_SCRIPT(stack, script, opcode_pos, altstack);
             bool fExec = vfExec.all_true();
 
             //
@@ -1226,6 +1228,8 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
     {
         return set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR);
     }
+
+    DEBUG_SCRIPT(stack, script, opcode_pos, altstack);
 
     if (!vfExec.empty())
         return set_error(serror, SCRIPT_ERR_UNBALANCED_CONDITIONAL);

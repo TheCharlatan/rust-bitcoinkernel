@@ -59,6 +59,69 @@ public:
     }
 };
 
+class TestScriptDebug
+{
+public:
+    void ScriptDebug(
+        const std::vector<std::vector<unsigned char>>& stack,
+        const std::vector<unsigned char>& script,
+        uint32_t opcode_pos,
+        const std::vector<std::vector<unsigned char>>& altstack)
+    {
+        std::cout << "\n=== Script Execution Step ===\n";
+        std::cout << "Operation Position: " << opcode_pos << "\n\n";
+
+        std::cout << "Stack (top last):\n";
+        if (stack.empty()) {
+            std::cout << "  <empty>\n";
+        } else {
+            for (size_t i = 0; i < stack.size(); ++i) {
+                const auto& item = stack[i];
+                std::cout << "  " << i << ": ";
+                if (item.empty()) {
+                    std::cout << "<empty>";
+                } else {
+                    for (unsigned char c : item) {
+                        std::cout << std::hex << std::setw(2) << std::setfill('0')
+                                << static_cast<int>(c);
+                    }
+                }
+                std::cout << "\n";
+            }
+        }
+
+        if (!altstack.empty()) {
+            std::cout << "\nAltstack (top last):\n";
+            for (size_t i = 0; i < altstack.size(); ++i) {
+                const auto& item = altstack[i];
+                std::cout << "  " << i << ": ";
+                for (unsigned char c : item) {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0')
+                            << static_cast<int>(c);
+                }
+                std::cout << "\n";
+            }
+        }
+
+        std::cout << "\nScript context:\n";
+        const size_t context_size = 8;
+        size_t start = (opcode_pos > context_size) ? opcode_pos - context_size : 0;
+        size_t end = std::min(opcode_pos + context_size, script.size());
+
+        for (size_t i = start; i < end; ++i) {
+            if (i == opcode_pos) std::cout << " [";
+            std::cout << std::hex << std::setw(2) << std::setfill('0')
+                     << static_cast<int>(script[i]);
+            if (i == opcode_pos) std::cout << "] ";
+            else std::cout << " ";
+        }
+        std::cout << "\n";
+
+        std::cout << std::dec;  // Reset to decimal mode
+        std::cout << "===============================\n";
+    }
+};
+
 struct TestDirectory {
     std::filesystem::path m_directory;
     TestDirectory(std::string directory_name)
@@ -302,6 +365,19 @@ void script_verify_test()
         /*amount*/ 88480,
         /*input_index*/ 0,
         /*is_taproot*/ true);
+}
+
+void script_debug_test()
+{
+    ScriptDebugger dbg{std::make_unique<TestScriptDebug>()};
+    // Legacy transaction aca326a724eda9a461c10a876534ecd5ae7b27f10f26c3862fb996f80ea2d45d
+    run_verify_test(
+        /*spent_script_pubkey*/ ScriptPubkey{hex_string_to_char_vec("76a9144bfbaf6afb76cc5771bc6404810d1cc041a6933988ac")},
+        /*spending_tx*/ Transaction{hex_string_to_char_vec("02000000013f7cebd65c27431a90bba7f796914fe8cc2ddfc3f2cbd6f7e5f2fc854534da95000000006b483045022100de1ac3bcdfb0332207c4a91f3832bd2c2915840165f876ab47c5f8996b971c3602201c6c053d750fadde599e6f5c4e1963df0f01fc0d97815e8157e3d59fe09ca30d012103699b464d1d8bc9e47d4fb1cdaa89a1c5783d68363c4dbc4b524ed3d857148617feffffff02836d3c01000000001976a914fc25d6d5c94003bf5b0c7b640a248e2c637fcfb088ac7ada8202000000001976a914fbed3d9b11183209a57999d54d59f67c019e756c88ac6acb0700")},
+        /*spent_outputs*/ {},
+        /*amount*/ 0,
+        /*input_index*/ 0,
+        /*is_taproot*/ false);
 }
 
 void logging_test()
@@ -619,6 +695,8 @@ int main()
     chainman_regtest_validation_test();
     chainman_reindex_test(mainnet_test_directory);
     chainman_reindex_chainstate_test(mainnet_test_directory);
+
+    script_debug_test();
 
     std::cout << "Libbitcoinkernel test completed." << std::endl;
     return 0;
