@@ -198,8 +198,12 @@ unsafe extern "C" fn script_debug_wrapper(
     for i in 0..stack_size {
         let item_ptr = *stack_items.add(i);
         let item_size = *stack_item_sizes.add(i);
-        let item = std::slice::from_raw_parts(item_ptr, item_size);
-        stack.push(item.to_vec());
+        let item = if !item_ptr.is_null() && item_size > 0 {
+            std::slice::from_raw_parts(item_ptr, item_size).to_vec()
+        } else { 
+            Vec::new()
+        };
+        stack.push(item);
     }
 
     let script = std::slice::from_raw_parts(script_data, script_size).to_vec();
@@ -208,8 +212,12 @@ unsafe extern "C" fn script_debug_wrapper(
     for i in 0..altstack_size {
         let item_ptr = *altstack_items.add(i);
         let item_size = *altstack_item_sizes.add(i);
-        let item = std::slice::from_raw_parts(item_ptr, item_size);
-        altstack.push(item.to_vec());
+        let item = if !item_ptr.is_null() && item_size > 0 {
+            std::slice::from_raw_parts(item_ptr, item_size).to_vec()
+        } else {
+            Vec::new()
+        };
+        altstack.push(item);
     }
 
     (holder.script_debug)(stack, script, opcode_pos, altstack);
