@@ -730,8 +730,8 @@ kernel_BlockManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_manage
  *
  * @param[in] chainstate_manager_options Non-null, options to be set.
  * @param[in] worker_threads The number of worker threads that should be spawned in the thread pool
- *                           used for validation. The number must not be negative. When set to zero
- *                           no parallel verification is done.
+ *                           used for validation. When set to 0 no parallel verification is done.
+ *                           The value range is clamped internally between 0 and 15.
  */
 void kernel_chainstate_manager_options_set_worker_threads_num(
         kernel_ChainstateManagerOptions* chainstate_manager_options,
