@@ -54,11 +54,6 @@ std::optional<std::string>  CheckPackageMempoolAcceptResult(const Package& txns,
 */
 void CheckMempoolEphemeralInvariants(const CTxMemPool& tx_pool);
 
-/** Return indexes of the transaction's outputs that are considered dust
- * at given dust_relay_rate.
-*/
-std::vector<uint32_t> GetDustIndexes(const CTransactionRef& tx_ref, CFeeRate dust_relay_rate);
-
 /** For every transaction in tx_pool, check TRUC invariants:
  * - a TRUC tx's ancestor count must be within TRUC_ANCESTOR_LIMIT
  * - a TRUC tx's descendant count must be within TRUC_DESCENDANT_LIMIT
@@ -67,5 +62,9 @@ std::vector<uint32_t> GetDustIndexes(const CTransactionRef& tx_ref, CFeeRate dus
  * - any TRUC tx must only have TRUC parents
  *   */
 void CheckMempoolTRUCInvariants(const CTxMemPool& tx_pool);
+
+/** One-line wrapper for creating a mempool changeset with a single transaction
+ *  and applying it. */
+void AddToMempool(CTxMemPool& tx_pool, const CTxMemPoolEntry& entry);
 
 #endif // BITCOIN_TEST_UTIL_TXMEMPOOL_H
