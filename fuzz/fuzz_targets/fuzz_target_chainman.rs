@@ -58,6 +58,7 @@ pub struct ChainstateManagerInput {
     pub wipe_chainstate_index: bool,
     pub block_tree_db_in_memory: bool,
     pub chainstate_db_in_memory: bool,
+    pub worker_threads: i32,
 }
 
 static INIT: Once = Once::new();
@@ -83,6 +84,7 @@ fuzz_target!(|data: ChainstateManagerInput| {
         Err(KernelError::CStringCreationFailed(_)) => return,
         Err(err) => panic!("this should never happen: {}", err),
     };
+    chainman_opts.set_worker_threads(data.worker_threads);
     let blockman_opts = BlockManagerOptions::new(&context, &blocks_dir).unwrap();
     let chainman =
         ChainstateManager::new(chainman_opts, blockman_opts, Arc::clone(&context)).unwrap();
