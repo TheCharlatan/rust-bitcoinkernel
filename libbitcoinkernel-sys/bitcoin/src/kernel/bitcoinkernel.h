@@ -41,7 +41,9 @@ extern "C" {
 #endif // __cplusplus
 
 /**
- * ------ Context ------
+ * @page remarks Remarks
+ *
+ * @section context Context
  *
  * The library provides a built-in static constant kernel context. This static
  * context offers only limited functionality. It detects and self-checks the
@@ -53,7 +55,7 @@ extern "C" {
  * The user should create their own context for passing it to state-rich validation
  * functions and holding callbacks for kernel events.
  *
- * ------ Error handling ------
+ * @section error Error handling
  *
  * Functions communicate an error through their return types, usually returning
  * a nullptr, or false if an error is encountered. Additionally, verification
@@ -68,7 +70,7 @@ extern "C" {
  * to halt and tear down the existing kernel objects. Remediating the error may
  * require system intervention by the user.
  *
- * ------ Pointer and argument conventions ------
+ * @section pointer Pointer and argument conventions
  *
  * The user is responsible for de-allocating the memory owned by pointers
  * returned by functions. Typically pointers returned by *_create(...) functions
@@ -119,12 +121,6 @@ typedef struct kernel_LoggingConnection kernel_LoggingConnection;
  * instantiated for either mainnet, testnet, signet, or regtest.
  */
 typedef struct kernel_ChainParameters kernel_ChainParameters;
-
-/**
- * Opaque data structure for holding callbacks for reacting to events that may
- * be encountered during library operations.
- */
-typedef struct kernel_Notifications kernel_Notifications;
 
 /**
  * Opaque data structure for holding options for creating a new kernel context.
@@ -600,19 +596,6 @@ const kernel_ChainParameters* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chain_para
 void kernel_chain_parameters_destroy(const kernel_ChainParameters* chain_parameters);
 
 /**
- * @brief Creates an object for holding the kernel notification callbacks.
- *
- * @param[in] callbacks Holds the callbacks that will be invoked by the kernel notifications.
- */
-kernel_Notifications* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_notifications_create(
-    kernel_NotificationInterfaceCallbacks callbacks);
-
-/**
- * Destroy the kernel notifications.
- */
-void kernel_notifications_destroy(kernel_Notifications* notifications);
-
-/**
  * Creates an empty context options.
  */
 kernel_ContextOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_create();
@@ -621,7 +604,7 @@ kernel_ContextOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_c
  * @brief Sets the chain params for the context options. The context created
  * with the options will be configured for these chain parameters.
  *
- * @param[in] context_options  Non-null, previously created with kernel_context_options_create.
+ * @param[in] context_options  Non-null, previously created by @ref kernel_context_options_create.
  * @param[in] chain_parameters Is set to the context options.
  */
 void kernel_context_options_set_chainparams(
@@ -633,13 +616,13 @@ void kernel_context_options_set_chainparams(
  * @brief Set the kernel notifications for the context options. The context
  * created with the options will be configured with these notifications.
  *
- * @param[in] context_options Non-null, previously created with kernel_context_options_create.
+ * @param[in] context_options Non-null, previously created by @ref kernel_context_options_create.
  * @param[in] notifications   Is set to the context options.
  */
 void kernel_context_options_set_notifications(
     kernel_ContextOptions* context_options,
-    const kernel_Notifications* notifications
-) BITCOINKERNEL_ARG_NONNULL(1, 2);
+    kernel_NotificationInterfaceCallbacks notifications
+) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * @brief Set the validation interface callbacks for the context options. The
@@ -667,7 +650,7 @@ void kernel_context_options_destroy(kernel_ContextOptions* context_options);
  * context will assume mainnet chain parameters and won't attempt to call the
  * kernel notification callbacks.
  *
- * @param[in] context_options Nullable, created with kernel_context_options_create.
+ * @param[in] context_options Nullable, created by @ref kernel_context_options_create.
  * @return                    The allocated kernel context, or null on error.
  */
 kernel_Context* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_create(
@@ -748,8 +731,8 @@ void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* block_mana
  * validation tasks as well as for retrieving data from the chain. It is only
  * valid for as long as the passed in context also remains in memory.
  *
- * @param[in] chainstate_manager_options Non-null, created by kernel_chainstate_manager_options_create.
- * @param[in] block_manager_options      Non-null, created by kernel_block_manager_options_create.
+ * @param[in] chainstate_manager_options Non-null, created by @ref kernel_chainstate_manager_options_create.
+ * @param[in] block_manager_options      Non-null, created by @ref kernel_block_manager_options_create.
  * @param[in] context                    Non-null, the created chainstate manager will associate with this
  *                                       kernel context for the duration of its lifetime. The same context
  *                                       needs to be used for later interactions with the chainstate manager.
@@ -774,7 +757,7 @@ kernel_ChainstateLoadOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate
 /**
  * @brief Sets wipe block tree db in the chainstate load options.
  *
- * @param[in] chainstate_load_options Non-null, created with kernel_chainstate_load_options_create.
+ * @param[in] chainstate_load_options Non-null, created by @ref kernel_chainstate_load_options_create.
  * @param[in] wipe_block_tree_db      Set wipe block tree db.
  */
 void kernel_chainstate_load_options_set_wipe_block_tree_db(
@@ -785,7 +768,7 @@ void kernel_chainstate_load_options_set_wipe_block_tree_db(
 /**
  * @brief Sets wipe chainstate db in the chainstate load options.
  *
- * @param[in] chainstate_load_options Non-null, created with kernel_chainstate_load_options_create.
+ * @param[in] chainstate_load_options Non-null, created by @ref kernel_chainstate_load_options_create.
  * @param[in] wipe_chainstate_db      Set wipe chainstate db.
  */
 void kernel_chainstate_load_options_set_wipe_chainstate_db(
@@ -796,7 +779,7 @@ void kernel_chainstate_load_options_set_wipe_chainstate_db(
 /**
  * @brief Sets block tree db in memory in the chainstate load options.
  *
- * @param[in] chainstate_load_options Non-null, created with kernel_chainstate_load_options_create.
+ * @param[in] chainstate_load_options Non-null, created by @ref kernel_chainstate_load_options_create.
  * @param[in] block_tree_db_in_memory Set block tree db in memory.
  */
 void kernel_chainstate_load_options_set_block_tree_db_in_memory(
@@ -807,7 +790,7 @@ void kernel_chainstate_load_options_set_block_tree_db_in_memory(
 /**
  * @brief Sets chainstate db in memory in the chainstate load options.
  *
- * @param[in] chainstate_load_options Non-null, created with kernel_chainstate_load_options_create.
+ * @param[in] chainstate_load_options Non-null, created by @ref kernel_chainstate_load_options_create.
  * @param[in] chainstate_db_in_memory Set chainstate db in memory.
  */
 void kernel_chainstate_load_options_set_chainstate_db_in_memory(
@@ -825,7 +808,7 @@ void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chains
  * before doing validation tasks or interacting with its indexes.
  *
  * @param[in] context                 Non-null.
- * @param[in] chainstate_load_options Non-null, created by kernel_chainstate_load_options_create.
+ * @param[in] chainstate_load_options Non-null, created by @ref kernel_chainstate_load_options_create.
  * @param[in] chainstate_manager      Non-null, will load the chainstate(s) and initialize indexes.
  * @return                            True on success, false on error.
  */
