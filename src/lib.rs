@@ -2,7 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use std::ffi::{CStr, CString, NulError};
+use std::ffi::{CString, NulError};
 use std::fmt;
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_void};
@@ -104,11 +104,10 @@ pub fn verify(
     }
 }
 
-unsafe fn cast_string(c_str: *const c_char) -> String {
+unsafe fn cast_string(c_str: *const c_char, len: usize) -> String {
     if !c_str.is_null() {
-        std::ffi::CStr::from_ptr(c_str)
-            .to_string_lossy()
-            .into_owned()
+        let slice = std::slice::from_raw_parts(c_str as *const u8, len);
+        String::from_utf8_lossy(slice).into_owned()
     } else {
         "".to_string()
     }
@@ -240,20 +239,26 @@ unsafe extern "C" fn kn_header_tip_wrapper(
 unsafe extern "C" fn kn_progress_wrapper(
     user_data: *mut c_void,
     title: *const c_char,
+    title_len: usize,
     progress_percent: i32,
     resume_possible: bool,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
-    (holder.kn_progress)(cast_string(title), progress_percent, resume_possible);
+    (holder.kn_progress)(
+        cast_string(title, title_len),
+        progress_percent,
+        resume_possible,
+    );
 }
 
 unsafe extern "C" fn kn_warning_set_wrapper(
     user_data: *mut c_void,
     warning: kernel_Warning,
     message: *const c_char,
+    message_len: usize,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
-    (holder.kn_warning_set)(warning.into(), cast_string(message));
+    (holder.kn_warning_set)(warning.into(), cast_string(message, message_len));
 }
 
 unsafe extern "C" fn kn_warning_unset_wrapper(user_data: *mut c_void, warning: kernel_Warning) {
@@ -261,14 +266,22 @@ unsafe extern "C" fn kn_warning_unset_wrapper(user_data: *mut c_void, warning: k
     (holder.kn_warning_unset)(warning.into());
 }
 
-unsafe extern "C" fn kn_flush_error_wrapper(user_data: *mut c_void, message: *const c_char) {
+unsafe extern "C" fn kn_flush_error_wrapper(
+    user_data: *mut c_void,
+    message: *const c_char,
+    message_len: usize,
+) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
-    (holder.kn_flush_error)(cast_string(message));
+    (holder.kn_flush_error)(cast_string(message, message_len));
 }
 
-unsafe extern "C" fn kn_fatal_error_wrapper(user_data: *mut c_void, message: *const c_char) {
+unsafe extern "C" fn kn_fatal_error_wrapper(
+    user_data: *mut c_void,
+    message: *const c_char,
+    message_len: usize,
+) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
-    (holder.kn_fatal_error)(cast_string(message));
+    (holder.kn_fatal_error)(cast_string(message, message_len));
 }
 
 /// The chain parameters with which to configure a [`Context`].
@@ -553,7 +566,7 @@ impl ScriptPubkey {
             )
         }
         .to_vec();
-        unsafe {kernel_byte_array_destroy(script_pubkey)};
+        unsafe { kernel_byte_array_destroy(script_pubkey) };
         res
     }
 }
@@ -844,6 +857,7 @@ impl ChainstateManagerOptions {
             kernel_chainstate_manager_options_create(
                 context.inner,
                 c_data_dir.as_ptr().cast::<i8>(),
+                c_data_dir.count_bytes(),
             )
         };
         if inner.is_null() {
@@ -884,7 +898,11 @@ impl BlockManagerOptions {
     pub fn new(context: &Context, blocks_dir: &str) -> Result<Self, KernelError> {
         let c_blocks_dir = CString::new(blocks_dir)?;
         let inner = unsafe {
-            kernel_block_manager_options_create(context.inner, c_blocks_dir.as_ptr().cast::<i8>())
+            kernel_block_manager_options_create(
+                context.inner,
+                c_blocks_dir.as_ptr().cast::<i8>(),
+                c_blocks_dir.count_bytes(),
+            )
         };
         if inner.is_null() {
             return Err(KernelError::Internal(
@@ -1031,8 +1049,15 @@ impl<'a> ChainstateManager {
     /// previously set for the chainstate and block manager. Can also import an
     /// array of existing block files selected by the user.
     pub fn import_blocks(&self) -> Result<(), KernelError> {
-        if !unsafe { kernel_import_blocks(self.context.inner, self.inner, std::ptr::null_mut(), 0) }
-        {
+        if !unsafe {
+            kernel_import_blocks(
+                self.context.inner,
+                self.inner,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+            )
+        } {
             return Err(KernelError::Internal(
                 "Failed to import blocks.".to_string(),
             ));
@@ -1146,8 +1171,9 @@ pub trait Log {
 unsafe extern "C" fn log_callback<T: Log + 'static>(
     user_data: *mut c_void,
     message: *const c_char,
+    message_len: usize,
 ) {
-    let message = unsafe { CStr::from_ptr(message).to_string_lossy().into_owned() };
+    let message = unsafe { cast_string(message, message_len) };
     let log = user_data as *mut T;
     (*log).log(&message);
 }
