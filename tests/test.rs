@@ -41,6 +41,7 @@ mod tests {
                     log::info!("Received block tip.");
                 }),
                 kn_header_tip: Box::new(|_state, height, timestamp, _presync| {
+                    assert!(timestamp > 0);
                     log::info!(
                         "Received header tip at height {} and time {}",
                         height,

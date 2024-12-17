@@ -402,9 +402,7 @@ impl ContextBuilder {
                 flush_error: Some(kn_flush_error_wrapper),
                 fatal_error: Some(kn_fatal_error_wrapper),
             };
-            let kernel_notifications = kernel_notifications_create(holder);
-            kernel_context_options_set_notifications(self.inner, kernel_notifications);
-            kernel_notifications_destroy(kernel_notifications);
+            kernel_context_options_set_notifications(self.inner, holder);
         };
         self.kn_callbacks = unsafe { Some(Box::from_raw(kn_pointer)) };
         self
