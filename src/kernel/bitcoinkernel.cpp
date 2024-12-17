@@ -301,12 +301,6 @@ const CChainParams* cast_const_chain_params(const kernel_ChainParameters* chain_
     return reinterpret_cast<const CChainParams*>(chain_params);
 }
 
-const KernelNotifications* cast_const_notifications(const kernel_Notifications* notifications)
-{
-    assert(notifications);
-    return reinterpret_cast<const KernelNotifications*>(notifications);
-}
-
 Context* cast_context(kernel_Context* context)
 {
     assert(context);
@@ -607,18 +601,6 @@ void kernel_chain_parameters_destroy(const kernel_ChainParameters* chain_paramet
     }
 }
 
-kernel_Notifications* kernel_notifications_create(kernel_NotificationInterfaceCallbacks callbacks)
-{
-    return reinterpret_cast<kernel_Notifications*>(new KernelNotifications{callbacks});
-}
-
-void kernel_notifications_destroy(kernel_Notifications* notifications)
-{
-    if (notifications) {
-        delete cast_const_notifications(notifications);
-    }
-}
-
 kernel_ContextOptions* kernel_context_options_create()
 {
     return reinterpret_cast<kernel_ContextOptions*>(new ContextOptions{});
@@ -632,12 +614,11 @@ void kernel_context_options_set_chainparams(kernel_ContextOptions* options_, con
     options->m_chainparams = std::make_unique<const CChainParams>(*chain_params);
 }
 
-void kernel_context_options_set_notifications(kernel_ContextOptions* options_, const kernel_Notifications* notifications_)
+void kernel_context_options_set_notifications(kernel_ContextOptions* options_, kernel_NotificationInterfaceCallbacks notifications)
 {
     auto options{cast_context_options(options_)};
-    auto notifications{reinterpret_cast<const KernelNotifications*>(notifications_)};
     // Copy the notifications, so the caller can free it again
-    options->m_notifications = std::make_unique<const KernelNotifications>(*notifications);
+    options->m_notifications = std::make_unique<const KernelNotifications>(notifications);
 }
 
 void kernel_context_options_set_validation_interface(kernel_ContextOptions* options_, kernel_ValidationInterfaceCallbacks vi_cbs)

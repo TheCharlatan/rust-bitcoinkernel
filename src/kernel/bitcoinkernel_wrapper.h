@@ -172,13 +172,6 @@ template <typename T>
 class KernelNotifications
 {
 private:
-    struct Deleter {
-        void operator()(kernel_Notifications* ptr) const
-        {
-            kernel_notifications_destroy(ptr);
-        }
-    };
-
     kernel_NotificationInterfaceCallbacks MakeCallbacks()
     {
         return kernel_NotificationInterfaceCallbacks{
@@ -201,10 +194,10 @@ private:
         };
     }
 
-    std::unique_ptr<kernel_Notifications, Deleter> m_notifications;
+    const kernel_NotificationInterfaceCallbacks m_notifications;
 
 public:
-    KernelNotifications() : m_notifications{kernel_notifications_create(MakeCallbacks())} {}
+    KernelNotifications() : m_notifications{MakeCallbacks()} {}
 
     virtual ~KernelNotifications() = default;
 
@@ -347,7 +340,7 @@ public:
     template <typename T>
     void SetNotifications(KernelNotifications<T>& notifications) const noexcept
     {
-        kernel_context_options_set_notifications(m_options.get(), notifications.m_notifications.get());
+        kernel_context_options_set_notifications(m_options.get(), notifications.m_notifications);
     }
 
     template <typename T>

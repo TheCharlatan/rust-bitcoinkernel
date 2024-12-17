@@ -197,14 +197,14 @@ void run_verify_test(
     auto status = kernel_ScriptVerifyStatus::kernel_SCRIPT_VERIFY_OK;
 
     if (taproot) {
-        verify_script(
+        assert(verify_script(
             spent_script_pubkey,
             amount,
             spending_tx,
             spent_outputs,
             input_index,
             kernel_SCRIPT_FLAGS_VERIFY_ALL,
-            status);
+            status));
         assert(status == kernel_SCRIPT_VERIFY_OK);
     } else {
         assert(!verify_script(
@@ -297,7 +297,7 @@ void script_verify_test()
     spent_outputs.emplace_back(taproot_spent_script_pubkey, 88480);
     run_verify_test(
         /*spent_script_pubkey*/ taproot_spent_script_pubkey,
-        /*spending_tx*/ Transaction{hex_string_to_char_vec("01000000000101b9cb0da76784960e000d63f0453221aeeb6df97f2119d35c3051065bc9881eab0000000000fdffffff020000000000000000186a16546170726f6f74204654572120406269746275673432a059010000000000225120339ce7e165e67d93adb3fef88a6d4beed33f01fa876f05a225242b82a631abc00247304402204bf50f2fea3a2fbf4db8f0de602d9f41665fe153840c1b6f17c0c0abefa42f0b0220631fe0968b166b00cb3027c8817f50ce8353e9d5de43c29348b75b6600f231fc012102b14f0e661960252f8f37486e7fe27431c9f94627a617da66ca9678e6a2218ce1ffd30a00")},
+        /*spending_tx*/ Transaction{hex_string_to_char_vec("01000000000101d1f1c1f8cdf6759167b90f52c9ad358a369f95284e841d7a2536cef31c0549580100000000fdffffff020000000000000000316a2f49206c696b65205363686e6f7272207369677320616e6420492063616e6e6f74206c69652e204062697462756734329e06010000000000225120a37c3903c8d0db6512e2b40b0dffa05e5a3ab73603ce8c9c4b7771e5412328f90140a60c383f71bac0ec919b1d7dbc3eb72dd56e7aa99583615564f9f99b8ae4e837b758773a5b2e4c51348854c8389f008e05029db7f464a5ff2e01d5e6e626174affd30a00")},
         /*spent_outputs*/ spent_outputs,
         /*amount*/ 88480,
         /*input_index*/ 0,
