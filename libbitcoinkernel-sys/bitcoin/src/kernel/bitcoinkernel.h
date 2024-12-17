@@ -261,18 +261,18 @@ typedef enum {
  * Function signature for the global logging callback. All bitcoin kernel
  * internal logs will pass through this callback.
  */
-typedef void (*kernel_LogCallback)(void* user_data, const char* message);
+typedef void (*kernel_LogCallback)(void* user_data, const char* message, size_t message_len);
 
 /**
  * Function signatures for the kernel notifications.
  */
 typedef void (*kernel_NotifyBlockTip)(void* user_data, kernel_SynchronizationState state, const kernel_BlockIndex* index);
 typedef void (*kernel_NotifyHeaderTip)(void* user_data, kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync);
-typedef void (*kernel_NotifyProgress)(void* user_data, const char* title, int progress_percent, bool resume_possible);
-typedef void (*kernel_NotifyWarningSet)(void* user_data, kernel_Warning warning, const char* message);
+typedef void (*kernel_NotifyProgress)(void* user_data, const char* title, size_t title_len, int progress_percent, bool resume_possible);
+typedef void (*kernel_NotifyWarningSet)(void* user_data, kernel_Warning warning, const char* message, size_t message_len);
 typedef void (*kernel_NotifyWarningUnset)(void* user_data, kernel_Warning warning);
-typedef void (*kernel_NotifyFlushError)(void* user_data, const char* message);
-typedef void (*kernel_NotifyFatalError)(void* user_data, const char* message);
+typedef void (*kernel_NotifyFlushError)(void* user_data, const char* message, size_t message_len);
+typedef void (*kernel_NotifyFatalError)(void* user_data, const char* message, size_t message_len);
 
 /**
  * Function signatures for the validation interface.
@@ -678,13 +678,14 @@ void kernel_context_destroy(kernel_Context* context);
  * @param[in] context        Non-null, the created options will associate with this kernel context
  *                           for the duration of their lifetime. The same context needs to be used
  *                           when instantiating the chainstate manager.
- * @param[in] data_directory Non-null, directory containing the chainstate data. If the directory
- *                           does not exist yet, it will be created.
+ * @param[in] data_directory Non-null, path string of the directory containing the chainstate data.
+ *                           If the directory does not exist yet, it will be created.
  * @return                   The allocated chainstate manager options, or null on error.
  */
 kernel_ChainstateManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_options_create(
     const kernel_Context* context,
-    const char* data_directory
+    const char* data_directory,
+    size_t data_directory_len
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
@@ -699,13 +700,14 @@ void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* 
  * @param[in] context          Non-null, the created options will associate with this kernel context
  *                             for the duration of their lifetime. The same context needs to be used
  *                             when instantiating the chainstate manager.
- * @param[in] blocks_directory Non-null, directory containing the block data. If the directory does
- *                             not exist yet, it will be created.
+ * @param[in] blocks_directory Non-null, path string of the directory containing the block data. If
+ *                             the directory does not exist yet, it will be created.
  * @return                     The allocated block manager options, or null on error.
  */
 kernel_BlockManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_manager_options_create(
     const kernel_Context* context,
-    const char* blocks_directory
+    const char* blocks_directory,
+    size_t blocks_directory_len
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
@@ -832,7 +834,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_load_chainstate(
  */
 bool kernel_import_blocks(const kernel_Context* context,
                           kernel_ChainstateManager* chainstate_manager,
-                          const char** block_file_paths, size_t block_file_paths_len
+                          const char** block_file_paths, size_t* block_file_paths_lens, size_t block_file_paths_len
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**

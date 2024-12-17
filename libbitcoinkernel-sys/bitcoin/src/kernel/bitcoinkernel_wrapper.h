@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <string>
 #include <vector>
 
@@ -136,7 +137,7 @@ int verify_script(const ScriptPubkey& script_pubkey,
 }
 
 template <typename T>
-concept Log = requires(T a, const char* message) {
+concept Log = requires(T a, std::string_view message) {
     { a.LogMessage(message) } -> std::same_as<void>;
 };
 
@@ -158,7 +159,7 @@ public:
     Logger(std::unique_ptr<T> log, const kernel_LoggingOptions& logging_options) noexcept
         : m_log{std::move(log)},
           m_connection{kernel_logging_connection_create(
-              [](void* user_data, const char* message) { static_cast<T*>(user_data)->LogMessage(message); },
+              [](void* user_data, const char* message, size_t message_len) { static_cast<T*>(user_data)->LogMessage({message, message_len}); },
               m_log.get(),
               logging_options)}
     {
@@ -182,15 +183,15 @@ private:
             .header_tip = [](void* user_data, kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync) {
                 static_cast<T*>(user_data)->HeaderTipHandler(state, height, timestamp, presync);
             },
-            .progress = [](void* user_data, const char* title, int progress_percent, bool resume_possible) {
-                static_cast<T*>(user_data)->ProgressHandler(title, progress_percent, resume_possible);
+            .progress = [](void* user_data, const char* title, size_t title_len, int progress_percent, bool resume_possible) {
+                static_cast<T*>(user_data)->ProgressHandler({title, title_len}, progress_percent, resume_possible);
             },
-            .warning_set = [](void* user_data, kernel_Warning warning, const char* message) {
-                static_cast<T*>(user_data)->WarningSetHandler(warning, message);
+            .warning_set = [](void* user_data, kernel_Warning warning, const char* message, size_t message_len) {
+                static_cast<T*>(user_data)->WarningSetHandler(warning, {message, message_len});
             },
             .warning_unset = [](void* user_data, kernel_Warning warning) { static_cast<T*>(user_data)->WarningUnsetHandler(warning); },
-            .flush_error = [](void* user_data, const char* error) { static_cast<T*>(user_data)->FlushErrorHandler(error); },
-            .fatal_error = [](void* user_data, const char* error) { static_cast<T*>(user_data)->FatalErrorHandler(error); },
+            .flush_error = [](void* user_data, const char* error, size_t error_len) { static_cast<T*>(user_data)->FlushErrorHandler({error, error_len}); },
+            .fatal_error = [](void* user_data, const char* error, size_t error_len) { static_cast<T*>(user_data)->FatalErrorHandler({error, error_len}); },
         };
     }
 
@@ -205,15 +206,15 @@ public:
 
     virtual void HeaderTipHandler(kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync) {}
 
-    virtual void ProgressHandler(const char* title, int progress_percent, bool resume_possible) {}
+    virtual void ProgressHandler(std::string_view title, int progress_percent, bool resume_possible) {}
 
-    virtual void WarningSetHandler(kernel_Warning warning, const char* message) {}
+    virtual void WarningSetHandler(kernel_Warning warning, std::string_view message) {}
 
     virtual void WarningUnsetHandler(kernel_Warning warning) {}
 
-    virtual void FlushErrorHandler(const char* error) {}
+    virtual void FlushErrorHandler(std::string_view error) {}
 
-    virtual void FatalErrorHandler(const char* error) {}
+    virtual void FatalErrorHandler(std::string_view error) {}
 
     friend class ContextOptions;
 };
@@ -393,7 +394,7 @@ private:
 
 public:
     ChainstateManagerOptions(const Context& context, const std::string& data_dir) noexcept
-        : m_options{kernel_chainstate_manager_options_create(context.m_context.get(), data_dir.c_str())}
+        : m_options{kernel_chainstate_manager_options_create(context.m_context.get(), data_dir.c_str(), data_dir.length())}
     {
     }
 
@@ -422,7 +423,7 @@ private:
 
 public:
     BlockManagerOptions(const Context& context, const std::string& data_dir) noexcept
-        : m_options{kernel_block_manager_options_create(context.m_context.get(), data_dir.c_str())}
+        : m_options{kernel_block_manager_options_create(context.m_context.get(), data_dir.c_str(), data_dir.length())}
     {
     }
 
@@ -625,12 +626,15 @@ public:
     bool ImportBlocks(const std::span<const std::string> paths) const noexcept
     {
         std::vector<const char*> c_paths;
+        std::vector<size_t> c_paths_lens;
         c_paths.reserve(paths.size());
+        c_paths_lens.reserve(paths.size());
         for (const auto& path : paths) {
             c_paths.push_back(path.c_str());
+            c_paths_lens.push_back(path.length());
         }
 
-        return kernel_import_blocks(m_context.m_context.get(), m_chainman, c_paths.data(), c_paths.size());
+        return kernel_import_blocks(m_context.m_context.get(), m_chainman, c_paths.data(), c_paths_lens.data(), c_paths.size());
     }
 
     bool ProcessBlock(const Block& block, bool* new_block) const noexcept

@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <sstream>
 
 std::vector<unsigned char> hex_string_to_char_vec(const std::string& hex)
@@ -22,7 +24,7 @@ std::vector<unsigned char> hex_string_to_char_vec(const std::string& hex)
 class KernelLog
 {
 public:
-    void LogMessage(const char* message)
+    void LogMessage(std::string_view message)
     {
         std::cout << "kernel: " << message;
     }
@@ -96,12 +98,12 @@ public:
         std::cout << "Block tip changed" << std::endl;
     }
 
-    void ProgressHandler(const char* title, int progress_percent, bool resume_possible) override
+    void ProgressHandler(std::string_view title, int progress_percent, bool resume_possible) override
     {
         std::cout << "Made progress: " << title << " " << progress_percent << "%" << std::endl;
     }
 
-    void WarningSetHandler(kernel_Warning warning, const char* message) override
+    void WarningSetHandler(kernel_Warning warning, std::string_view message) override
     {
         std::cout << message << std::endl;
     }
@@ -111,12 +113,12 @@ public:
         std::cout << "Warning unset: " << warning << std::endl;
     }
 
-    void FlushErrorHandler(const char* error) override
+    void FlushErrorHandler(std::string_view error) override
     {
         std::cout << error << std::endl;
     }
 
-    void FatalErrorHandler(const char* error) override
+    void FatalErrorHandler(std::string_view error) override
     {
         std::cout << error << std::endl;
     }

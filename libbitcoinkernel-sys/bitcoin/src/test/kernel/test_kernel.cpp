@@ -17,6 +17,7 @@
 #include <random>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 std::string random_string(uint32_t length)
@@ -53,7 +54,7 @@ std::vector<unsigned char> hex_string_to_char_vec(const std::string& hex)
 class TestLog
 {
 public:
-    void LogMessage(const char* message)
+    void LogMessage(std::string_view message)
     {
         std::cout << "kernel: " << message;
     }
@@ -86,12 +87,12 @@ public:
         assert(timestamp > 0);
     }
 
-    void ProgressHandler(const char* title, int progress_percent, bool resume_possible) override
+    void ProgressHandler(std::string_view title, int progress_percent, bool resume_possible) override
     {
         std::cout << "Made progress: " << title << " " << progress_percent << "%" << std::endl;
     }
 
-    void WarningSetHandler(kernel_Warning warning, const char* message) override
+    void WarningSetHandler(kernel_Warning warning, std::string_view message) override
     {
         std::cout << "Kernel warning is set: " << message << std::endl;
     }
@@ -101,12 +102,12 @@ public:
         std::cout << "Kernel warning was unset." << std::endl;
     }
 
-    void FlushErrorHandler(const char* error) override
+    void FlushErrorHandler(std::string_view error) override
     {
         std::cout << error << std::endl;
     }
 
-    void FatalErrorHandler(const char* error) override
+    void FatalErrorHandler(std::string_view error) override
     {
         std::cout << error << std::endl;
     }
