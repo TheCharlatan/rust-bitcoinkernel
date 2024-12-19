@@ -606,8 +606,12 @@ private:
     const Context& m_context;
 
 public:
-    ChainMan(const Context& context, const ChainstateManagerOptions& chainman_opts, const BlockManagerOptions& blockman_opts) noexcept
-        : m_chainman{kernel_chainstate_manager_create(context.m_context.get(), chainman_opts.m_options.get(), blockman_opts.m_options.get())},
+    ChainMan(const Context& context, const ChainstateManagerOptions& chainman_opts, const BlockManagerOptions& blockman_opts, ChainstateLoadOptions& chainstate_load_opts) noexcept
+        : m_chainman{kernel_chainstate_manager_create(
+                context.m_context.get(),
+                chainman_opts.m_options.get(),
+                blockman_opts.m_options.get(),
+                chainstate_load_opts.m_options.get())},
           m_context{context}
     {
     }
@@ -617,11 +621,6 @@ public:
 
     ChainMan(const ChainMan&) = delete;
     ChainMan& operator=(const ChainMan&) = delete;
-
-    bool LoadChainstate(ChainstateLoadOptions& chainstate_load_opts) const noexcept
-    {
-        return kernel_chainstate_manager_load_chainstate(m_context.m_context.get(), chainstate_load_opts.m_options.get(), m_chainman);
-    }
 
     bool ImportBlocks(const std::span<const std::string> paths) const noexcept
     {
