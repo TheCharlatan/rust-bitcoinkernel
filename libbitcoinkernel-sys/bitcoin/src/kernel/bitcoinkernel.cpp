@@ -757,23 +757,6 @@ void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* options)
     }
 }
 
-kernel_ChainstateManager* kernel_chainstate_manager_create(
-    const kernel_Context* context_,
-    const kernel_ChainstateManagerOptions* chainman_opts_,
-    const kernel_BlockManagerOptions* blockman_opts_)
-{
-    auto chainman_opts{cast_const_chainstate_manager_options(chainman_opts_)};
-    auto blockman_opts{cast_const_block_manager_options(blockman_opts_)};
-    auto context{cast_const_context(context_)};
-
-    try {
-        return reinterpret_cast<kernel_ChainstateManager*>(new ChainstateManager{*context->m_interrupt, *chainman_opts, *blockman_opts});
-    } catch (const std::exception& e) {
-        LogError("Failed to create chainstate manager: %s", e.what());
-        return nullptr;
-    }
-}
-
 kernel_ChainstateLoadOptions* kernel_chainstate_load_options_create()
 {
     return reinterpret_cast<kernel_ChainstateLoadOptions*>(new node::ChainstateLoadOptions);
@@ -819,46 +802,65 @@ void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chains
     }
 }
 
-bool kernel_chainstate_manager_load_chainstate(const kernel_Context* context_,
-                                               const kernel_ChainstateLoadOptions* chainstate_load_opts_,
-                                               kernel_ChainstateManager* chainman_)
+kernel_ChainstateManager* kernel_chainstate_manager_create(
+    const kernel_Context* context_,
+    const kernel_ChainstateManagerOptions* chainman_opts_,
+    const kernel_BlockManagerOptions* blockman_opts_,
+    const kernel_ChainstateLoadOptions* chainstate_load_opts_)
 {
+    auto chainman_opts{cast_const_chainstate_manager_options(chainman_opts_)};
+    auto blockman_opts{cast_const_block_manager_options(blockman_opts_)};
+    auto context{cast_const_context(context_)};
+
+    ChainstateManager* chainman;
+
+    try {
+        chainman = new ChainstateManager{*context->m_interrupt, *chainman_opts, *blockman_opts};
+    } catch (const std::exception& e) {
+        LogError("Failed to create chainstate manager: %s", e.what());
+        return nullptr;
+    }
+
     try {
         const auto& chainstate_load_opts{*cast_const_chainstate_load_options(chainstate_load_opts_)};
-        auto& chainman{*cast_chainstate_manager(chainman_)};
 
         if (chainstate_load_opts.wipe_block_tree_db && !chainstate_load_opts.wipe_chainstate_db) {
             LogWarning("Wiping the block tree db without also wiping the chainstate db is currently unsupported.");
-            return false;
+            kernel_chainstate_manager_destroy(reinterpret_cast<kernel_ChainstateManager*>(chainman), context_);
+            return nullptr;
         }
 
         node::CacheSizes cache_sizes;
         cache_sizes.block_tree_db = 2 << 20;
         cache_sizes.coins_db = 2 << 22;
         cache_sizes.coins = (450 << 20) - (2 << 20) - (2 << 22);
-        auto [status, chainstate_err]{node::LoadChainstate(chainman, cache_sizes, chainstate_load_opts)};
+        auto [status, chainstate_err]{node::LoadChainstate(*chainman, cache_sizes, chainstate_load_opts)};
         if (status != node::ChainstateLoadStatus::SUCCESS) {
             LogError("Failed to load chain state from your data directory: %s", chainstate_err.original);
-            return false;
+            kernel_chainstate_manager_destroy(reinterpret_cast<kernel_ChainstateManager*>(chainman), context_);
+            return nullptr;
         }
-        std::tie(status, chainstate_err) = node::VerifyLoadedChainstate(chainman, chainstate_load_opts);
+        std::tie(status, chainstate_err) = node::VerifyLoadedChainstate(*chainman, chainstate_load_opts);
         if (status != node::ChainstateLoadStatus::SUCCESS) {
             LogError("Failed to verify loaded chain state from your datadir: %s", chainstate_err.original);
-            return false;
+            kernel_chainstate_manager_destroy(reinterpret_cast<kernel_ChainstateManager*>(chainman), context_);
+            return nullptr;
         }
 
-        for (Chainstate* chainstate : WITH_LOCK(::cs_main, return chainman.GetAll())) {
+        for (Chainstate* chainstate : WITH_LOCK(::cs_main, return chainman->GetAll())) {
             BlockValidationState state;
             if (!chainstate->ActivateBestChain(state, nullptr)) {
                 LogError("Failed to connect best block: %s", state.ToString());
-                return false;
+                kernel_chainstate_manager_destroy(reinterpret_cast<kernel_ChainstateManager*>(chainman), context_);
+                return nullptr;
             }
         }
     } catch (const std::exception& e) {
         LogError("Failed to load chainstate: %s", e.what());
-        return false;
+        return nullptr;
     }
-    return true;
+
+    return reinterpret_cast<kernel_ChainstateManager*>(chainman);
 }
 
 void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainman_, const kernel_Context* context_)
