@@ -89,16 +89,12 @@ fuzz_target!(|data: ChainstateManagerInput| {
     };
     chainman_opts.set_worker_threads(data.worker_threads);
     let blockman_opts = BlockManagerOptions::new(&context, &blocks_dir).unwrap();
-    let chainman =
-        ChainstateManager::new(chainman_opts, blockman_opts, Arc::clone(&context)).unwrap();
-
-    match chainman.load_chainstate(
-        ChainstateLoadOptions::new()
+    let chainstate_load_opts = ChainstateLoadOptions::new()
             .set_reindex(data.wipe_block_index)
             .set_wipe_chainstate_db(data.wipe_chainstate_index)
             .set_block_tree_db_in_memory(data.block_tree_db_in_memory)
-            .set_chainstate_db_in_memory(data.chainstate_db_in_memory),
-    ) {
+            .set_chainstate_db_in_memory(data.chainstate_db_in_memory);
+    let chainman = match ChainstateManager::new(chainman_opts, blockman_opts, chainstate_load_opts, Arc::clone(&context)) {
         Err(KernelError::Internal(_)) => {
             return;
         }
@@ -106,8 +102,9 @@ fuzz_target!(|data: ChainstateManagerInput| {
             let _ = std::fs::remove_dir_all(data_dir);
             panic!("this should never happen: {}", err);
         }
-        _ => {}
-    }
+        Ok(chainman) => chainman,
+    };
+
     if let Err(err) = chainman.import_blocks() {
         let _ = std::fs::remove_dir_all(data_dir);
         panic!("this should never happen: {}", err);

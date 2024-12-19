@@ -995,6 +995,7 @@ impl<'a> ChainstateManager {
     pub fn new(
         chainman_opts: ChainstateManagerOptions,
         blockman_opts: BlockManagerOptions,
+        chainstate_load_opts: ChainstateLoadOptions,
         context: Arc<Context>,
     ) -> Result<Self, KernelError> {
         let inner = unsafe {
@@ -1002,6 +1003,7 @@ impl<'a> ChainstateManager {
                 context.inner,
                 chainman_opts.inner,
                 blockman_opts.inner,
+                chainstate_load_opts.inner,
             )
         };
         if inner.is_null() {
@@ -1010,19 +1012,6 @@ impl<'a> ChainstateManager {
             ));
         }
         Ok(Self { inner, context })
-    }
-
-    /// This function must be called to initialize the chainstate manager before
-    /// doing validation tasks or interacting with its indexes.
-    pub fn load_chainstate(&self, opts: ChainstateLoadOptions) -> Result<(), KernelError> {
-        if !unsafe {
-            kernel_chainstate_manager_load_chainstate(self.context.inner, opts.inner, self.inner)
-        } {
-            return Err(KernelError::Internal(
-                "Failed to load chainstate.".to_string(),
-            ));
-        }
-        Ok(())
     }
 
     /// Process and validate the passed in block with the [`ChainstateManager`]

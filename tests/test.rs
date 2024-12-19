@@ -103,12 +103,10 @@ mod tests {
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
                 BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+                ChainstateLoadOptions::new(),
                 Arc::clone(&context),
             )
             .unwrap();
-            chainman
-                .load_chainstate(ChainstateLoadOptions::new())
-                .unwrap();
             for raw_block in block_data.iter() {
                 let block = Block::try_from(raw_block.as_slice()).unwrap();
                 let (accepted, new_block) = chainman.process_block(&block);
@@ -117,15 +115,16 @@ mod tests {
             }
         }
 
+        let chainstate_load_options = ChainstateLoadOptions::new();
+        chainstate_load_options.set_reindex(true);
+
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            ChainstateLoadOptions::new(),
             Arc::clone(&context),
         )
         .unwrap();
-        chainman
-            .load_chainstate(ChainstateLoadOptions::new().set_reindex(true))
-            .unwrap();
         chainman.import_blocks().unwrap();
         drop(chainman);
     }
@@ -138,12 +137,10 @@ mod tests {
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
                 BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+                ChainstateLoadOptions::new(),
                 Arc::clone(&context),
             )
             .unwrap();
-            chainman
-                .load_chainstate(ChainstateLoadOptions::new())
-                .unwrap();
 
             // Not a block
             let block = Block::try_from(hex::decode("deadbeef").unwrap().as_slice());
@@ -189,12 +186,10 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            ChainstateLoadOptions::new(),
             Arc::clone(&context),
         )
         .unwrap();
-        chainman
-            .load_chainstate(ChainstateLoadOptions::new())
-            .unwrap();
 
         for raw_block in block_data.iter() {
             let block = Block::try_from(raw_block.as_slice()).unwrap();
@@ -261,12 +256,10 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            ChainstateLoadOptions::new(),
             Arc::clone(&context),
         )
         .unwrap();
-        chainman
-            .load_chainstate(ChainstateLoadOptions::new())
-            .unwrap();
 
         for raw_block in block_data.iter() {
             let block = Block::try_from(raw_block.as_slice()).unwrap();
@@ -284,12 +277,10 @@ mod tests {
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
             BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            ChainstateLoadOptions::new(),
             Arc::clone(&context),
         )
         .unwrap();
-        chainman
-            .load_chainstate(ChainstateLoadOptions::new())
-            .unwrap();
 
         chainman.import_blocks().unwrap();
         let block_2 = Block::try_from(block_data[1].clone().as_slice()).unwrap();

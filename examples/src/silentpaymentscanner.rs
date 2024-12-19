@@ -230,12 +230,10 @@ fn main() {
     let chainman = ChainstateManager::new(
         ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
         BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+        ChainstateLoadOptions::new(),
         Arc::clone(&context),
     )
     .unwrap();
-    chainman
-        .load_chainstate(ChainstateLoadOptions::new())
-        .unwrap();
     chainman.import_blocks().unwrap();
     scan_txs(&chainman);
 }
