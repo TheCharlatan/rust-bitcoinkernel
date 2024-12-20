@@ -201,7 +201,7 @@ pub trait KNFatalErrorFn: Fn(String) {}
 impl<F: Fn(String)> KNFatalErrorFn for F {}
 
 /// A callback holder struct for the notification interface calls.
-pub struct KernelNotificationInterfaceCallbackHolder {
+pub struct KernelNotificationInterfaceCallbacks {
     pub kn_block_tip: Box<dyn KNBlockTipFn>,
     pub kn_header_tip: Box<dyn KNHeaderTipFn>,
     pub kn_progress: Box<dyn KNProgressFn>,
@@ -216,7 +216,7 @@ unsafe extern "C" fn kn_block_tip_wrapper(
     state: kernel_SynchronizationState,
     block_index: *const kernel_BlockIndex,
 ) {
-    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     let hash = kernel_block_index_get_block_hash(block_index);
     let res = BlockHash {
         hash: (&*hash).hash,
@@ -232,7 +232,7 @@ unsafe extern "C" fn kn_header_tip_wrapper(
     timestamp: i64,
     presync: bool,
 ) {
-    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     (holder.kn_header_tip)(state.into(), height, timestamp, presync);
 }
 
@@ -243,7 +243,7 @@ unsafe extern "C" fn kn_progress_wrapper(
     progress_percent: i32,
     resume_possible: bool,
 ) {
-    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     (holder.kn_progress)(
         cast_string(title, title_len),
         progress_percent,
@@ -257,12 +257,12 @@ unsafe extern "C" fn kn_warning_set_wrapper(
     message: *const c_char,
     message_len: usize,
 ) {
-    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     (holder.kn_warning_set)(warning.into(), cast_string(message, message_len));
 }
 
 unsafe extern "C" fn kn_warning_unset_wrapper(user_data: *mut c_void, warning: kernel_Warning) {
-    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     (holder.kn_warning_unset)(warning.into());
 }
 
@@ -271,7 +271,7 @@ unsafe extern "C" fn kn_flush_error_wrapper(
     message: *const c_char,
     message_len: usize,
 ) {
-    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     (holder.kn_flush_error)(cast_string(message, message_len));
 }
 
@@ -280,7 +280,7 @@ unsafe extern "C" fn kn_fatal_error_wrapper(
     message: *const c_char,
     message_len: usize,
 ) {
-    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbackHolder);
+    let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     (holder.kn_fatal_error)(cast_string(message, message_len));
 }
 
@@ -314,7 +314,7 @@ pub trait VIBlockCheckedFn: Fn(UnownedBlock, ValidationMode, BlockValidationResu
 impl<F: Fn(UnownedBlock, ValidationMode, BlockValidationResult)> VIBlockCheckedFn for F {}
 
 /// A holder struct for validation interface callbacks
-pub struct ValidationInterfaceCallbackHolder {
+pub struct ValidationInterfaceCallbacks {
     /// Called after a block has completed validation and communicates its validation state.
     pub block_checked: Box<dyn VIBlockCheckedFn>,
 }
@@ -324,7 +324,7 @@ unsafe extern "C" fn vi_block_checked_wrapper(
     block: *const kernel_BlockPointer,
     stateIn: *const kernel_BlockValidationState,
 ) {
-    let holder = &*(user_data as *mut ValidationInterfaceCallbackHolder);
+    let holder = &*(user_data as *mut ValidationInterfaceCallbacks);
     let result = kernel_get_block_validation_result_from_block_validation_state(stateIn);
     let mode = kernel_get_validation_mode_from_block_validation_state(stateIn);
     (holder.block_checked)(UnownedBlock::new(block), mode.into(), result.into());
@@ -338,9 +338,9 @@ pub struct Context {
     inner: *mut kernel_Context,
     // We need something to hold this in memory.
     #[allow(dead_code)]
-    kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
+    kn_callbacks: Option<Box<KernelNotificationInterfaceCallbacks>>,
     #[allow(dead_code)]
-    vi_callbacks: Option<Box<ValidationInterfaceCallbackHolder>>,
+    vi_callbacks: Option<Box<ValidationInterfaceCallbacks>>,
 }
 
 unsafe impl Send for Context {}
@@ -366,8 +366,8 @@ impl Drop for Context {
 /// notifications.
 pub struct ContextBuilder {
     inner: *mut kernel_ContextOptions,
-    kn_callbacks: Option<Box<KernelNotificationInterfaceCallbackHolder>>,
-    vi_callbacks: Option<Box<ValidationInterfaceCallbackHolder>>,
+    kn_callbacks: Option<Box<KernelNotificationInterfaceCallbacks>>,
+    vi_callbacks: Option<Box<ValidationInterfaceCallbacks>>,
 }
 
 impl ContextBuilder {
@@ -401,7 +401,7 @@ impl ContextBuilder {
     /// Sets the notifications callbacks to the passed in holder struct
     pub fn kn_callbacks(
         mut self,
-        kn_callbacks: Box<KernelNotificationInterfaceCallbackHolder>,
+        kn_callbacks: Box<KernelNotificationInterfaceCallbacks>,
     ) -> ContextBuilder {
         let kn_pointer = Box::into_raw(kn_callbacks);
         unsafe {
@@ -431,7 +431,7 @@ impl ContextBuilder {
     /// Sets the validation interface callbacks
     pub fn validation_interface(
         mut self,
-        vi_callbacks: Box<ValidationInterfaceCallbackHolder>,
+        vi_callbacks: Box<ValidationInterfaceCallbacks>,
     ) -> ContextBuilder {
         let vi_pointer = Box::into_raw(vi_callbacks);
         unsafe {

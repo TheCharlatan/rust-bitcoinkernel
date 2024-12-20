@@ -9,14 +9,14 @@ use arbitrary::Arbitrary;
 use bitcoinkernel::{
     disable_logging, Block, BlockManagerOptions, ChainType, ChainstateLoadOptions,
     ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-    KernelNotificationInterfaceCallbackHolder, ValidationInterfaceCallbackHolder,
+    KernelNotificationInterfaceCallbacks, ValidationInterfaceCallbacks,
 };
 
 fn create_context(chain_type: ChainType) -> Arc<Context> {
     Arc::new(
         ContextBuilder::new()
             .chain_type(chain_type)
-            .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
+            .kn_callbacks(Box::new(KernelNotificationInterfaceCallbacks {
                 kn_block_tip: Box::new(|_state, _block_index| {}),
                 kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
                 kn_progress: Box::new(|_title, _progress, _resume_possible| {}),
@@ -25,7 +25,7 @@ fn create_context(chain_type: ChainType) -> Arc<Context> {
                 kn_flush_error: Box::new(|_message| {}),
                 kn_fatal_error: Box::new(|_message| {}),
             }))
-            .validation_interface(Box::new(ValidationInterfaceCallbackHolder {
+            .validation_interface(Box::new(ValidationInterfaceCallbacks {
                 block_checked: Box::new(|_, _, _| {}),
             }))
             .build()

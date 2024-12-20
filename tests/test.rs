@@ -4,8 +4,8 @@ mod tests {
     use bitcoinkernel::{
         verify, Block, BlockHash, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
         ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
-        ContextBuilder, KernelError, KernelNotificationInterfaceCallbackHolder, Log, Logger,
-        ScriptPubkey, Transaction, TxOut, ValidationInterfaceCallbackHolder,
+        ContextBuilder, KernelError, KernelNotificationInterfaceCallbacks, Log, Logger,
+        ScriptPubkey, Transaction, TxOut, ValidationInterfaceCallbacks,
         VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
@@ -36,7 +36,7 @@ mod tests {
     fn create_context() -> Context {
         let builder = ContextBuilder::new()
             .chain_type(ChainType::REGTEST)
-            .kn_callbacks(Box::new(KernelNotificationInterfaceCallbackHolder {
+            .kn_callbacks(Box::new(KernelNotificationInterfaceCallbacks {
                 kn_block_tip: Box::new(|_state, _block_tip| {
                     log::info!("Received block tip.");
                 }),
@@ -64,7 +64,7 @@ mod tests {
                     log::info!("Fatal Error! {message}");
                 }),
             }))
-            .validation_interface(Box::new(ValidationInterfaceCallbackHolder {
+            .validation_interface(Box::new(ValidationInterfaceCallbacks {
                 block_checked: Box::new(|_block, _mode, _result| {
                     log::info!("Block checked!");
                 }),
