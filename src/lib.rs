@@ -173,42 +173,42 @@ impl From<ChainType> for kernel_ChainType {
 }
 
 /// The chain's tip was updated to the provided block hash.
-pub trait KNBlockTipFn: Fn(SynchronizationState, BlockHash) {}
-impl<F: Fn(SynchronizationState, BlockHash)> KNBlockTipFn for F {}
+pub trait BlockTip: Fn(SynchronizationState, BlockHash) {}
+impl<F: Fn(SynchronizationState, BlockHash)> BlockTip for F {}
 
 /// A new best block header was added.
-pub trait KNHeaderTipFn: Fn(SynchronizationState, i64, i64, bool) {}
-impl<F: Fn(SynchronizationState, i64, i64, bool)> KNHeaderTipFn for F {}
+pub trait HeaderTip: Fn(SynchronizationState, i64, i64, bool) {}
+impl<F: Fn(SynchronizationState, i64, i64, bool)> HeaderTip for F {}
 
 /// Reports on the current synchronization progress.
-pub trait KNProgressFn: Fn(String, i32, bool) {}
-impl<F: Fn(String, i32, bool)> KNProgressFn for F {}
+pub trait Progress: Fn(String, i32, bool) {}
+impl<F: Fn(String, i32, bool)> Progress for F {}
 
 /// A warning state issued by the kernel during validation.
-pub trait KNWarningSetFn: Fn(KernelWarning, String) {}
-impl<F: Fn(KernelWarning, String)> KNWarningSetFn for F {}
+pub trait WarningSet: Fn(KernelWarning, String) {}
+impl<F: Fn(KernelWarning, String)> WarningSet for F {}
 
 /// A previous condition leading to the issuance of a warning is no longer given.
-pub trait KNWarningUnsetFn: Fn(KernelWarning) {}
-impl<F: Fn(KernelWarning)> KNWarningUnsetFn for F {}
+pub trait WarningUnset: Fn(KernelWarning) {}
+impl<F: Fn(KernelWarning)> WarningUnset for F {}
 
 /// An error was encountered when flushing data to disk.
-pub trait KNFlushErrorFn: Fn(String) {}
-impl<F: Fn(String)> KNFlushErrorFn for F {}
+pub trait FlushError: Fn(String) {}
+impl<F: Fn(String)> FlushError for F {}
 
 /// An un-recoverable system error was encountered by the library.
-pub trait KNFatalErrorFn: Fn(String) {}
-impl<F: Fn(String)> KNFatalErrorFn for F {}
+pub trait FatalError: Fn(String) {}
+impl<F: Fn(String)> FatalError for F {}
 
 /// A callback holder struct for the notification interface calls.
 pub struct KernelNotificationInterfaceCallbacks {
-    pub kn_block_tip: Box<dyn KNBlockTipFn>,
-    pub kn_header_tip: Box<dyn KNHeaderTipFn>,
-    pub kn_progress: Box<dyn KNProgressFn>,
-    pub kn_warning_set: Box<dyn KNWarningSetFn>,
-    pub kn_warning_unset: Box<dyn KNWarningUnsetFn>,
-    pub kn_flush_error: Box<dyn KNFlushErrorFn>,
-    pub kn_fatal_error: Box<dyn KNFatalErrorFn>,
+    pub kn_block_tip: Box<dyn BlockTip>,
+    pub kn_header_tip: Box<dyn HeaderTip>,
+    pub kn_progress: Box<dyn Progress>,
+    pub kn_warning_set: Box<dyn WarningSet>,
+    pub kn_warning_unset: Box<dyn WarningUnset>,
+    pub kn_flush_error: Box<dyn FlushError>,
+    pub kn_fatal_error: Box<dyn FatalError>,
 }
 
 unsafe extern "C" fn kn_block_tip_wrapper(
@@ -310,13 +310,13 @@ impl Drop for ChainParams {
 }
 
 /// Exposes the result after validating a block.
-pub trait VIBlockCheckedFn: Fn(UnownedBlock, ValidationMode, BlockValidationResult) {}
-impl<F: Fn(UnownedBlock, ValidationMode, BlockValidationResult)> VIBlockCheckedFn for F {}
+pub trait BlockChecked: Fn(UnownedBlock, ValidationMode, BlockValidationResult) {}
+impl<F: Fn(UnownedBlock, ValidationMode, BlockValidationResult)> BlockChecked for F {}
 
 /// A holder struct for validation interface callbacks
 pub struct ValidationInterfaceCallbacks {
     /// Called after a block has completed validation and communicates its validation state.
-    pub block_checked: Box<dyn VIBlockCheckedFn>,
+    pub block_checked: Box<dyn BlockChecked>,
 }
 
 unsafe extern "C" fn vi_block_checked_wrapper(
