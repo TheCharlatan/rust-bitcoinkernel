@@ -8,13 +8,13 @@ target_sources(test_bitcoin
   PRIVATE
     init_test_fixture.cpp
     wallet_test_fixture.cpp
+    db_tests.cpp
     coinselector_tests.cpp
     feebumper_tests.cpp
     group_outputs_tests.cpp
     init_tests.cpp
     ismine_tests.cpp
     psbt_wallet_tests.cpp
-    rpc_util_tests.cpp
     scriptpubkeyman_tests.cpp
     spend_tests.cpp
     wallet_crypto_tests.cpp
@@ -23,10 +23,4 @@ target_sources(test_bitcoin
     walletdb_tests.cpp
     walletload_tests.cpp
 )
-if(USE_BDB)
-  target_sources(test_bitcoin
-    PRIVATE
-      db_tests.cpp
-  )
-endif()
 target_link_libraries(test_bitcoin bitcoin_wallet)

@@ -8,6 +8,7 @@
 #include <test/kernel/block_data.h>
 
 #include <cassert>
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -38,16 +39,18 @@ std::string random_string(uint32_t length)
     return random;
 }
 
-std::vector<unsigned char> hex_string_to_char_vec(const std::string& hex)
+std::vector<unsigned char> hex_string_to_char_vec(std::string_view hex)
 {
     std::vector<unsigned char> bytes;
+    bytes.reserve(hex.length() / 2);
 
     for (size_t i{0}; i < hex.length(); i += 2) {
-        std::string byteString{hex.substr(i, 2)};
-        unsigned char byte = (char)std::strtol(byteString.c_str(), nullptr, 16);
-        bytes.push_back(byte);
+        unsigned char byte;
+        auto [ptr, ec] = std::from_chars(hex.data() + i, hex.data() + i + 2, byte, 16);
+        if (ec == std::errc{} && ptr == hex.data() + i + 2) {
+            bytes.push_back(byte);
+        }
     }
-
     return bytes;
 }
 
