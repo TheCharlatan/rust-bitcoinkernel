@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2022 The Bitcoin Core developers
+// Copyright (c) 2011-present The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -13,6 +13,7 @@
 #include <test/util/setup_common.h>
 #include <uint256.h>
 #include <util/bitdeque.h>
+#include <util/byte_units.h>
 #include <util/fs.h>
 #include <util/fs_helpers.h>
 #include <util/moneystr.h>
@@ -323,20 +324,65 @@ BOOST_AUTO_TEST_CASE(util_TrimString)
     BOOST_CHECK_EQUAL(TrimStringView(std::string("\x05\x04\x03\x02\x01\x00", 6), std::string("\x05\x04\x03\x02\x01\x00", 6)), "");
 }
 
+BOOST_AUTO_TEST_CASE(util_ParseISO8601DateTime)
+{
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("1969-12-31T23:59:59Z").value(), -1);
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("1970-01-01T00:00:00Z").value(), 0);
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("1970-01-01T00:00:01Z").value(), 1);
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("2000-01-01T00:00:01Z").value(), 946684801);
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("2011-09-30T23:36:17Z").value(), 1317425777);
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("2100-12-31T23:59:59Z").value(), 4133980799);
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("9999-12-31T23:59:59Z").value(), 253402300799);
+
+    // Accept edge-cases, where the time overflows. They are not produced by
+    // FormatISO8601DateTime, so this can be changed in the future, if needed.
+    // For now, keep compatibility with the previous implementation.
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("2000-01-01T99:00:00Z").value(), 947041200);
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("2000-01-01T00:99:00Z").value(), 946690740);
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("2000-01-01T00:00:99Z").value(), 946684899);
+    BOOST_CHECK_EQUAL(ParseISO8601DateTime("2000-01-01T99:99:99Z").value(), 947047239);
+
+    // Reject date overflows.
+    BOOST_CHECK(!ParseISO8601DateTime("2000-99-01T00:00:00Z"));
+    BOOST_CHECK(!ParseISO8601DateTime("2000-01-99T00:00:00Z"));
+
+    // Reject out-of-range years
+    BOOST_CHECK(!ParseISO8601DateTime("32768-12-31T23:59:59Z"));
+    BOOST_CHECK(!ParseISO8601DateTime("32767-12-31T23:59:59Z"));
+    BOOST_CHECK(!ParseISO8601DateTime("32767-12-31T00:00:00Z"));
+    BOOST_CHECK(!ParseISO8601DateTime("999-12-31T00:00:00Z"));
+
+    // Reject invalid format
+    const std::string valid{"2000-01-01T00:00:01Z"};
+    BOOST_CHECK(ParseISO8601DateTime(valid).has_value());
+    for (auto mut{0U}; mut < valid.size(); ++mut) {
+        std::string invalid{valid};
+        invalid[mut] = 'a';
+        BOOST_CHECK(!ParseISO8601DateTime(invalid));
+    }
+}
+
 BOOST_AUTO_TEST_CASE(util_FormatISO8601DateTime)
 {
     BOOST_CHECK_EQUAL(FormatISO8601DateTime(971890963199), "32767-12-31T23:59:59Z");
     BOOST_CHECK_EQUAL(FormatISO8601DateTime(971890876800), "32767-12-31T00:00:00Z");
-    BOOST_CHECK_EQUAL(FormatISO8601DateTime(1317425777), "2011-09-30T23:36:17Z");
+
+    BOOST_CHECK_EQUAL(FormatISO8601DateTime(-1), "1969-12-31T23:59:59Z");
     BOOST_CHECK_EQUAL(FormatISO8601DateTime(0), "1970-01-01T00:00:00Z");
+    BOOST_CHECK_EQUAL(FormatISO8601DateTime(1), "1970-01-01T00:00:01Z");
+    BOOST_CHECK_EQUAL(FormatISO8601DateTime(946684801), "2000-01-01T00:00:01Z");
+    BOOST_CHECK_EQUAL(FormatISO8601DateTime(1317425777), "2011-09-30T23:36:17Z");
+    BOOST_CHECK_EQUAL(FormatISO8601DateTime(4133980799), "2100-12-31T23:59:59Z");
+    BOOST_CHECK_EQUAL(FormatISO8601DateTime(253402300799), "9999-12-31T23:59:59Z");
 }
 
 BOOST_AUTO_TEST_CASE(util_FormatISO8601Date)
 {
     BOOST_CHECK_EQUAL(FormatISO8601Date(971890963199), "32767-12-31");
     BOOST_CHECK_EQUAL(FormatISO8601Date(971890876800), "32767-12-31");
-    BOOST_CHECK_EQUAL(FormatISO8601Date(1317425777), "2011-09-30");
+
     BOOST_CHECK_EQUAL(FormatISO8601Date(0), "1970-01-01");
+    BOOST_CHECK_EQUAL(FormatISO8601Date(1317425777), "2011-09-30");
 }
 
 BOOST_AUTO_TEST_CASE(util_FormatMoney)
@@ -1830,6 +1876,102 @@ BOOST_AUTO_TEST_CASE(clearshrink_test)
         BOOST_CHECK_EQUAL(v.size(), 0);
         // std::deque has no capacity() we can observe.
     }
+}
+
+template <typename T>
+void TestCheckedLeftShift()
+{
+    constexpr auto MAX{std::numeric_limits<T>::max()};
+
+    // Basic operations
+    BOOST_CHECK_EQUAL(CheckedLeftShift<T>(0, 1), 0);
+    BOOST_CHECK_EQUAL(CheckedLeftShift<T>(0, 127), 0);
+    BOOST_CHECK_EQUAL(CheckedLeftShift<T>(1, 1), 2);
+    BOOST_CHECK_EQUAL(CheckedLeftShift<T>(2, 2), 8);
+    BOOST_CHECK_EQUAL(CheckedLeftShift<T>(MAX >> 1, 1), MAX - 1);
+
+    // Max left shift
+    BOOST_CHECK_EQUAL(CheckedLeftShift<T>(1, std::numeric_limits<T>::digits - 1), MAX / 2 + 1);
+
+    // Overflow cases
+    BOOST_CHECK(!CheckedLeftShift<T>((MAX >> 1) + 1, 1));
+    BOOST_CHECK(!CheckedLeftShift<T>(MAX, 1));
+    BOOST_CHECK(!CheckedLeftShift<T>(1, std::numeric_limits<T>::digits));
+    BOOST_CHECK(!CheckedLeftShift<T>(1, std::numeric_limits<T>::digits + 1));
+
+    if constexpr (std::is_signed_v<T>) {
+        constexpr auto MIN{std::numeric_limits<T>::min()};
+        // Negative input
+        BOOST_CHECK_EQUAL(CheckedLeftShift<T>(-1, 1), -2);
+        BOOST_CHECK_EQUAL(CheckedLeftShift<T>((MIN >> 2), 1), MIN / 2);
+        BOOST_CHECK_EQUAL(CheckedLeftShift<T>((MIN >> 1) + 1, 1), MIN + 2);
+        BOOST_CHECK_EQUAL(CheckedLeftShift<T>(MIN >> 1, 1), MIN);
+        // Overflow negative
+        BOOST_CHECK(!CheckedLeftShift<T>((MIN >> 1) - 1, 1));
+        BOOST_CHECK(!CheckedLeftShift<T>(MIN >> 1, 2));
+        BOOST_CHECK(!CheckedLeftShift<T>(-1, 100));
+    }
+}
+
+template <typename T>
+void TestSaturatingLeftShift()
+{
+    constexpr auto MAX{std::numeric_limits<T>::max()};
+
+    // Basic operations
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(0, 1), 0);
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(0, 127), 0);
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(1, 1), 2);
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(2, 2), 8);
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(MAX >> 1, 1), MAX - 1);
+
+    // Max left shift
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(1, std::numeric_limits<T>::digits - 1), MAX / 2 + 1);
+
+    // Saturation cases
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>((MAX >> 1) + 1, 1), MAX);
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(MAX, 1), MAX);
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(1, std::numeric_limits<T>::digits), MAX);
+    BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(1, std::numeric_limits<T>::digits + 1), MAX);
+
+    if constexpr (std::is_signed_v<T>) {
+        constexpr auto MIN{std::numeric_limits<T>::min()};
+        // Negative input
+        BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(-1, 1), -2);
+        BOOST_CHECK_EQUAL(SaturatingLeftShift<T>((MIN >> 2), 1), MIN / 2);
+        BOOST_CHECK_EQUAL(SaturatingLeftShift<T>((MIN >> 1) + 1, 1), MIN + 2);
+        BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(MIN >> 1, 1), MIN);
+        // Saturation negative
+        BOOST_CHECK_EQUAL(SaturatingLeftShift<T>((MIN >> 1) - 1, 1), MIN);
+        BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(MIN >> 1, 2), MIN);
+        BOOST_CHECK_EQUAL(SaturatingLeftShift<T>(-1, 100), MIN);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(checked_left_shift_test)
+{
+    TestCheckedLeftShift<uint8_t>();
+    TestCheckedLeftShift<int8_t>();
+    TestCheckedLeftShift<size_t>();
+    TestCheckedLeftShift<uint64_t>();
+    TestCheckedLeftShift<int64_t>();
+}
+
+BOOST_AUTO_TEST_CASE(saturating_left_shift_test)
+{
+    TestSaturatingLeftShift<uint8_t>();
+    TestSaturatingLeftShift<int8_t>();
+    TestSaturatingLeftShift<size_t>();
+    TestSaturatingLeftShift<uint64_t>();
+    TestSaturatingLeftShift<int64_t>();
+}
+
+BOOST_AUTO_TEST_CASE(mib_string_literal_test)
+{
+    BOOST_CHECK_EQUAL(0_MiB, 0);
+    BOOST_CHECK_EQUAL(1_MiB, 1024 * 1024);
+    const auto max_mib{std::numeric_limits<size_t>::max() >> 20};
+    BOOST_CHECK_EXCEPTION(operator""_MiB(static_cast<unsigned long long>(max_mib) + 1), std::overflow_error, HasReason("MiB value too large for size_t byte conversion"));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

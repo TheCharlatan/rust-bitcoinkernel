@@ -1,13 +1,13 @@
 // Copyright (c) 2022-present The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
 #include <kernel/bitcoinkernel.h>
 
 #include <chain.h>
 #include <coins.h>
 #include <consensus/amount.h>
 #include <consensus/validation.h>
+#include <kernel/caches.h>
 #include <kernel/chainparams.h>
 #include <kernel/checks.h>
 #include <kernel/context.h>
@@ -15,7 +15,6 @@
 #include <kernel/warning.h>
 #include <logging.h>
 #include <node/blockstorage.h>
-#include <node/caches.h>
 #include <node/chainstate.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
@@ -830,10 +829,7 @@ kernel_ChainstateManager* kernel_chainstate_manager_create(
             return nullptr;
         }
 
-        node::CacheSizes cache_sizes;
-        cache_sizes.block_tree_db = 2 << 20;
-        cache_sizes.coins_db = 2 << 22;
-        cache_sizes.coins = (450 << 20) - (2 << 20) - (2 << 22);
+        kernel::CacheSizes cache_sizes{DEFAULT_KERNEL_CACHE};
         auto [status, chainstate_err]{node::LoadChainstate(*chainman, cache_sizes, chainstate_load_opts)};
         if (status != node::ChainstateLoadStatus::SUCCESS) {
             LogError("Failed to load chain state from your data directory: %s", chainstate_err.original);

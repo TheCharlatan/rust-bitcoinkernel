@@ -45,8 +45,6 @@ KNOWN_VIOLATIONS = [
     "src/dbwrapper.cpp:.*vsnprintf",
     "src/test/fuzz/locale.cpp:.*setlocale",
     "src/test/util_tests.cpp:.*strtoll",
-    "src/test/kernel/test_kernel.cpp:.*strtol",
-    "src/kernel/bitcoin-chainstate.cpp:.*strtol",
     "src/wallet/bdb.cpp:.*DbEnv::strerror",  # False positive
     "src/util/syserror.cpp:.*strerror",      # Outside this function use `SysErrorString`
 ]
