@@ -211,6 +211,10 @@ function(add_all_test_targets)
   endforeach()
 endfunction()
 
+if (BUILD_KERNEL_TEST)
+  add_subdirectory(kernel)
+endif()
+
 add_all_test_targets()
 
 install(TARGETS test_bitcoin

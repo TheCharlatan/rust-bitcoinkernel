@@ -14,6 +14,19 @@
 #include <cstdint>
 #endif // __cplusplus
 
+#ifndef BITCOINKERNEL_API
+#if defined(_WIN32)
+#ifdef BITCOINKERNEL_BUILD
+#define BITCOINKERNEL_API __declspec(dllexport)
+#else
+#define BITCOINKERNEL_API
+#endif
+#elif defined(__GNUC__) && (__GNUC__ >= 4) && defined(BITCOINKERNEL_BUILD)
+#define BITCOINKERNEL_API __attribute__ ((visibility ("default")))
+#else
+#define BITCOINKERNEL_API
+#endif
+#endif
 
 #if !defined(BITCOINKERNEL_GNUC_PREREQ)
 #if defined(__GNUC__) && defined(__GNUC_MINOR__)
@@ -33,7 +46,7 @@
 #if !defined(BITCOINKERNEL_BUILD) && defined(__GNUC__) && BITCOINKERNEL_GNUC_PREREQ(3, 4)
 #define BITCOINKERNEL_ARG_NONNULL(...) __attribute__((__nonnull__(__VA_ARGS__)))
 #else
-#define BITCOINKERNEL_ARG_NONNULL(_x)
+#define BITCOINKERNEL_ARG_NONNULL(...)
 #endif
 
 #ifdef __cplusplus
@@ -447,14 +460,14 @@ typedef struct {
  * @param[in] raw_transaction_len Length of the serialized transaction.
  * @return                        The transaction, or null on error.
  */
-kernel_Transaction* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_transaction_create(
+BITCOINKERNEL_API kernel_Transaction* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_transaction_create(
     const unsigned char* raw_transaction, size_t raw_transaction_len
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * Destroy the transaction.
  */
-void kernel_transaction_destroy(kernel_Transaction* transaction);
+BITCOINKERNEL_API void kernel_transaction_destroy(kernel_Transaction* transaction);
 
 ///@}
 
@@ -469,7 +482,7 @@ void kernel_transaction_destroy(kernel_Transaction* transaction);
  * @param[in] script_pubkey_len Length of the script pubkey data.
  * @return                      The script pubkey, or null on error.
  */
-kernel_ScriptPubkey* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_script_pubkey_create(
+BITCOINKERNEL_API kernel_ScriptPubkey* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_script_pubkey_create(
     const unsigned char* script_pubkey, size_t script_pubkey_len
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -478,14 +491,14 @@ kernel_ScriptPubkey* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_script_pubkey_creat
  * @param[in] script_pubkey Non-null.
  * @return                  The serialized script pubkey data.
  */
-kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_script_pubkey_data(
+BITCOINKERNEL_API kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_script_pubkey_data(
         const kernel_ScriptPubkey* script_pubkey
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * Destroy the script pubkey.
  */
-void kernel_script_pubkey_destroy(kernel_ScriptPubkey* script_pubkey);
+BITCOINKERNEL_API void kernel_script_pubkey_destroy(kernel_ScriptPubkey* script_pubkey);
 
 ///@}
 
@@ -500,7 +513,7 @@ void kernel_script_pubkey_destroy(kernel_ScriptPubkey* script_pubkey);
  * @param[in] amount        The amount associated with the script pubkey for this output.
  * @return                  The transaction output.
  */
-kernel_TransactionOutput* kernel_transaction_output_create(
+BITCOINKERNEL_API kernel_TransactionOutput* kernel_transaction_output_create(
     const kernel_ScriptPubkey* script_pubkey,
     int64_t amount
 ) BITCOINKERNEL_ARG_NONNULL(1);
@@ -512,7 +525,7 @@ kernel_TransactionOutput* kernel_transaction_output_create(
  * @param[in] transaction_output Non-null.
  * @return                       The data for the output's script pubkey.
  */
-kernel_ScriptPubkey* kernel_copy_script_pubkey_from_output(kernel_TransactionOutput* transaction_output
+BITCOINKERNEL_API kernel_ScriptPubkey* kernel_copy_script_pubkey_from_output(kernel_TransactionOutput* transaction_output
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
@@ -521,13 +534,13 @@ kernel_ScriptPubkey* kernel_copy_script_pubkey_from_output(kernel_TransactionOut
  * @param[in] transaction_output Non-null.
  * @return                       The amount.
  */
-int64_t kernel_get_transaction_output_amount(kernel_TransactionOutput* transaction_output
+BITCOINKERNEL_API int64_t kernel_get_transaction_output_amount(kernel_TransactionOutput* transaction_output
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * Destroy the transaction output.
  */
-void kernel_transaction_output_destroy(kernel_TransactionOutput* transaction_output);
+BITCOINKERNEL_API void kernel_transaction_output_destroy(kernel_TransactionOutput* transaction_output);
 
 ///@}
 
@@ -556,7 +569,7 @@ void kernel_transaction_output_destroy(kernel_TransactionOutput* transaction_out
  *                              Should be set to kernel_SCRIPT_VERIFY_OK.
  * @return                      True if the script is valid.
  */
-bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_verify_script(
+BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_verify_script(
     const kernel_ScriptPubkey* script_pubkey,
     int64_t amount,
     const kernel_Transaction* tx_to,
@@ -579,7 +592,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_verify_script(
  * This function should only be called once. Log messages will be buffered until
  * this function is called, or a logging connection is created.
  */
-void kernel_disable_logging();
+BITCOINKERNEL_API void kernel_disable_logging();
 
 /**
  * @brief Set the log level of the global internal logger. This does not enable
@@ -592,7 +605,7 @@ void kernel_disable_logging();
  * @param[in] level    Log level at which the log category is set.
  * @return             True on success.
  */
-bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_add_log_level_category(const kernel_LogCategory category, kernel_LogLevel level);
+BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_add_log_level_category(const kernel_LogCategory category, kernel_LogLevel level);
 
 /**
  * @brief Enable a specific log category for the global internal logger.
@@ -600,7 +613,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_add_log_level_category(const kernel
  * @param[in] category If kernel_LOG_ALL is chosen, all categories will be enabled.
  * @return             True on success.
  */
-bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_enable_log_category(const kernel_LogCategory category);
+BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_enable_log_category(const kernel_LogCategory category);
 
 /**
  * Disable a specific log category for the global internal logger.
@@ -608,7 +621,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_enable_log_category(const kernel_Lo
  * @param[in] category If kernel_LOG_ALL is chosen, all categories will be disabled.
  * @return             True on success.
  */
-bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_disable_log_category(const kernel_LogCategory category);
+BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_disable_log_category(const kernel_LogCategory category);
 
 /**
  * @brief Start logging messages through the provided callback. Log messages
@@ -621,7 +634,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_disable_log_category(const kernel_L
  * @param[in] options   Sets formatting options of the log messages.
  * @return              A new kernel logging connection, or null on error.
  */
-kernel_LoggingConnection* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_logging_connection_create(
+BITCOINKERNEL_API kernel_LoggingConnection* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_logging_connection_create(
     kernel_LogCallback callback,
     const void* user_data,
     const kernel_LoggingOptions options
@@ -630,7 +643,7 @@ kernel_LoggingConnection* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_logging_connec
 /**
  * Stop logging and destroy the logging connection.
  */
-void kernel_logging_connection_destroy(kernel_LoggingConnection* logging_connection);
+BITCOINKERNEL_API void kernel_logging_connection_destroy(kernel_LoggingConnection* logging_connection);
 
 ///@}
 
@@ -646,13 +659,13 @@ void kernel_logging_connection_destroy(kernel_LoggingConnection* logging_connect
  * @param[in] chain_type Controls the chain parameters type created.
  * @return               An allocated chain parameters opaque struct.
  */
-const kernel_ChainParameters* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chain_parameters_create(
+BITCOINKERNEL_API const kernel_ChainParameters* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chain_parameters_create(
     const kernel_ChainType chain_type);
 
 /**
  * Destroy the chain parameters.
  */
-void kernel_chain_parameters_destroy(const kernel_ChainParameters* chain_parameters);
+BITCOINKERNEL_API void kernel_chain_parameters_destroy(const kernel_ChainParameters* chain_parameters);
 
 ///@}
 
@@ -664,7 +677,7 @@ void kernel_chain_parameters_destroy(const kernel_ChainParameters* chain_paramet
 /**
  * Creates an empty context options.
  */
-kernel_ContextOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_create();
+BITCOINKERNEL_API kernel_ContextOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_create();
 
 /**
  * @brief Sets the chain params for the context options. The context created
@@ -673,7 +686,7 @@ kernel_ContextOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_options_c
  * @param[in] context_options  Non-null, previously created by @ref kernel_context_options_create.
  * @param[in] chain_parameters Is set to the context options.
  */
-void kernel_context_options_set_chainparams(
+BITCOINKERNEL_API void kernel_context_options_set_chainparams(
     kernel_ContextOptions* context_options,
     const kernel_ChainParameters* chain_parameters
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
@@ -685,7 +698,7 @@ void kernel_context_options_set_chainparams(
  * @param[in] context_options Non-null, previously created by @ref kernel_context_options_create.
  * @param[in] notifications   Is set to the context options.
  */
-void kernel_context_options_set_notifications(
+BITCOINKERNEL_API void kernel_context_options_set_notifications(
     kernel_ContextOptions* context_options,
     kernel_NotificationInterfaceCallbacks notifications
 ) BITCOINKERNEL_ARG_NONNULL(1);
@@ -700,7 +713,7 @@ void kernel_context_options_set_notifications(
  * @param[in] validation_interface_callbacks The callbacks used for passing validation information to the
  *                                           user.
  */
-void kernel_context_options_set_validation_interface(
+BITCOINKERNEL_API void kernel_context_options_set_validation_interface(
     kernel_ContextOptions* context_options,
     kernel_ValidationInterfaceCallbacks validation_interface_callbacks
 ) BITCOINKERNEL_ARG_NONNULL(1);
@@ -708,7 +721,7 @@ void kernel_context_options_set_validation_interface(
 /**
  * Destroy the context options.
  */
-void kernel_context_options_destroy(kernel_ContextOptions* context_options);
+BITCOINKERNEL_API void kernel_context_options_destroy(kernel_ContextOptions* context_options);
 
 ///@}
 
@@ -726,7 +739,7 @@ void kernel_context_options_destroy(kernel_ContextOptions* context_options);
  * @param[in] context_options Nullable, created by @ref kernel_context_options_create.
  * @return                    The allocated kernel context, or null on error.
  */
-kernel_Context* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_create(
+BITCOINKERNEL_API kernel_Context* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_create(
     const kernel_ContextOptions* context_options);
 
 /**
@@ -736,14 +749,14 @@ kernel_Context* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_create(
  * @param[in] context  Non-null.
  * @return             True if the interrupt was successful.
  */
-bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_interrupt(
+BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_context_interrupt(
     kernel_Context* context
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * Destroy the context.
  */
-void kernel_context_destroy(kernel_Context* context);
+BITCOINKERNEL_API void kernel_context_destroy(kernel_Context* context);
 
 ///@}
 
@@ -762,7 +775,7 @@ void kernel_context_destroy(kernel_Context* context);
  *                           If the directory does not exist yet, it will be created.
  * @return                   The allocated chainstate manager options, or null on error.
  */
-kernel_ChainstateManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_options_create(
+BITCOINKERNEL_API kernel_ChainstateManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_options_create(
     const kernel_Context* context,
     const char* data_directory,
     size_t data_directory_len
@@ -776,7 +789,7 @@ kernel_ChainstateManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainst
  *                           used for validation. When set to 0 no parallel verification is done.
  *                           The value range is clamped internally between 0 and 15.
  */
-void kernel_chainstate_manager_options_set_worker_threads_num(
+BITCOINKERNEL_API void kernel_chainstate_manager_options_set_worker_threads_num(
         kernel_ChainstateManagerOptions* chainstate_manager_options,
         int worker_threads
 ) BITCOINKERNEL_ARG_NONNULL(1);
@@ -784,7 +797,7 @@ void kernel_chainstate_manager_options_set_worker_threads_num(
 /**
  * Destroy the chainstate manager options.
  */
-void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* chainstate_manager_options);
+BITCOINKERNEL_API void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* chainstate_manager_options);
 
 ///@}
 
@@ -800,20 +813,47 @@ void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* 
  * @param[in] context          Non-null, the created options will associate with this kernel context
  *                             for the duration of their lifetime. The same context needs to be used
  *                             when instantiating the chainstate manager.
+ * @param[in] data_directory   Non-null, path string of the directory containing the chainstate data.
+ *                             This is usually the same as the data directory used for the chainstate
+ *                             manager options. If the directory does not exist yet, it will be created.
  * @param[in] blocks_directory Non-null, path string of the directory containing the block data. If
  *                             the directory does not exist yet, it will be created.
  * @return                     The allocated block manager options, or null on error.
  */
-kernel_BlockManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_manager_options_create(
+BITCOINKERNEL_API kernel_BlockManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_manager_options_create(
     const kernel_Context* context,
+    const char* data_directory,
+    size_t data_directory_len,
     const char* blocks_directory,
     size_t blocks_directory_len
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
+ * @brief Sets wipe block tree db in the block manager options.
+ *
+ * @param[in] block_manager_options Non-null, created by @ref kernel_block_manager_options_create.
+ * @param[in] wipe_block_tree_db    Set wipe block tree db.
+ */
+BITCOINKERNEL_API void kernel_block_manager_options_set_wipe_block_tree_db(
+    kernel_BlockManagerOptions* block_manager_options,
+    bool wipe_block_tree_db
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Sets block tree db in memory in the block manager options.
+ *
+ * @param[in] block_manager_options   Non-null, created by @ref kernel_block_manager_options_create.
+ * @param[in] block_tree_db_in_memory Set block tree db in memory.
+ */
+BITCOINKERNEL_API void kernel_block_manager_options_set_block_tree_db_in_memory(
+    kernel_BlockManagerOptions* block_manager_options,
+    bool block_tree_db_in_memory
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
  * Destroy the block manager options.
  */
-void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* block_manager_options);
+BITCOINKERNEL_API void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* block_manager_options);
 
 ///@}
 
@@ -825,18 +865,7 @@ void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* block_mana
 /**
  * Create options for loading the chainstate.
  */
-kernel_ChainstateLoadOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_load_options_create();
-
-/**
- * @brief Sets wipe block tree db in the chainstate load options.
- *
- * @param[in] chainstate_load_options Non-null, created by @ref kernel_chainstate_load_options_create.
- * @param[in] wipe_block_tree_db      Set wipe block tree db.
- */
-void kernel_chainstate_load_options_set_wipe_block_tree_db(
-    kernel_ChainstateLoadOptions* chainstate_load_options,
-    bool wipe_block_tree_db
-) BITCOINKERNEL_ARG_NONNULL(1);
+BITCOINKERNEL_API kernel_ChainstateLoadOptions* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_load_options_create();
 
 /**
  * @brief Sets wipe chainstate db in the chainstate load options.
@@ -844,20 +873,9 @@ void kernel_chainstate_load_options_set_wipe_block_tree_db(
  * @param[in] chainstate_load_options Non-null, created by @ref kernel_chainstate_load_options_create.
  * @param[in] wipe_chainstate_db      Set wipe chainstate db.
  */
-void kernel_chainstate_load_options_set_wipe_chainstate_db(
+BITCOINKERNEL_API void kernel_chainstate_load_options_set_wipe_chainstate_db(
     kernel_ChainstateLoadOptions* chainstate_load_options,
     bool wipe_chainstate_db
-) BITCOINKERNEL_ARG_NONNULL(1);
-
-/**
- * @brief Sets block tree db in memory in the chainstate load options.
- *
- * @param[in] chainstate_load_options Non-null, created by @ref kernel_chainstate_load_options_create.
- * @param[in] block_tree_db_in_memory Set block tree db in memory.
- */
-void kernel_chainstate_load_options_set_block_tree_db_in_memory(
-    kernel_ChainstateLoadOptions* chainstate_load_options,
-    bool block_tree_db_in_memory
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
@@ -866,7 +884,7 @@ void kernel_chainstate_load_options_set_block_tree_db_in_memory(
  * @param[in] chainstate_load_options Non-null, created by @ref kernel_chainstate_load_options_create.
  * @param[in] chainstate_db_in_memory Set chainstate db in memory.
  */
-void kernel_chainstate_load_options_set_chainstate_db_in_memory(
+BITCOINKERNEL_API void kernel_chainstate_load_options_set_chainstate_db_in_memory(
     kernel_ChainstateLoadOptions* chainstate_load_options,
     bool chainstate_db_in_memory
 ) BITCOINKERNEL_ARG_NONNULL(1);
@@ -874,7 +892,7 @@ void kernel_chainstate_load_options_set_chainstate_db_in_memory(
 /**
  * Destroy the chainstate load options
  */
-void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chainstate_load_options);
+BITCOINKERNEL_API void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chainstate_load_options);
 
 ///@}
 
@@ -896,7 +914,7 @@ void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chains
  *                                       needs to be used for later interactions with the chainstate manager.
  * @return                               The allocated chainstate manager, or null on error.
  */
-kernel_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_create(
+BITCOINKERNEL_API kernel_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_create(
     const kernel_Context* context,
     const kernel_ChainstateManagerOptions* chainstate_manager_options,
     const kernel_BlockManagerOptions* block_manager_options,
@@ -915,7 +933,7 @@ kernel_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_man
  * @param[in] block_file_paths_len Length of the block_file_paths array.
  * @return                         True if the import blocks call was completed successfully.
  */
-bool kernel_import_blocks(const kernel_Context* context,
+BITCOINKERNEL_API bool kernel_import_blocks(const kernel_Context* context,
                           kernel_ChainstateManager* chainstate_manager,
                           const char** block_file_paths, size_t* block_file_paths_lens, size_t block_file_paths_len
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
@@ -933,7 +951,7 @@ bool kernel_import_blocks(const kernel_Context* context,
  * @param[out] new_block         Nullable, will be set to true if this block was not processed before, and false otherwise.
  * @return                       True if processing the block was successful. Will also return true for valid, but duplicate blocks.
  */
-bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_process_block(
+BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_process_block(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     kernel_Block* block,
@@ -943,7 +961,7 @@ bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chainstate_manager_process_block(
 /**
  * Destroy the chainstate manager.
  */
-void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainstate_manager, const kernel_Context* context);
+BITCOINKERNEL_API void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainstate_manager, const kernel_Context* context);
 
 ///@}
 
@@ -961,7 +979,7 @@ void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainstate_mana
  * @param[in] block_index        Non-null.
  * @return                       The read out block, or null on error.
  */
-kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_from_disk(
+BITCOINKERNEL_API kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_from_disk(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     const kernel_BlockIndex* block_index
@@ -974,7 +992,7 @@ kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_from_disk(
  * @param[in] raw_block_len Length of the serialized block.
  * @return                  The allocated block, or null on error.
  */
-kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_create(
+BITCOINKERNEL_API kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_create(
     const unsigned char* raw_block, size_t raw_block_len
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -984,7 +1002,7 @@ kernel_Block* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_create(
  * @param[in] block Non-null.
  * @return    The block hash.
  */
-kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_get_hash(
+BITCOINKERNEL_API kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_get_hash(
     kernel_Block* block
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -994,7 +1012,7 @@ kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_get_hash(
  * @param[in] block Non-null.
  * @return    The block hash.
  */
-kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_pointer_get_hash(
+BITCOINKERNEL_API kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_pointer_get_hash(
     const kernel_BlockPointer* block
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -1004,7 +1022,7 @@ kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_pointer_get_hash
  * @param[in] block  Non-null.
  * @return           Allocated byte array holding the block data, or null on error.
  */
-kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_block_data(
+BITCOINKERNEL_API kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_block_data(
     kernel_Block* block
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -1014,14 +1032,14 @@ kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_block_data(
  * @param[in] block  Non-null.
  * @return           Allocated byte array holding the block data, or null on error.
  */
-kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_block_pointer_data(
+BITCOINKERNEL_API kernel_ByteArray* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_copy_block_pointer_data(
     const kernel_BlockPointer* block
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * Destroy the block.
  */
-void kernel_block_destroy(kernel_Block* block);
+BITCOINKERNEL_API void kernel_block_destroy(kernel_Block* block);
 
 ///@}
 
@@ -1033,7 +1051,7 @@ void kernel_block_destroy(kernel_Block* block);
 /**
  * A helper function for destroying an existing byte array.
  */
-void kernel_byte_array_destroy(kernel_ByteArray* byte_array);
+BITCOINKERNEL_API void kernel_byte_array_destroy(kernel_ByteArray* byte_array);
 
 ///@}
 
@@ -1045,14 +1063,14 @@ void kernel_byte_array_destroy(kernel_ByteArray* byte_array);
 /**
  * Returns the validation mode from an opaque block validation state pointer.
  */
-kernel_ValidationMode kernel_get_validation_mode_from_block_validation_state(
+BITCOINKERNEL_API kernel_ValidationMode kernel_get_validation_mode_from_block_validation_state(
     const kernel_BlockValidationState* block_validation_state
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * Returns the validation result from an opaque block validation state pointer.
  */
-kernel_BlockValidationResult kernel_get_block_validation_result_from_block_validation_state(
+BITCOINKERNEL_API kernel_BlockValidationResult kernel_get_block_validation_result_from_block_validation_state(
     const kernel_BlockValidationState* block_validation_state
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -1071,7 +1089,7 @@ kernel_BlockValidationResult kernel_get_block_validation_result_from_block_valid
  * @param[in] chainstate_manager Non-null.
  * @return                       The block index of the current tip.
  */
-kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_tip(
+BITCOINKERNEL_API kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_tip(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
@@ -1083,7 +1101,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_
  * @param[in] chainstate_manager Non-null.
  * @return                       The block index of the genesis block, or null on error.
  */
-kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_genesis(
+BITCOINKERNEL_API kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_genesis(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager
 ) BITCOINKERNEL_ARG_NONNULL(1, 2);
@@ -1096,7 +1114,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_
  * @param[in] block_hash         Non-null.
  * @return                       The block index of the block with the passed in hash, or null on error.
  */
-kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_hash(
+BITCOINKERNEL_API kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_hash(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     kernel_BlockHash* block_hash
@@ -1111,7 +1129,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_
  * @param[in] block_height       Height in the chain of the to be retrieved block index.
  * @return                       The block index at a certain height in the currently active chain, or null on error.
  */
-kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_height(
+BITCOINKERNEL_API kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_height(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     int block_height
@@ -1127,7 +1145,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_block_index_from_
  * @param[in] chainstate_manager Non-null.
  * @return                       The next block index in the currently active chain, or null on error.
  */
-kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_next_block_index(
+BITCOINKERNEL_API kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_next_block_index(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     const kernel_BlockIndex* block_index
@@ -1140,7 +1158,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_next_block_index(
  * @param[in] block_index Non-null.
  * @return                The previous block index, or null on error or if the current block index is the genesis block.
  */
-kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_previous_block_index(
+BITCOINKERNEL_API kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_previous_block_index(
     const kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -1150,7 +1168,7 @@ kernel_BlockIndex* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_previous_block_in
  * @param[in] block_index Non-null.
  * @return                The block height.
  */
-int32_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_height(
+BITCOINKERNEL_API int32_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_height(
     const kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -1158,7 +1176,7 @@ int32_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_height(
 /**
  * @brief Destroy the block index.
  */
-void kernel_block_index_destroy(kernel_BlockIndex* block_index);
+BITCOINKERNEL_API void kernel_block_index_destroy(kernel_BlockIndex* block_index);
 
 ///@}
 
@@ -1176,7 +1194,7 @@ void kernel_block_index_destroy(kernel_BlockIndex* block_index);
  * @param[in] block_index        Non-null.
  * @return                       The read out block undo data, or null on error.
  */
-kernel_BlockUndo* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_undo_from_disk(
+BITCOINKERNEL_API kernel_BlockUndo* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_undo_from_disk(
     const kernel_Context* context,
     kernel_ChainstateManager* chainstate_manager,
     const kernel_BlockIndex* block_index
@@ -1189,7 +1207,7 @@ kernel_BlockUndo* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_read_block_undo_from_d
  * @param[in] block_undo Non-null.
  * @return               The number of transaction undo data in the block undo.
  */
-uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_undo_size(
+BITCOINKERNEL_API uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_undo_size(
     const kernel_BlockUndo* block_undo
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -1201,7 +1219,7 @@ uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_undo_size(
  * @param[in] transaction_undo_index The index of the transaction undo data within the block undo data.
  * @return                           The number of previous transaction outputs in the transaction.
  */
-uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_transaction_undo_size(
+BITCOINKERNEL_API uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_transaction_undo_size(
     const kernel_BlockUndo* block_undo,
     uint64_t transaction_undo_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
@@ -1216,7 +1234,7 @@ uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_transaction_undo_size(
  *                                   transaction undo data.
  * @return                           A transaction output pointer, or null on error.
  */
-kernel_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_undo_output_by_index(
+BITCOINKERNEL_API kernel_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_undo_output_by_index(
     const kernel_BlockUndo* block_undo,
     uint64_t transaction_undo_index,
     uint64_t output_index
@@ -1225,7 +1243,7 @@ kernel_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_undo_outpu
 /**
  * Destroy the block undo data.
  */
-void kernel_block_undo_destroy(kernel_BlockUndo* block_undo);
+BITCOINKERNEL_API void kernel_block_undo_destroy(kernel_BlockUndo* block_undo);
 
 ///@}
 
@@ -1240,14 +1258,14 @@ void kernel_block_undo_destroy(kernel_BlockUndo* block_undo);
  * @param[in] block_index Non-null.
  * @return    The block hash.
  */
-kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_block_hash(
+BITCOINKERNEL_API kernel_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_block_index_get_block_hash(
     const kernel_BlockIndex* block_index
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * Destroy the block hash.
  */
-void kernel_block_hash_destroy(kernel_BlockHash* block_hash);
+BITCOINKERNEL_API void kernel_block_hash_destroy(kernel_BlockHash* block_hash);
 
 ///@}
 
