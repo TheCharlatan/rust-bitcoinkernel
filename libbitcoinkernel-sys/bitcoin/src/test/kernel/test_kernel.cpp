@@ -373,21 +373,10 @@ void chainman_test()
     TestKernelNotifications notifications{};
     auto context{create_context(notifications, kernel_ChainType::kernel_CHAIN_TYPE_MAINNET)};
 
-    // Check that creating invalid options gives us an error
-    {
-        ChainstateManagerOptions opts{context, "////\\\\"};
-        assert(!opts);
-    }
-
-    {
-        BlockManagerOptions opts{context, "////\\\\"};
-        assert(!opts);
-    }
-
-    ChainstateManagerOptions chainman_opts{context, test_directory.m_directory};
+    ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string()};
     assert(chainman_opts);
     chainman_opts.SetWorkerThreads(4);
-    BlockManagerOptions blockman_opts{context, test_directory.m_directory / "blocks"};
+    BlockManagerOptions blockman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
     assert(blockman_opts);
     ChainstateLoadOptions chainstate_load_opts{};
 
@@ -402,19 +391,21 @@ std::unique_ptr<ChainMan> create_chainman(TestDirectory& test_directory,
                                           bool chainstate_db_in_memory,
                                           Context& context)
 {
-    ChainstateManagerOptions chainman_opts{context, test_directory.m_directory};
-    BlockManagerOptions blockman_opts{context, test_directory.m_directory / "blocks"};
+    ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string()};
+    assert(chainman_opts);
+    BlockManagerOptions blockman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
+    assert(blockman_opts);
     ChainstateLoadOptions chainstate_load_opts{};
 
     if (reindex) {
-        chainstate_load_opts.SetWipeBlockTreeDb(reindex);
+        blockman_opts.SetWipeBlockTreeDb(reindex);
         chainstate_load_opts.SetWipeChainstateDb(reindex);
     }
     if (wipe_chainstate) {
         chainstate_load_opts.SetWipeChainstateDb(wipe_chainstate);
     }
     if (block_tree_db_in_memory) {
-        chainstate_load_opts.SetBlockTreeDbInMemory(block_tree_db_in_memory);
+        blockman_opts.SetBlockTreeDbInMemory(block_tree_db_in_memory);
     }
     if (chainstate_db_in_memory) {
         chainstate_load_opts.SetChainstateDbInMemory(chainstate_db_in_memory);
@@ -591,7 +582,7 @@ void chainman_reindex_chainstate_test(TestDirectory& test_directory)
     auto chainman{create_chainman(test_directory, false, true, false, false, context)};
 
     std::vector<std::string> import_files;
-    import_files.push_back(test_directory.m_directory / "blocks" / "blk00000.dat");
+    import_files.push_back((test_directory.m_directory / "blocks" / "blk00000.dat").string());
     chainman->ImportBlocks(import_files);
 }
 

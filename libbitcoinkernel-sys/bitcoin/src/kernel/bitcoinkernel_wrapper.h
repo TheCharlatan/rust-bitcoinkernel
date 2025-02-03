@@ -422,9 +422,19 @@ private:
     std::unique_ptr<kernel_BlockManagerOptions, Deleter> m_options;
 
 public:
-    BlockManagerOptions(const Context& context, const std::string& data_dir) noexcept
-        : m_options{kernel_block_manager_options_create(context.m_context.get(), data_dir.c_str(), data_dir.length())}
+    BlockManagerOptions(const Context& context, const std::string& data_dir, const std::string& blocks_dir) noexcept
+        : m_options{kernel_block_manager_options_create(context.m_context.get(), data_dir.c_str(), data_dir.length(), blocks_dir.c_str(), blocks_dir.length())}
     {
+    }
+
+    void SetWipeBlockTreeDb(bool wipe_block_tree) const noexcept
+    {
+        kernel_block_manager_options_set_wipe_block_tree_db(m_options.get(), wipe_block_tree);
+    }
+
+    void SetBlockTreeDbInMemory(bool block_tree_db_in_memory) const noexcept
+    {
+        kernel_block_manager_options_set_block_tree_db_in_memory(m_options.get(), block_tree_db_in_memory);
     }
 
     /** Check whether this BlockManagerOptions object is valid. */
@@ -451,11 +461,6 @@ public:
     {
     }
 
-    void SetWipeBlockTreeDb(bool wipe_block_tree) const noexcept
-    {
-        kernel_chainstate_load_options_set_wipe_block_tree_db(m_options.get(), wipe_block_tree);
-    }
-
     void SetWipeChainstateDb(bool wipe_chainstate) const noexcept
     {
         kernel_chainstate_load_options_set_wipe_chainstate_db(m_options.get(), wipe_chainstate);
@@ -464,11 +469,6 @@ public:
     void SetChainstateDbInMemory(bool chainstate_db_in_memory) const noexcept
     {
         kernel_chainstate_load_options_set_chainstate_db_in_memory(m_options.get(), chainstate_db_in_memory);
-    }
-
-    void SetBlockTreeDbInMemory(bool block_tree_db_in_memory) const noexcept
-    {
-        kernel_chainstate_load_options_set_block_tree_db_in_memory(m_options.get(), block_tree_db_in_memory);
     }
 
     friend class ChainMan;

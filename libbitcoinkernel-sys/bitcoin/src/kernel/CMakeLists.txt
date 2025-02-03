@@ -90,16 +90,6 @@ target_link_libraries(bitcoinkernel
     Boost::headers
 )
 
-# libbitcoinkernel requires default symbol visibility, explicitly
-# specify that here so that things still work even when user
-# configures with -DREDUCE_EXPORTS=ON
-#
-# Note this is a quick hack that will be removed as we
-# incrementally define what to export from the library.
-set_target_properties(bitcoinkernel PROPERTIES
-  CXX_VISIBILITY_PRESET default
-)
-
 # When building the static library, install all static libraries the
 # bitcoinkernel depends on.
 if(NOT BUILD_SHARED_LIBS)
@@ -144,17 +134,3 @@ install(TARGETS bitcoinkernel
 )
 
 install(FILES bitcoinkernel.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT Kernel)
-
-add_executable(kernel-bitcoin-chainstate
-    bitcoin-chainstate.cpp
-)
-
-target_link_libraries(kernel-bitcoin-chainstate
-  PRIVATE
-    core_interface
-    bitcoinkernel
-)
-
-set_target_properties(kernel-bitcoin-chainstate PROPERTIES
-  SKIP_BUILD_RPATH OFF
-)

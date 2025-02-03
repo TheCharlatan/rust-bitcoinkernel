@@ -1,6 +1,9 @@
 // Copyright (c) 2022-present The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
+#define BITCOINKERNEL_BUILD
+
 #include <kernel/bitcoinkernel.h>
 
 #include <chain.h>
@@ -334,6 +337,12 @@ const node::BlockManager::Options* cast_const_block_manager_options(const kernel
     return reinterpret_cast<const node::BlockManager::Options*>(options);
 }
 
+node::BlockManager::Options* cast_block_manager_options(kernel_BlockManagerOptions* options)
+{
+    assert(options);
+    return reinterpret_cast<node::BlockManager::Options*>(options);
+}
+
 ChainstateManager* cast_chainstate_manager(kernel_ChainstateManager* chainman)
 {
     assert(chainman);
@@ -545,7 +554,7 @@ kernel_LoggingConnection* kernel_logging_connection_create(kernel_LogCallback ca
             LogInstance().DeleteCallback(connection);
             return nullptr;
         }
-    } catch (std::exception& e) {
+    } catch (std::exception&) {
         LogError("Logger start failed.");
         LogInstance().DeleteCallback(connection);
         return nullptr;
@@ -730,19 +739,26 @@ void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* 
     }
 }
 
-kernel_BlockManagerOptions* kernel_block_manager_options_create(const kernel_Context* context_, const char* blocks_dir, size_t blocks_dir_len)
+kernel_BlockManagerOptions* kernel_block_manager_options_create(const kernel_Context* context_, const char* data_dir, size_t data_dir_len, const char* blocks_dir, size_t blocks_dir_len)
 {
     try {
         fs::path abs_blocks_dir{fs::absolute(fs::PathFromString({blocks_dir, blocks_dir_len}))};
         fs::create_directories(abs_blocks_dir);
+        fs::path abs_data_dir{fs::absolute(fs::PathFromString({data_dir, data_dir_len}))};
+        fs::create_directories(abs_data_dir);
         auto context{cast_const_context(context_)};
         if (!context) {
             return nullptr;
         }
+        kernel::CacheSizes cache_sizes{DEFAULT_KERNEL_CACHE};
         return reinterpret_cast<kernel_BlockManagerOptions*>(new node::BlockManager::Options{
             .chainparams = *context->m_chainparams,
             .blocks_dir = abs_blocks_dir,
-            .notifications = *context->m_notifications});
+            .notifications = *context->m_notifications,
+            .block_tree_db_params = DBParams{
+                .path = abs_data_dir / "blocks" / "index",
+                .cache_bytes = cache_sizes.block_tree_db,
+            }});
     } catch (const std::exception& e) {
         LogError("Failed to create block manager options; %s", e.what());
         return nullptr;
@@ -762,12 +778,12 @@ kernel_ChainstateLoadOptions* kernel_chainstate_load_options_create()
 }
 
 
-void kernel_chainstate_load_options_set_wipe_block_tree_db(
-    kernel_ChainstateLoadOptions* chainstate_load_opts_,
+void kernel_block_manager_options_set_wipe_block_tree_db(
+    kernel_BlockManagerOptions* block_manager_options_,
     bool wipe_block_tree_db)
 {
-    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
-    chainstate_load_opts->wipe_block_tree_db = wipe_block_tree_db;
+    auto block_manager_options{cast_block_manager_options(block_manager_options_)};
+    block_manager_options->block_tree_db_params.wipe_data = wipe_block_tree_db;
 }
 
 void kernel_chainstate_load_options_set_wipe_chainstate_db(
@@ -778,12 +794,12 @@ void kernel_chainstate_load_options_set_wipe_chainstate_db(
     chainstate_load_opts->wipe_chainstate_db = wipe_chainstate_db;
 }
 
-void kernel_chainstate_load_options_set_block_tree_db_in_memory(
-    kernel_ChainstateLoadOptions* chainstate_load_opts_,
+void kernel_block_manager_options_set_block_tree_db_in_memory(
+    kernel_BlockManagerOptions* chainstate_load_opts_,
     bool block_tree_db_in_memory)
 {
-    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
-    chainstate_load_opts->block_tree_db_in_memory = block_tree_db_in_memory;
+    auto block_manager_options{cast_block_manager_options(chainstate_load_opts_)};
+    block_manager_options->block_tree_db_params.memory_only = block_tree_db_in_memory;
 }
 
 void kernel_chainstate_load_options_set_chainstate_db_in_memory(
@@ -823,7 +839,7 @@ kernel_ChainstateManager* kernel_chainstate_manager_create(
     try {
         const auto& chainstate_load_opts{*cast_const_chainstate_load_options(chainstate_load_opts_)};
 
-        if (chainstate_load_opts.wipe_block_tree_db && !chainstate_load_opts.wipe_chainstate_db) {
+        if (blockman_opts->block_tree_db_params.wipe_data && !chainstate_load_opts.wipe_chainstate_db) {
             LogWarning("Wiping the block tree db without also wiping the chainstate db is currently unsupported.");
             kernel_chainstate_manager_destroy(reinterpret_cast<kernel_ChainstateManager*>(chainman), context_);
             return nullptr;
@@ -911,7 +927,7 @@ kernel_Block* kernel_block_create(const unsigned char* raw_block, size_t raw_blo
 
     try {
         stream >> TX_WITH_WITNESS(*block);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         delete block;
         LogDebug(BCLog::KERNEL, "Block decode failed.");
         return nullptr;
@@ -1057,8 +1073,8 @@ kernel_Block* kernel_read_block_from_disk(const kernel_Context* context_,
     const CBlockIndex* block_index{cast_const_block_index(block_index_)};
 
     auto block{new std::shared_ptr<CBlock>(new CBlock{})};
-    if (!chainman->m_blockman.ReadBlockFromDisk(**block, *block_index)) {
-        LogError("Failed to read block from disk.");
+    if (!chainman->m_blockman.ReadBlock(**block, *block_index)) {
+        LogError("Failed to read block.");
         return nullptr;
     }
     return reinterpret_cast<kernel_Block*>(block);
@@ -1076,8 +1092,8 @@ kernel_BlockUndo* kernel_read_block_undo_from_disk(const kernel_Context* context
         return nullptr;
     }
     auto block_undo{new CBlockUndo{}};
-    if (!chainman->m_blockman.UndoReadFromDisk(*block_undo, *block_index)) {
-        LogError("Failed to read undo data from disk.");
+    if (!chainman->m_blockman.ReadBlockUndo(*block_undo, *block_index)) {
+        LogError("Failed to read block undo data.");
         return nullptr;
     }
     return reinterpret_cast<kernel_BlockUndo*>(block_undo);
