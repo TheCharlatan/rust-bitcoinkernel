@@ -5,8 +5,7 @@ mod tests {
         verify, Block, BlockHash, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
         ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
         ContextBuilder, KernelError, KernelNotificationInterfaceCallbacks, Log, Logger,
-        ScriptPubkey, Transaction, TxOut, ValidationInterfaceCallbacks,
-        VERIFY_ALL_PRE_TAPROOT,
+        ScriptPubkey, Transaction, TxOut, ValidationInterfaceCallbacks, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -116,7 +115,9 @@ mod tests {
         }
 
         let chainstate_load_options = ChainstateLoadOptions::new().set_wipe_chainstate_db(true);
-        let block_manager_options = BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap().set_wipe_block_tree_db(true);
+        let block_manager_options = BlockManagerOptions::new(&context, &data_dir, &blocks_dir)
+            .unwrap()
+            .set_wipe_block_tree_db(true);
 
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
