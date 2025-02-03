@@ -229,7 +229,7 @@ fn main() {
     let blocks_dir = data_dir.clone() + "/blocks";
     let chainman = ChainstateManager::new(
         ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-        BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+        BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
         ChainstateLoadOptions::new(),
         Arc::clone(&context),
     )

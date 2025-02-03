@@ -894,12 +894,16 @@ impl BlockManagerOptions {
     ///
     /// # Arguments
     /// * `context` -  The [`ChainstateManager`] for which these options are created has to use the same [`Context`].
+    /// * `data_dir` - The same directory used to instantiate the [`ChainstateManagerOptions`]
     /// * `blocks_dir` - The directory into which the [`ChainstateManager`] will write its block data.
-    pub fn new(context: &Context, blocks_dir: &str) -> Result<Self, KernelError> {
+    pub fn new(context: &Context, data_dir: &str, blocks_dir: &str) -> Result<Self, KernelError> {
+        let c_data_dir = CString::new(data_dir)?;
         let c_blocks_dir = CString::new(blocks_dir)?;
         let inner = unsafe {
             kernel_block_manager_options_create(
                 context.inner,
+                c_data_dir.as_ptr().cast::<i8>(),
+                c_data_dir.count_bytes(),
                 c_blocks_dir.as_ptr().cast::<i8>(),
                 c_blocks_dir.count_bytes(),
             )
@@ -910,6 +914,23 @@ impl BlockManagerOptions {
             ));
         }
         Ok(Self { inner })
+    }
+
+    pub fn set_wipe_block_tree_db(self, wipe_blocktree: bool) -> Self {
+        unsafe {
+            kernel_block_manager_options_set_wipe_block_tree_db(self.inner, wipe_blocktree);
+        }
+        self
+    }
+
+    pub fn set_block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Self {
+        unsafe {
+            kernel_block_manager_options_set_block_tree_db_in_memory(
+                self.inner,
+                block_tree_db_in_memory,
+            );
+        }
+        self
     }
 }
 
@@ -933,14 +954,6 @@ impl ChainstateLoadOptions {
         }
     }
 
-    pub fn set_reindex(self, reindex: bool) -> Self {
-        unsafe {
-            kernel_chainstate_load_options_set_wipe_block_tree_db(self.inner, reindex);
-            kernel_chainstate_load_options_set_wipe_chainstate_db(self.inner, reindex);
-        }
-        self
-    }
-
     pub fn set_wipe_chainstate_db(self, wipe_chainstate: bool) -> Self {
         unsafe {
             kernel_chainstate_load_options_set_wipe_chainstate_db(self.inner, wipe_chainstate);
@@ -953,16 +966,6 @@ impl ChainstateLoadOptions {
             kernel_chainstate_load_options_set_chainstate_db_in_memory(
                 self.inner,
                 chainstate_db_in_memory,
-            );
-        }
-        self
-    }
-
-    pub fn set_block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Self {
-        unsafe {
-            kernel_chainstate_load_options_set_block_tree_db_in_memory(
-                self.inner,
-                block_tree_db_in_memory,
             );
         }
         self

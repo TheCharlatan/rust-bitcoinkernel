@@ -88,11 +88,11 @@ fuzz_target!(|data: ChainstateManagerInput| {
         Err(err) => panic!("this should never happen: {}", err),
     };
     chainman_opts.set_worker_threads(data.worker_threads);
-    let blockman_opts = BlockManagerOptions::new(&context, &blocks_dir).unwrap();
+    let blockman_opts = BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap()
+            .set_wipe_block_tree_db(data.wipe_block_index)
+            .set_block_tree_db_in_memory(data.block_tree_db_in_memory);
     let chainstate_load_opts = ChainstateLoadOptions::new()
-            .set_reindex(data.wipe_block_index)
             .set_wipe_chainstate_db(data.wipe_chainstate_index)
-            .set_block_tree_db_in_memory(data.block_tree_db_in_memory)
             .set_chainstate_db_in_memory(data.chainstate_db_in_memory);
     let chainman = match ChainstateManager::new(chainman_opts, blockman_opts, chainstate_load_opts, Arc::clone(&context)) {
         Err(KernelError::Internal(_)) => {

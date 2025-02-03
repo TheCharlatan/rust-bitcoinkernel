@@ -102,7 +102,7 @@ mod tests {
 
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-                BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+                BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
                 ChainstateLoadOptions::new(),
                 Arc::clone(&context),
             )
@@ -115,13 +115,13 @@ mod tests {
             }
         }
 
-        let chainstate_load_options = ChainstateLoadOptions::new();
-        chainstate_load_options.set_reindex(true);
+        let chainstate_load_options = ChainstateLoadOptions::new().set_wipe_chainstate_db(true);
+        let block_manager_options = BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap().set_wipe_block_tree_db(true);
 
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
-            ChainstateLoadOptions::new(),
+            block_manager_options,
+            chainstate_load_options,
             Arc::clone(&context),
         )
         .unwrap();
@@ -136,7 +136,7 @@ mod tests {
         for _ in 0..10 {
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-                BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+                BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
                 ChainstateLoadOptions::new(),
                 Arc::clone(&context),
             )
@@ -185,7 +185,7 @@ mod tests {
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
             ChainstateLoadOptions::new(),
             Arc::clone(&context),
         )
@@ -255,7 +255,7 @@ mod tests {
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
             ChainstateLoadOptions::new(),
             Arc::clone(&context),
         )
@@ -276,7 +276,7 @@ mod tests {
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            BlockManagerOptions::new(&context, &blocks_dir).unwrap(),
+            BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
             ChainstateLoadOptions::new(),
             Arc::clone(&context),
         )
