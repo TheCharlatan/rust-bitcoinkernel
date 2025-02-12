@@ -2,10 +2,10 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use bitcoinkernel::{
-        verify, Block, BlockHash, BlockManagerOptions, BlockUndo, ChainParams, ChainType,
-        ChainstateLoadOptions, ChainstateManager, ChainstateManagerOptions, Context,
-        ContextBuilder, KernelError, KernelNotificationInterfaceCallbacks, Log, Logger,
-        ScriptPubkey, Transaction, TxOut, ValidationInterfaceCallbacks, VERIFY_ALL_PRE_TAPROOT,
+        verify, Block, BlockHash, BlockUndo, ChainParams, ChainType, ChainstateManager,
+        ChainstateManagerOptions, Context, ContextBuilder, KernelError,
+        KernelNotificationInterfaceCallbacks, Log, Logger, ScriptPubkey, Transaction, TxOut,
+        ValidationInterfaceCallbacks, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -100,9 +100,7 @@ mod tests {
             let block_data = read_block_data();
 
             let chainman = ChainstateManager::new(
-                ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-                BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-                ChainstateLoadOptions::new(),
+                ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
                 Arc::clone(&context),
             )
             .unwrap();
@@ -114,18 +112,11 @@ mod tests {
             }
         }
 
-        let chainstate_load_options = ChainstateLoadOptions::new().set_wipe_chainstate_db(true);
-        let block_manager_options = BlockManagerOptions::new(&context, &data_dir, &blocks_dir)
+        let chainman_opts = ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir)
             .unwrap()
-            .set_wipe_block_tree_db(true);
+            .set_wipe_db(false, true);
 
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            block_manager_options,
-            chainstate_load_options,
-            Arc::clone(&context),
-        )
-        .unwrap();
+        let chainman = ChainstateManager::new(chainman_opts, Arc::clone(&context)).unwrap();
         chainman.import_blocks().unwrap();
         drop(chainman);
     }
@@ -136,9 +127,7 @@ mod tests {
         let blocks_dir = data_dir.clone() + "/blocks";
         for _ in 0..10 {
             let chainman = ChainstateManager::new(
-                ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-                BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-                ChainstateLoadOptions::new(),
+                ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
                 Arc::clone(&context),
             )
             .unwrap();
@@ -185,9 +174,7 @@ mod tests {
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-            ChainstateLoadOptions::new(),
+            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
             Arc::clone(&context),
         )
         .unwrap();
@@ -255,9 +242,7 @@ mod tests {
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-            ChainstateLoadOptions::new(),
+            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
             Arc::clone(&context),
         )
         .unwrap();
@@ -276,9 +261,7 @@ mod tests {
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-            BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-            ChainstateLoadOptions::new(),
+            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
             Arc::clone(&context),
         )
         .unwrap();

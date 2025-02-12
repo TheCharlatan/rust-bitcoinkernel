@@ -7,8 +7,8 @@ use bitcoin::consensus::deserialize;
 use bitcoin::hashes::Hash;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
 use bitcoinkernel::{
-    BlockManagerOptions, ChainType, ChainstateLoadOptions, ChainstateManager,
-    ChainstateManagerOptions, Context, ContextBuilder, KernelError, Log, Logger,
+    ChainType, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,
+    Log, Logger,
 };
 use env_logger::Builder;
 use log::LevelFilter;
@@ -228,9 +228,7 @@ fn main() {
     let data_dir = args[1].clone();
     let blocks_dir = data_dir.clone() + "/blocks";
     let chainman = ChainstateManager::new(
-        ChainstateManagerOptions::new(&context, &data_dir).unwrap(),
-        BlockManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        ChainstateLoadOptions::new(),
+        ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
         Arc::clone(&context),
     )
     .unwrap();

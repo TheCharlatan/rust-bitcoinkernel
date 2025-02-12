@@ -851,13 +851,16 @@ impl ChainstateManagerOptions {
     /// # Arguments
     /// * `context` -  The [`ChainstateManager`] for which these options are created has to use the same [`Context`].
     /// * `data_dir` - The directory into which the [`ChainstateManager`] will write its data.
-    pub fn new(context: &Context, data_dir: &str) -> Result<Self, KernelError> {
+    pub fn new(context: &Context, data_dir: &str, blocks_dir: &str) -> Result<Self, KernelError> {
         let c_data_dir = CString::new(data_dir)?;
+        let c_blocks_dir = CString::new(blocks_dir)?;
         let inner = unsafe {
             kernel_chainstate_manager_options_create(
                 context.inner,
                 c_data_dir.as_ptr().cast::<i8>(),
                 c_data_dir.count_bytes(),
+                c_blocks_dir.as_ptr().cast::<i8>(),
+                c_blocks_dir.count_bytes(),
             )
         };
         if inner.is_null() {
@@ -868,113 +871,47 @@ impl ChainstateManagerOptions {
         Ok(Self { inner })
     }
 
+    /// Set the number of worker threads used by script validation
     pub fn set_worker_threads(&self, worker_threads: i32) {
         unsafe {
             kernel_chainstate_manager_options_set_worker_threads_num(self.inner, worker_threads);
         }
     }
-}
 
-impl Drop for ChainstateManagerOptions {
-    fn drop(&mut self) {
+    /// Wipe the block tree or chainstate dbs. When wiping the block tree db the
+    /// chainstate db has to be wiped too. Wiping the databases will triggere a
+    /// rebase once import blocks is called.
+    pub fn set_wipe_db(self, wipe_block_tree: bool, wipe_chainstate: bool) -> Self {
         unsafe {
-            kernel_chainstate_manager_options_destroy(self.inner);
-        }
-    }
-}
-
-/// Holds the configuration options for a BlockManager, which is used internally
-/// by the [`ChainstateManager`]
-pub struct BlockManagerOptions {
-    inner: *mut kernel_BlockManagerOptions,
-}
-
-impl BlockManagerOptions {
-    /// Create a new option
-    ///
-    /// # Arguments
-    /// * `context` -  The [`ChainstateManager`] for which these options are created has to use the same [`Context`].
-    /// * `data_dir` - The same directory used to instantiate the [`ChainstateManagerOptions`]
-    /// * `blocks_dir` - The directory into which the [`ChainstateManager`] will write its block data.
-    pub fn new(context: &Context, data_dir: &str, blocks_dir: &str) -> Result<Self, KernelError> {
-        let c_data_dir = CString::new(data_dir)?;
-        let c_blocks_dir = CString::new(blocks_dir)?;
-        let inner = unsafe {
-            kernel_block_manager_options_create(
-                context.inner,
-                c_data_dir.as_ptr().cast::<i8>(),
-                c_data_dir.count_bytes(),
-                c_blocks_dir.as_ptr().cast::<i8>(),
-                c_blocks_dir.count_bytes(),
-            )
-        };
-        if inner.is_null() {
-            return Err(KernelError::Internal(
-                "Failed to create block manager options.".to_string(),
-            ));
-        }
-        Ok(Self { inner })
-    }
-
-    pub fn set_wipe_block_tree_db(self, wipe_blocktree: bool) -> Self {
-        unsafe {
-            kernel_block_manager_options_set_wipe_block_tree_db(self.inner, wipe_blocktree);
+            kernel_chainstate_manager_options_set_wipe_dbs(
+                self.inner,
+                wipe_block_tree,
+                wipe_chainstate,
+            );
         }
         self
     }
 
+    /// Run the block tree db in-memory only. No database files will be written to disk.
     pub fn set_block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Self {
         unsafe {
-            kernel_block_manager_options_set_block_tree_db_in_memory(
+            kernel_chainstate_manager_options_set_block_tree_db_in_memory(
                 self.inner,
                 block_tree_db_in_memory,
             );
         }
         self
     }
-}
 
-impl Drop for BlockManagerOptions {
-    fn drop(&mut self) {
-        unsafe {
-            kernel_block_manager_options_destroy(self.inner);
-        }
-    }
-}
-
-/// Holds the configuration options for when loading the on disk state of the [`ChainstateManager`].
-pub struct ChainstateLoadOptions {
-    inner: *mut kernel_ChainstateLoadOptions,
-}
-
-impl ChainstateLoadOptions {
-    pub fn new() -> ChainstateLoadOptions {
-        ChainstateLoadOptions {
-            inner: unsafe { kernel_chainstate_load_options_create() },
-        }
-    }
-
-    pub fn set_wipe_chainstate_db(self, wipe_chainstate: bool) -> Self {
-        unsafe {
-            kernel_chainstate_load_options_set_wipe_chainstate_db(self.inner, wipe_chainstate);
-        }
-        self
-    }
-
+    /// Run the chainstate db in-memory only. No database files will be written to disk.
     pub fn set_chainstate_db_in_memory(self, chainstate_db_in_memory: bool) -> Self {
         unsafe {
-            kernel_chainstate_load_options_set_chainstate_db_in_memory(
+            kernel_chainstate_manager_options_set_chainstate_db_in_memory(
                 self.inner,
                 chainstate_db_in_memory,
             );
         }
         self
-    }
-}
-
-impl Drop for ChainstateLoadOptions {
-    fn drop(&mut self) {
-        unsafe { kernel_chainstate_load_options_destroy(self.inner) };
     }
 }
 
@@ -997,18 +934,9 @@ unsafe impl Sync for ChainstateManager {}
 impl<'a> ChainstateManager {
     pub fn new(
         chainman_opts: ChainstateManagerOptions,
-        blockman_opts: BlockManagerOptions,
-        chainstate_load_opts: ChainstateLoadOptions,
         context: Arc<Context>,
     ) -> Result<Self, KernelError> {
-        let inner = unsafe {
-            kernel_chainstate_manager_create(
-                context.inner,
-                chainman_opts.inner,
-                blockman_opts.inner,
-                chainstate_load_opts.inner,
-            )
-        };
+        let inner = unsafe { kernel_chainstate_manager_create(context.inner, chainman_opts.inner) };
         if inner.is_null() {
             return Err(KernelError::Internal(
                 "Failed to create chainstate manager.".to_string(),

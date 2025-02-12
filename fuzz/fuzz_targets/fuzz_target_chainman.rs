@@ -7,9 +7,9 @@ use libfuzzer_sys::fuzz_target;
 use arbitrary::Arbitrary;
 
 use bitcoinkernel::{
-    disable_logging, Block, BlockManagerOptions, ChainType, ChainstateLoadOptions,
-    ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-    KernelNotificationInterfaceCallbacks, ValidationInterfaceCallbacks,
+    disable_logging, Block, ChainType, ChainstateManager, ChainstateManagerOptions, Context,
+    ContextBuilder, KernelError, KernelNotificationInterfaceCallbacks,
+    ValidationInterfaceCallbacks,
 };
 
 fn create_context(chain_type: ChainType) -> Arc<Context> {
@@ -82,25 +82,16 @@ fuzz_target!(|data: ChainstateManagerInput| {
 
     let data_dir = format!("/tmp/rust_kernel_fuzz/{}", sanitized_string);
     let blocks_dir = format!("{}/blocks", data_dir);
-    let chainman_opts = match ChainstateManagerOptions::new(&context, &data_dir) {
+    let chainman_opts = match ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir) {
         Ok(opts) => opts,
         Err(KernelError::CStringCreationFailed(_)) => return,
         Err(err) => panic!("this should never happen: {}", err),
-    };
+    }
+    .set_wipe_db(data.wipe_block_index, data.wipe_chainstate_index)
+    .set_block_tree_db_in_memory(data.block_tree_db_in_memory)
+    .set_chainstate_db_in_memory(data.chainstate_db_in_memory);
     chainman_opts.set_worker_threads(data.worker_threads);
-    let blockman_opts = BlockManagerOptions::new(&context, &data_dir, &blocks_dir)
-        .unwrap()
-        .set_wipe_block_tree_db(data.wipe_block_index)
-        .set_block_tree_db_in_memory(data.block_tree_db_in_memory);
-    let chainstate_load_opts = ChainstateLoadOptions::new()
-        .set_wipe_chainstate_db(data.wipe_chainstate_index)
-        .set_chainstate_db_in_memory(data.chainstate_db_in_memory);
-    let chainman = match ChainstateManager::new(
-        chainman_opts,
-        blockman_opts,
-        chainstate_load_opts,
-        Arc::clone(&context),
-    ) {
+    let chainman = match ChainstateManager::new(chainman_opts, Arc::clone(&context)) {
         Err(KernelError::Internal(_)) => {
             return;
         }
