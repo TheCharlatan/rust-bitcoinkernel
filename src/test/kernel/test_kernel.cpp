@@ -373,14 +373,12 @@ void chainman_test()
     TestKernelNotifications notifications{};
     auto context{create_context(notifications, kernel_ChainType::kernel_CHAIN_TYPE_MAINNET)};
 
-    ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string()};
+    ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
     assert(chainman_opts);
     chainman_opts.SetWorkerThreads(4);
-    BlockManagerOptions blockman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
-    assert(blockman_opts);
-    ChainstateLoadOptions chainstate_load_opts{};
-
-    ChainMan chainman{context, chainman_opts, blockman_opts, chainstate_load_opts};
+    assert(chainman_opts.SetWipeDbs(/*wipe_block_tree=*/false, /*wipe_chainstate=*/false));
+    assert(!chainman_opts.SetWipeDbs(/*wipe_block_tree=*/true, /*wipe_chainstate=*/false));
+    ChainMan chainman{context, chainman_opts};
     assert(chainman);
 }
 
@@ -391,27 +389,23 @@ std::unique_ptr<ChainMan> create_chainman(TestDirectory& test_directory,
                                           bool chainstate_db_in_memory,
                                           Context& context)
 {
-    ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string()};
+    ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
     assert(chainman_opts);
-    BlockManagerOptions blockman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
-    assert(blockman_opts);
-    ChainstateLoadOptions chainstate_load_opts{};
 
     if (reindex) {
-        blockman_opts.SetWipeBlockTreeDb(reindex);
-        chainstate_load_opts.SetWipeChainstateDb(reindex);
+        chainman_opts.SetWipeDbs(/*wipe_block_tree=*/reindex, /*wipe_chainstate=*/reindex);
     }
     if (wipe_chainstate) {
-        chainstate_load_opts.SetWipeChainstateDb(wipe_chainstate);
+        chainman_opts.SetWipeDbs(/*wipe_block_tree=*/false, /*wipe_chainstate=*/wipe_chainstate);
     }
     if (block_tree_db_in_memory) {
-        blockman_opts.SetBlockTreeDbInMemory(block_tree_db_in_memory);
+        chainman_opts.SetBlockTreeDbInMemory(block_tree_db_in_memory);
     }
     if (chainstate_db_in_memory) {
-        chainstate_load_opts.SetChainstateDbInMemory(chainstate_db_in_memory);
+        chainman_opts.SetChainstateDbInMemory(chainstate_db_in_memory);
     }
 
-    auto chainman{std::make_unique<ChainMan>(context, chainman_opts, blockman_opts, chainstate_load_opts)};
+    auto chainman{std::make_unique<ChainMan>(context, chainman_opts)};
     assert(chainman);
     return chainman;
 }
