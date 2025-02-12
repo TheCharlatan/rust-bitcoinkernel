@@ -1,6 +1,6 @@
 [package]
 name = "libbitcoinkernel-sys"
-version = "0.0.13"
+version = "0.0.14"
 edition = "2021"
 authors = ["TheCharlatan <seb.kung@gmail.com>"]
 description = "Raw Rust bindings to libbitcoinkernel"
