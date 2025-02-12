@@ -10,8 +10,8 @@
 #include <memory>
 #include <optional>
 #include <span>
-#include <string_view>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class Transaction
@@ -121,7 +121,7 @@ int verify_script(const ScriptPubkey& script_pubkey,
     if (spent_outputs.size() > 0) {
         raw_spent_outputs.reserve(spent_outputs.size());
 
-        for (const auto& output: spent_outputs) {
+        for (const auto& output : spent_outputs) {
             raw_spent_outputs.push_back(output.m_transaction_output.get());
         }
         spent_outputs_ptr = raw_spent_outputs.data();
@@ -393,8 +393,8 @@ private:
     std::unique_ptr<kernel_ChainstateManagerOptions, Deleter> m_options;
 
 public:
-    ChainstateManagerOptions(const Context& context, const std::string& data_dir) noexcept
-        : m_options{kernel_chainstate_manager_options_create(context.m_context.get(), data_dir.c_str(), data_dir.length())}
+    ChainstateManagerOptions(const Context& context, const std::string& data_dir, const std::string& blocks_dir) noexcept
+        : m_options{kernel_chainstate_manager_options_create(context.m_context.get(), data_dir.c_str(), data_dir.length(), blocks_dir.c_str(), blocks_dir.length())}
     {
     }
 
@@ -403,73 +403,23 @@ public:
         kernel_chainstate_manager_options_set_worker_threads_num(m_options.get(), worker_threads);
     }
 
-    /** Check whether this ChainstateManagerOptions object is valid. */
-    explicit operator bool() const noexcept { return bool{m_options}; }
-
-    friend class ChainMan;
-};
-
-class BlockManagerOptions
-{
-private:
-    struct Deleter {
-        void operator()(kernel_BlockManagerOptions* ptr) const
-        {
-            kernel_block_manager_options_destroy(ptr);
-        }
-    };
-
-    std::unique_ptr<kernel_BlockManagerOptions, Deleter> m_options;
-
-public:
-    BlockManagerOptions(const Context& context, const std::string& data_dir, const std::string& blocks_dir) noexcept
-        : m_options{kernel_block_manager_options_create(context.m_context.get(), data_dir.c_str(), data_dir.length(), blocks_dir.c_str(), blocks_dir.length())}
+    bool SetWipeDbs(bool wipe_block_tree, bool wipe_chainstate) const noexcept
     {
-    }
-
-    void SetWipeBlockTreeDb(bool wipe_block_tree) const noexcept
-    {
-        kernel_block_manager_options_set_wipe_block_tree_db(m_options.get(), wipe_block_tree);
+        return kernel_chainstate_manager_options_set_wipe_dbs(m_options.get(), wipe_block_tree, wipe_chainstate);
     }
 
     void SetBlockTreeDbInMemory(bool block_tree_db_in_memory) const noexcept
     {
-        kernel_block_manager_options_set_block_tree_db_in_memory(m_options.get(), block_tree_db_in_memory);
-    }
-
-    /** Check whether this BlockManagerOptions object is valid. */
-    explicit operator bool() const noexcept { return bool{m_options}; }
-
-    friend class ChainMan;
-};
-
-class ChainstateLoadOptions
-{
-private:
-    struct Deleter {
-        void operator()(kernel_ChainstateLoadOptions* ptr) const
-        {
-            kernel_chainstate_load_options_destroy(ptr);
-        }
-    };
-
-    const std::unique_ptr<kernel_ChainstateLoadOptions, Deleter> m_options;
-
-public:
-    ChainstateLoadOptions() noexcept
-        : m_options{kernel_chainstate_load_options_create()}
-    {
-    }
-
-    void SetWipeChainstateDb(bool wipe_chainstate) const noexcept
-    {
-        kernel_chainstate_load_options_set_wipe_chainstate_db(m_options.get(), wipe_chainstate);
+        kernel_chainstate_manager_options_set_block_tree_db_in_memory(m_options.get(), block_tree_db_in_memory);
     }
 
     void SetChainstateDbInMemory(bool chainstate_db_in_memory) const noexcept
     {
-        kernel_chainstate_load_options_set_chainstate_db_in_memory(m_options.get(), chainstate_db_in_memory);
+        kernel_chainstate_manager_options_set_chainstate_db_in_memory(m_options.get(), chainstate_db_in_memory);
     }
+
+    /** Check whether this ChainstateManagerOptions object is valid. */
+    explicit operator bool() const noexcept { return bool{m_options}; }
 
     friend class ChainMan;
 };
@@ -606,12 +556,8 @@ private:
     const Context& m_context;
 
 public:
-    ChainMan(const Context& context, const ChainstateManagerOptions& chainman_opts, const BlockManagerOptions& blockman_opts, ChainstateLoadOptions& chainstate_load_opts) noexcept
-        : m_chainman{kernel_chainstate_manager_create(
-                context.m_context.get(),
-                chainman_opts.m_options.get(),
-                blockman_opts.m_options.get(),
-                chainstate_load_opts.m_options.get())},
+    ChainMan(const Context& context, const ChainstateManagerOptions& chainman_opts) noexcept
+        : m_chainman{kernel_chainstate_manager_create(context.m_context.get(), chainman_opts.m_options.get())},
           m_context{context}
     {
     }

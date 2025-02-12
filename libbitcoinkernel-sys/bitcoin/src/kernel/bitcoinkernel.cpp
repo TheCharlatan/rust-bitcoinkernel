@@ -169,32 +169,32 @@ public:
 
     kernel::InterruptResult blockTip(SynchronizationState state, CBlockIndex& index) override
     {
-        if (m_cbs.block_tip) m_cbs.block_tip((void*) m_cbs.user_data, cast_state(state), reinterpret_cast<const kernel_BlockIndex*>(&index));
+        if (m_cbs.block_tip) m_cbs.block_tip((void*)m_cbs.user_data, cast_state(state), reinterpret_cast<const kernel_BlockIndex*>(&index));
         return {};
     }
     void headerTip(SynchronizationState state, int64_t height, int64_t timestamp, bool presync) override
     {
-        if (m_cbs.header_tip) m_cbs.header_tip((void*) m_cbs.user_data, cast_state(state), height, timestamp, presync);
+        if (m_cbs.header_tip) m_cbs.header_tip((void*)m_cbs.user_data, cast_state(state), height, timestamp, presync);
     }
     void progress(const bilingual_str& title, int progress_percent, bool resume_possible) override
     {
-        if (m_cbs.progress) m_cbs.progress((void*) m_cbs.user_data, title.original.c_str(), title.original.length(), progress_percent, resume_possible);
+        if (m_cbs.progress) m_cbs.progress((void*)m_cbs.user_data, title.original.c_str(), title.original.length(), progress_percent, resume_possible);
     }
     void warningSet(kernel::Warning id, const bilingual_str& message) override
     {
-        if (m_cbs.warning_set) m_cbs.warning_set((void*) m_cbs.user_data, cast_kernel_warning(id), message.original.c_str(), message.original.length());
+        if (m_cbs.warning_set) m_cbs.warning_set((void*)m_cbs.user_data, cast_kernel_warning(id), message.original.c_str(), message.original.length());
     }
     void warningUnset(kernel::Warning id) override
     {
-        if (m_cbs.warning_unset) m_cbs.warning_unset((void*) m_cbs.user_data, cast_kernel_warning(id));
+        if (m_cbs.warning_unset) m_cbs.warning_unset((void*)m_cbs.user_data, cast_kernel_warning(id));
     }
     void flushError(const bilingual_str& message) override
     {
-        if (m_cbs.flush_error) m_cbs.flush_error((void*) m_cbs.user_data, message.original.c_str(), message.original.length());
+        if (m_cbs.flush_error) m_cbs.flush_error((void*)m_cbs.user_data, message.original.c_str(), message.original.length());
     }
     void fatalError(const bilingual_str& message) override
     {
-        if (m_cbs.fatal_error) m_cbs.fatal_error((void*) m_cbs.user_data, message.original.c_str(), message.original.length());
+        if (m_cbs.fatal_error) m_cbs.fatal_error((void*)m_cbs.user_data, message.original.c_str(), message.original.length());
     }
 };
 
@@ -209,7 +209,7 @@ protected:
     void BlockChecked(const CBlock& block, const BlockValidationState& stateIn) override
     {
         if (m_cbs.block_checked) {
-            m_cbs.block_checked((void*) m_cbs.user_data,
+            m_cbs.block_checked((void*)m_cbs.user_data,
                                 reinterpret_cast<const kernel_BlockPointer*>(&block),
                                 reinterpret_cast<const kernel_BlockValidationState*>(&stateIn));
         }
@@ -271,6 +271,31 @@ public:
     }
 };
 
+//! Helper struct to wrap the ChainstateManager-related Options
+struct ChainstateManagerOptions {
+    ChainstateManager::Options m_chainman_options;
+    node::BlockManager::Options m_blockman_options;
+    node::ChainstateLoadOptions m_chainstate_load_options;
+
+    ChainstateManagerOptions(const Context* context, const fs::path& data_dir, const fs::path& blocks_dir)
+        : m_chainman_options{ChainstateManager::Options{
+              .chainparams = *context->m_chainparams,
+              .datadir = data_dir,
+              .notifications = *context->m_notifications,
+              .signals = context->m_signals.get()}},
+          m_blockman_options{node::BlockManager::Options{
+              .chainparams = *context->m_chainparams,
+              .blocks_dir = blocks_dir,
+              .notifications = *context->m_notifications,
+              .block_tree_db_params = DBParams{
+                  .path = data_dir / "blocks" / "index",
+                  .cache_bytes = kernel::CacheSizes{DEFAULT_KERNEL_CACHE}.block_tree_db,
+              }}},
+          m_chainstate_load_options{node::ChainstateLoadOptions{}}
+    {
+    }
+};
+
 const CTransaction* cast_transaction(const kernel_Transaction* transaction)
 {
     assert(transaction);
@@ -319,46 +344,22 @@ const Context* cast_const_context(const kernel_Context* context)
     return reinterpret_cast<const Context*>(context);
 }
 
-const ChainstateManager::Options* cast_const_chainstate_manager_options(const kernel_ChainstateManagerOptions* options)
+const ChainstateManagerOptions* cast_const_chainstate_manager_options(const kernel_ChainstateManagerOptions* options)
 {
     assert(options);
-    return reinterpret_cast<const ChainstateManager::Options*>(options);
+    return reinterpret_cast<const ChainstateManagerOptions*>(options);
 }
 
-ChainstateManager::Options* cast_chainstate_manager_options(kernel_ChainstateManagerOptions* options)
+ChainstateManagerOptions* cast_chainstate_manager_options(kernel_ChainstateManagerOptions* options)
 {
     assert(options);
-    return reinterpret_cast<ChainstateManager::Options*>(options);
-}
-
-const node::BlockManager::Options* cast_const_block_manager_options(const kernel_BlockManagerOptions* options)
-{
-    assert(options);
-    return reinterpret_cast<const node::BlockManager::Options*>(options);
-}
-
-node::BlockManager::Options* cast_block_manager_options(kernel_BlockManagerOptions* options)
-{
-    assert(options);
-    return reinterpret_cast<node::BlockManager::Options*>(options);
+    return reinterpret_cast<ChainstateManagerOptions*>(options);
 }
 
 ChainstateManager* cast_chainstate_manager(kernel_ChainstateManager* chainman)
 {
     assert(chainman);
     return reinterpret_cast<ChainstateManager*>(chainman);
-}
-
-node::ChainstateLoadOptions* cast_chainstate_load_options(kernel_ChainstateLoadOptions* options)
-{
-    assert(options);
-    return reinterpret_cast<node::ChainstateLoadOptions*>(options);
-}
-
-const node::ChainstateLoadOptions* cast_const_chainstate_load_options(const kernel_ChainstateLoadOptions* options)
-{
-    assert(options);
-    return reinterpret_cast<const node::ChainstateLoadOptions*>(options);
 }
 
 std::shared_ptr<CBlock>* cast_cblocksharedpointer(kernel_Block* block)
@@ -453,12 +454,12 @@ void kernel_transaction_output_destroy(kernel_TransactionOutput* output)
 }
 
 bool kernel_verify_script(const kernel_ScriptPubkey* script_pubkey_,
-                         const int64_t amount_,
-                         const kernel_Transaction* tx_to,
-                         const kernel_TransactionOutput** spent_outputs_, size_t spent_outputs_len,
-                         const unsigned int input_index,
-                         const unsigned int flags,
-                         kernel_ScriptVerifyStatus* status)
+                          const int64_t amount_,
+                          const kernel_Transaction* tx_to,
+                          const kernel_TransactionOutput** spent_outputs_, size_t spent_outputs_len,
+                          const unsigned int input_index,
+                          const unsigned int flags,
+                          kernel_ScriptVerifyStatus* status)
 {
     const CAmount amount{amount_};
     const auto& script_pubkey{*cast_script_pubkey(script_pubkey_)};
@@ -545,7 +546,7 @@ kernel_LoggingConnection* kernel_logging_connection_create(kernel_LogCallback ca
     LogInstance().m_log_sourcelocations = options.log_sourcelocations;
     LogInstance().m_always_print_category_level = options.always_print_category_levels;
 
-    auto connection{LogInstance().PushBackCallback([callback, user_data](const std::string& str) { callback((void*) user_data, str.c_str(), str.length()); })};
+    auto connection{LogInstance().PushBackCallback([callback, user_data](const std::string& str) { callback((void*)user_data, str.c_str(), str.length()); })};
 
     try {
         // Only start logging if we just added the connection.
@@ -709,17 +710,15 @@ kernel_BlockValidationResult kernel_get_block_validation_result_from_block_valid
     assert(false);
 }
 
-kernel_ChainstateManagerOptions* kernel_chainstate_manager_options_create(const kernel_Context* context_, const char* data_dir, size_t data_dir_len)
+kernel_ChainstateManagerOptions* kernel_chainstate_manager_options_create(const kernel_Context* context_, const char* data_dir, size_t data_dir_len, const char* blocks_dir, size_t blocks_dir_len)
 {
     try {
         fs::path abs_data_dir{fs::absolute(fs::PathFromString({data_dir, data_dir_len}))};
         fs::create_directories(abs_data_dir);
+        fs::path abs_blocks_dir{fs::absolute(fs::PathFromString({blocks_dir, blocks_dir_len}))};
+        fs::create_directories(abs_blocks_dir);
         auto context{cast_const_context(context_)};
-        return reinterpret_cast<kernel_ChainstateManagerOptions*>(new ChainstateManager::Options{
-            .chainparams = *context->m_chainparams,
-            .datadir = abs_data_dir,
-            .notifications = *context->m_notifications,
-            .signals = context->m_signals.get()});
+        return reinterpret_cast<kernel_ChainstateManagerOptions*>(new ChainstateManagerOptions(context, abs_data_dir, abs_blocks_dir));
     } catch (const std::exception& e) {
         LogError("Failed to create chainstate manager options: %s", e.what());
         return nullptr;
@@ -729,7 +728,7 @@ kernel_ChainstateManagerOptions* kernel_chainstate_manager_options_create(const 
 void kernel_chainstate_manager_options_set_worker_threads_num(kernel_ChainstateManagerOptions* opts_, int worker_threads)
 {
     auto opts{cast_chainstate_manager_options(opts_)};
-    opts->worker_threads_num = worker_threads;
+    opts->m_chainman_options.worker_threads_num = worker_threads;
 }
 
 void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* options)
@@ -739,111 +738,52 @@ void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* 
     }
 }
 
-kernel_BlockManagerOptions* kernel_block_manager_options_create(const kernel_Context* context_, const char* data_dir, size_t data_dir_len, const char* blocks_dir, size_t blocks_dir_len)
+bool kernel_chainstate_manager_options_set_wipe_dbs(kernel_ChainstateManagerOptions* chainman_opts_, bool wipe_block_tree_db, bool wipe_chainstate_db)
 {
-    try {
-        fs::path abs_blocks_dir{fs::absolute(fs::PathFromString({blocks_dir, blocks_dir_len}))};
-        fs::create_directories(abs_blocks_dir);
-        fs::path abs_data_dir{fs::absolute(fs::PathFromString({data_dir, data_dir_len}))};
-        fs::create_directories(abs_data_dir);
-        auto context{cast_const_context(context_)};
-        if (!context) {
-            return nullptr;
-        }
-        kernel::CacheSizes cache_sizes{DEFAULT_KERNEL_CACHE};
-        return reinterpret_cast<kernel_BlockManagerOptions*>(new node::BlockManager::Options{
-            .chainparams = *context->m_chainparams,
-            .blocks_dir = abs_blocks_dir,
-            .notifications = *context->m_notifications,
-            .block_tree_db_params = DBParams{
-                .path = abs_data_dir / "blocks" / "index",
-                .cache_bytes = cache_sizes.block_tree_db,
-            }});
-    } catch (const std::exception& e) {
-        LogError("Failed to create block manager options; %s", e.what());
-        return nullptr;
+    if (wipe_block_tree_db && !wipe_chainstate_db) {
+        LogError("Wiping the block tree db without also wiping the chainstate db is currently unsupported.");
+        return false;
     }
+    auto chainman_opts{cast_chainstate_manager_options(chainman_opts_)};
+    chainman_opts->m_blockman_options.block_tree_db_params.wipe_data = wipe_block_tree_db;
+    chainman_opts->m_chainstate_load_options.wipe_chainstate_db = wipe_chainstate_db;
+    return true;
 }
 
-void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* options)
-{
-    if (options) {
-        delete cast_const_block_manager_options(options);
-    }
-}
-
-kernel_ChainstateLoadOptions* kernel_chainstate_load_options_create()
-{
-    return reinterpret_cast<kernel_ChainstateLoadOptions*>(new node::ChainstateLoadOptions);
-}
-
-
-void kernel_block_manager_options_set_wipe_block_tree_db(
-    kernel_BlockManagerOptions* block_manager_options_,
-    bool wipe_block_tree_db)
-{
-    auto block_manager_options{cast_block_manager_options(block_manager_options_)};
-    block_manager_options->block_tree_db_params.wipe_data = wipe_block_tree_db;
-}
-
-void kernel_chainstate_load_options_set_wipe_chainstate_db(
-    kernel_ChainstateLoadOptions* chainstate_load_opts_,
-    bool wipe_chainstate_db)
-{
-    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
-    chainstate_load_opts->wipe_chainstate_db = wipe_chainstate_db;
-}
-
-void kernel_block_manager_options_set_block_tree_db_in_memory(
-    kernel_BlockManagerOptions* chainstate_load_opts_,
+void kernel_chainstate_manager_options_set_block_tree_db_in_memory(
+    kernel_ChainstateManagerOptions* chainstate_load_opts_,
     bool block_tree_db_in_memory)
 {
-    auto block_manager_options{cast_block_manager_options(chainstate_load_opts_)};
-    block_manager_options->block_tree_db_params.memory_only = block_tree_db_in_memory;
+    auto chainman_opts{cast_chainstate_manager_options(chainstate_load_opts_)};
+    chainman_opts->m_blockman_options.block_tree_db_params.memory_only = block_tree_db_in_memory;
 }
 
-void kernel_chainstate_load_options_set_chainstate_db_in_memory(
-    kernel_ChainstateLoadOptions* chainstate_load_opts_,
+void kernel_chainstate_manager_options_set_chainstate_db_in_memory(
+    kernel_ChainstateManagerOptions* chainstate_load_opts_,
     bool chainstate_db_in_memory)
 {
-    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
-    chainstate_load_opts->coins_db_in_memory = chainstate_db_in_memory;
-}
-
-void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chainstate_load_opts)
-{
-    if (chainstate_load_opts) {
-        delete cast_const_chainstate_load_options(chainstate_load_opts);
-    }
+    auto chainman_opts{cast_chainstate_manager_options(chainstate_load_opts_)};
+    chainman_opts->m_chainstate_load_options.coins_db_in_memory = chainstate_db_in_memory;
 }
 
 kernel_ChainstateManager* kernel_chainstate_manager_create(
     const kernel_Context* context_,
-    const kernel_ChainstateManagerOptions* chainman_opts_,
-    const kernel_BlockManagerOptions* blockman_opts_,
-    const kernel_ChainstateLoadOptions* chainstate_load_opts_)
+    const kernel_ChainstateManagerOptions* chainman_opts_)
 {
     auto chainman_opts{cast_const_chainstate_manager_options(chainman_opts_)};
-    auto blockman_opts{cast_const_block_manager_options(blockman_opts_)};
     auto context{cast_const_context(context_)};
 
     ChainstateManager* chainman;
 
     try {
-        chainman = new ChainstateManager{*context->m_interrupt, *chainman_opts, *blockman_opts};
+        chainman = new ChainstateManager{*context->m_interrupt, chainman_opts->m_chainman_options, chainman_opts->m_blockman_options};
     } catch (const std::exception& e) {
         LogError("Failed to create chainstate manager: %s", e.what());
         return nullptr;
     }
 
     try {
-        const auto& chainstate_load_opts{*cast_const_chainstate_load_options(chainstate_load_opts_)};
-
-        if (blockman_opts->block_tree_db_params.wipe_data && !chainstate_load_opts.wipe_chainstate_db) {
-            LogWarning("Wiping the block tree db without also wiping the chainstate db is currently unsupported.");
-            kernel_chainstate_manager_destroy(reinterpret_cast<kernel_ChainstateManager*>(chainman), context_);
-            return nullptr;
-        }
+        const auto& chainstate_load_opts{chainman_opts->m_chainstate_load_options};
 
         kernel::CacheSizes cache_sizes{DEFAULT_KERNEL_CACHE};
         auto [status, chainstate_err]{node::LoadChainstate(*chainman, cache_sizes, chainstate_load_opts)};
