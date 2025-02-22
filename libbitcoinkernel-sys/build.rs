@@ -51,18 +51,28 @@ fn main() {
         .status()
         .unwrap();
 
-    let pkg_config_path = install_dir.join("lib/pkgconfig");
-    env::set_var("PKG_CONFIG_PATH", pkg_config_path);
+    // Add the lib directory to the search path
+    let lib_dir = install_dir.join("lib");
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
-    let library = pkg_config::Config::new()
-        .statik(true)
-        .probe("libbitcoinkernel")
-        .expect("Failed to find the 'bitcoinkernel' library with pkg-config");
+    // Link all static libraries found in the install directory
+    for entry in std::fs::read_dir(&lib_dir).expect("Library directory has to readable") {
+        let path = entry.unwrap().path();
+        if path.extension().map_or(false, |extension| extension == "a") {
+            if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
+                // Remove the 'lib' prefix from the filename
+                let lib_name = name.strip_prefix("lib").unwrap_or(name);
+                println!("cargo:rustc-link-lib=static={}", lib_name);
+            }
+        }
+    }
 
-    let header = format!("{}/bitcoinkernel.h", library.include_paths[0].display());
+    // Header path for bindgen
+    let include_path = install_dir.join("include");
+    let header = include_path.join("bitcoinkernel.h");
 
     let bindings = bindgen::Builder::default()
-        .header(header)
+        .header(header.to_str().unwrap())
         .generate()
         .expect("Unable to generate bindings");
 
