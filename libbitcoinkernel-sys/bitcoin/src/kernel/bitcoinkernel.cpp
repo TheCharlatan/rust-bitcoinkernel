@@ -149,7 +149,7 @@ kernel_Warning cast_kernel_warning(kernel::Warning warning)
 {
     switch (warning) {
     case kernel::Warning::UNKNOWN_NEW_RULES_ACTIVATED:
-        return kernel_Warning::kernel_LARGE_WORK_INVALID_CHAIN;
+        return kernel_Warning::kernel_UNKNOWN_NEW_RULES_ACTIVATED;
     case kernel::Warning::LARGE_WORK_INVALID_CHAIN:
         return kernel_Warning::kernel_LARGE_WORK_INVALID_CHAIN;
     } // no default case, so the compiler can warn about missing cases
@@ -638,7 +638,6 @@ void kernel_context_options_set_validation_interface(kernel_ContextOptions* opti
 {
     auto options{cast_context_options(options_)};
     options->m_validation_interface = std::make_unique<KernelValidationInterface>(KernelValidationInterface(vi_cbs));
-    // return reinterpret_cast<kernel_ValidationInterface*>(new std::shared_ptr<KernelValidationInterface>(new KernelValidationInterface(vi_cbs)));
 }
 
 void kernel_context_options_destroy(kernel_ContextOptions* options)
