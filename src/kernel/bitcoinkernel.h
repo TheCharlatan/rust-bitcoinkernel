@@ -217,16 +217,6 @@ typedef struct kernel_BlockPointer kernel_BlockPointer;
 typedef struct kernel_BlockValidationState kernel_BlockValidationState;
 
 /**
- * Opaque data structure for holding a validation interface.
- *
- * The validation interface can be registered with the internal task runner of an
- * existing context. It holds callbacks that will be triggered by certain
- * validation events. The callbacks registered with it will block further
- * validation progress when triggered.
- */
-typedef struct kernel_ValidationInterface kernel_ValidationInterface;
-
-/**
  * Opaque data structure for holding a block undo struct.
  *
  * It holds all the previous outputs consumed by all transactions in a specific
