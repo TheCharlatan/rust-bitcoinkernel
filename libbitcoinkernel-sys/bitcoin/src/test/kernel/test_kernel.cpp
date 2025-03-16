@@ -169,9 +169,6 @@ public:
             case kernel_BlockValidationResult::kernel_BLOCK_TIME_FUTURE:
                 std::cout << "block timestamp was > 2 hours in the future (or our clock is bad)" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_CHECKPOINT:
-                std::cout << "the block failed to meet one of our checkpoints" << std::endl;
-                break;
             }
             return;
         }
@@ -318,15 +315,15 @@ void logging_test()
         .always_print_category_levels = true,
     };
 
-    assert(kernel_add_log_level_category(kernel_LogCategory::kernel_LOG_BENCH, kernel_LogLevel::kernel_LOG_TRACE));
-    assert(kernel_disable_log_category(kernel_LogCategory::kernel_LOG_BENCH));
-    assert(kernel_enable_log_category(kernel_LogCategory::kernel_LOG_VALIDATION));
-    assert(kernel_disable_log_category(kernel_LogCategory::kernel_LOG_VALIDATION));
+    kernel_add_log_level_category(kernel_LogCategory::kernel_LOG_BENCH, kernel_LogLevel::kernel_LOG_TRACE);
+    kernel_disable_log_category(kernel_LogCategory::kernel_LOG_BENCH);
+    kernel_enable_log_category(kernel_LogCategory::kernel_LOG_VALIDATION);
+    kernel_disable_log_category(kernel_LogCategory::kernel_LOG_VALIDATION);
 
     // Check that connecting, connecting another, and then disconnecting and connecting a logger again works.
     {
-        assert(kernel_add_log_level_category(kernel_LogCategory::kernel_LOG_KERNEL, kernel_LogLevel::kernel_LOG_TRACE));
-        assert(kernel_enable_log_category(kernel_LogCategory::kernel_LOG_KERNEL));
+        kernel_add_log_level_category(kernel_LogCategory::kernel_LOG_KERNEL, kernel_LogLevel::kernel_LOG_TRACE);
+        kernel_enable_log_category(kernel_LogCategory::kernel_LOG_KERNEL);
         Logger logger{std::make_unique<TestLog>(TestLog{}), logging_options};
         assert(logger);
         Logger logger_2{std::make_unique<TestLog>(TestLog{}), logging_options};

@@ -608,7 +608,8 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-checkblockindex", strprintf("Do a consistency check for the block tree, chainstate, and other validation data structures every <n> operations. Use 0 to disable. (default: %u, regtest: %u)", defaultChainParams->DefaultConsistencyChecks(), regtestChainParams->DefaultConsistencyChecks()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     argsman.AddArg("-checkaddrman=<n>", strprintf("Run addrman consistency checks every <n> operations. Use 0 to disable. (default: %u)", DEFAULT_ADDRMAN_CONSISTENCY_CHECKS), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     argsman.AddArg("-checkmempool=<n>", strprintf("Run mempool consistency checks every <n> transactions. Use 0 to disable. (default: %u, regtest: %u)", defaultChainParams->DefaultConsistencyChecks(), regtestChainParams->DefaultConsistencyChecks()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
-    argsman.AddArg("-checkpoints", strprintf("Enable rejection of any forks from the known historical chain until block %s (default: %u)", defaultChainParams->Checkpoints().GetHeight(), DEFAULT_CHECKPOINTS_ENABLED), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
+    // Checkpoints were removed. We keep `-checkpoints` as a hidden arg to display a more user friendly error when set.
+    argsman.AddArg("-checkpoints", "", ArgsManager::ALLOW_ANY, OptionsCategory::HIDDEN);
     argsman.AddArg("-deprecatedrpc=<method>", "Allows deprecated RPC method(s) to be used", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     argsman.AddArg("-stopafterblockimport", strprintf("Stop running after importing blocks from disk (default: %u)", DEFAULT_STOPAFTERBLOCKIMPORT), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     argsman.AddArg("-stopatheight", strprintf("Stop running after reaching the given height in the main chain (default: %u)", DEFAULT_STOPATHEIGHT), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
@@ -793,6 +794,32 @@ void InitParameterInteraction(ArgsManager& args)
             LogInfo("parameter interaction: -onlynet excludes IPv4 and IPv6 -> setting -dnsseed=0\n");
         }
     }
+
+    // If settings.json contains a "upnp" option, migrate it to use "natpmp" instead
+    bool settings_changed{false}; // Whether settings.json file needs to be rewritten
+    args.LockSettings([&](common::Settings& settings) {
+        if (auto* upnp{common::FindKey(settings.rw_settings, "upnp")}) {
+            if (common::FindKey(settings.rw_settings, "natpmp") == nullptr) {
+                LogWarning(R"(Adding "natpmp": %s to settings.json to replace obsolete "upnp" setting)", upnp->write());
+                settings.rw_settings["natpmp"] = *upnp;
+            }
+            LogWarning(R"(Removing obsolete "upnp" setting from settings.json)");
+            settings.rw_settings.erase("upnp");
+            settings_changed = true;
+        }
+    });
+    if (settings_changed) args.WriteSettingsFile();
+
+    // We dropped UPnP support but kept the arg as hidden for now to display a friendlier error to user who has the
+    // option in their config, and migrate the setting to -natpmp.
+    if (const auto arg{args.GetBoolArg("-upnp")}) {
+        std::string message;
+        if (args.SoftSetBoolArg("-natpmp", *arg)) {
+            message = strprintf(" Substituting '-natpmp=%s'.", *arg);
+        }
+        LogWarning("Option '-upnp=%s' is given but UPnP support was dropped in version 29.0.%s",
+                *arg, message);
+    }
 }
 
 /**
@@ -874,10 +901,9 @@ bool AppInitParameterInteraction(const ArgsManager& args)
 
     // also see: InitParameterInteraction()
 
-    // We drop UPnP support but kept the arg as hidden for now to display a friendlier error to user who have the
-    // option in their config. TODO: remove (here and above) for version 30.0.
-    if (args.IsArgSet("-upnp")) {
-        InitWarning(_("Option '-upnp' is set but UPnP support was dropped in version 29.0. Consider using '-natpmp' instead."));
+    // We removed checkpoints but keep the option to warn users who still have it in their config.
+    if (args.IsArgSet("-checkpoints")) {
+        InitWarning(_("Option '-checkpoints' is set but checkpoints were removed. This option has no effect."));
     }
 
     // Error if network-specific options (-addnode, -connect, etc) are

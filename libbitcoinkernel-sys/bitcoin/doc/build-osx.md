@@ -95,6 +95,8 @@ Qt, libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the G
 brew install qt@5
 ```
 
+Note: Building may fail if Qt 6 is installed (`qt` or `qt@6`)
+
 Note: Building with Qt binaries downloaded from the Qt website is not officially supported.
 See the notes in [#7714](https://github.com/bitcoin/bitcoin/issues/7714).
 
@@ -199,8 +201,8 @@ cmake --build build --target deploy
 
 ## Running Bitcoin Core
 
-Bitcoin Core should now be available at `./build/src/bitcoind`.
-If you compiled support for the GUI, it should be available at `./build/src/qt/bitcoin-qt`.
+Bitcoin Core should now be available at `./build/bin/bitcoind`.
+If you compiled support for the GUI, it should be available at `./build/bin/bitcoin-qt`.
 
 The first time you run `bitcoind` or `bitcoin-qt`, it will start downloading the blockchain.
 This process could take many hours, or even days on slower than average systems.
@@ -230,8 +232,8 @@ tail -f $HOME/Library/Application\ Support/Bitcoin/debug.log
 ## Other commands:
 
 ```shell
-./build/src/bitcoind -daemon      # Starts the bitcoin daemon.
-./build/src/bitcoin-cli --help    # Outputs a list of command-line options.
-./build/src/bitcoin-cli help      # Outputs a list of RPC commands when the daemon is running.
-./build/src/qt/bitcoin-qt -server # Starts the bitcoin-qt server mode, allows bitcoin-cli control
+./build/bin/bitcoind -daemon      # Starts the bitcoin daemon.
+./build/bin/bitcoin-cli --help    # Outputs a list of command-line options.
+./build/bin/bitcoin-cli help      # Outputs a list of RPC commands when the daemon is running.
+./build/bin/bitcoin-qt -server # Starts the bitcoin-qt server mode, allows bitcoin-cli control
 ```

@@ -9,15 +9,21 @@
 #  - CMake 3.26.5, https://mirror.stream.centos.org/9-stream/AppStream/x86_64/os/Packages/
 cmake_minimum_required(VERSION 3.22)
 
-if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(FATAL_ERROR "In-source builds are not allowed.")
+endif()
+
+if(POLICY CMP0171)
+  # `codegen` is a reserved target name.
+  # See: https://cmake.org/cmake/help/latest/policy/CMP0171.html
+  cmake_policy(SET CMP0171 NEW)
 endif()
 
 #=============================
 # Project / Package metadata
 #=============================
 set(CLIENT_NAME "Bitcoin Core")
-set(CLIENT_VERSION_MAJOR 28)
+set(CLIENT_VERSION_MAJOR 29)
 set(CLIENT_VERSION_MINOR 99)
 set(CLIENT_VERSION_BUILD 0)
 set(CLIENT_VERSION_RC 0)
@@ -97,15 +103,13 @@ option(BUILD_KERNEL_LIB "Build experimental bitcoinkernel library." ${BUILD_UTIL
 option(BUILD_KERNEL_TEST "Build tests for the experimental bitcoinkernel library." ${BUILD_KERNEL_LIB})
 
 option(ENABLE_WALLET "Enable wallet." ON)
-option(WITH_SQLITE "Enable SQLite wallet support." ${ENABLE_WALLET})
-if(WITH_SQLITE)
+if(ENABLE_WALLET)
   if(VCPKG_TARGET_TRIPLET)
     # Use of the `unofficial::` namespace is a vcpkg package manager convention.
     find_package(unofficial-sqlite3 CONFIG REQUIRED)
   else()
     find_package(SQLite3 3.7.17 REQUIRED)
   endif()
-  set(USE_SQLITE ON)
 endif()
 option(WITH_BDB "Enable Berkeley DB (BDB) wallet support." OFF)
 cmake_dependent_option(WARN_INCOMPATIBLE_BDB "Warn when using a Berkeley DB (BDB) version other than 4.8." ON "WITH_BDB" OFF)
@@ -380,13 +384,16 @@ endif()
 target_link_options(sanitize_interface INTERFACE ${SANITIZER_LDFLAGS})
 
 if(BUILD_FUZZ_BINARY)
-  include(CheckSourceCompilesAndLinks)
-  check_cxx_source_links_with_flags("${SANITIZER_LDFLAGS}" "
+  target_link_libraries(core_interface INTERFACE ${FUZZ_LIBS})
+  include(CheckSourceCompilesWithFlags)
+  check_cxx_source_compiles_with_flags("
       #include <cstdint>
       #include <cstddef>
       extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) { return 0; }
       // No main() function.
     " FUZZ_BINARY_LINKS_WITHOUT_MAIN_FUNCTION
+    LDFLAGS ${SANITIZER_LDFLAGS}
+    LINK_LIBRARIES ${FUZZ_LIBS}
   )
 endif()
 
@@ -608,9 +615,6 @@ endif()
 add_subdirectory(test)
 add_subdirectory(doc)
 
-include(cmake/crc32c.cmake)
-include(cmake/leveldb.cmake)
-include(cmake/minisketch.cmake)
 add_subdirectory(src)
 
 include(cmake/tests.cmake)
@@ -649,7 +653,6 @@ message("  kernel-test (experimental) .......... ${BUILD_KERNEL_TEST}")
 message("Optional features:")
 message("  wallet support ...................... ${ENABLE_WALLET}")
 if(ENABLE_WALLET)
-  message("   - descriptor wallets (SQLite) ...... ${WITH_SQLITE}")
   message("   - legacy wallets (Berkeley DB) ..... ${WITH_BDB}")
 endif()
 message("  external signer ..................... ${ENABLE_EXTERNAL_SIGNER}")
