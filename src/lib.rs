@@ -286,7 +286,7 @@ unsafe extern "C" fn kn_fatal_error_wrapper(
 
 /// The chain parameters with which to configure a [`Context`].
 pub struct ChainParams {
-    inner: *const kernel_ChainParameters,
+    inner: *mut kernel_ChainParameters,
 }
 
 unsafe impl Send for ChainParams {}
@@ -523,8 +523,6 @@ pub enum BlockValidationResult {
     INVALID_PREV,
     /// block timestamp was > 2 hours in the future (or our clock is bad)
     TIME_FUTURE,
-    /// the block failed to meet one of our checkpoints
-    CHECKPOINT,
     /// the block header may be on a too-little-work chain
     HEADER_LOW_WORK,
 }
@@ -540,7 +538,6 @@ impl From<kernel_BlockValidationResult> for BlockValidationResult {
             kernel_BlockValidationResult_kernel_BLOCK_MISSING_PREV => Self::MISSING_PREV,
             kernel_BlockValidationResult_kernel_BLOCK_INVALID_PREV => Self::INVALID_PREV,
             kernel_BlockValidationResult_kernel_BLOCK_TIME_FUTURE => Self::TIME_FUTURE,
-            kernel_BlockValidationResult_kernel_BLOCK_CHECKPOINT => Self::CHECKPOINT,
             kernel_BlockValidationResult_kernel_BLOCK_HEADER_LOW_WORK => Self::HEADER_LOW_WORK,
             _ => Self::CONSENSUS,
         }
