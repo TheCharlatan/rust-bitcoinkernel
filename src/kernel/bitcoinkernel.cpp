@@ -73,60 +73,57 @@ bool is_valid_flag_combination(unsigned int flags)
     return true;
 }
 
-std::string log_level_to_string(const kernel_LogLevel level)
+BCLog::Level get_bclog_level(const kernel_LogLevel level)
 {
     switch (level) {
     case kernel_LogLevel::kernel_LOG_INFO: {
-        return "info";
+        return BCLog::Level::Info;
     }
     case kernel_LogLevel::kernel_LOG_DEBUG: {
-        return "debug";
+        return BCLog::Level::Debug;
     }
     case kernel_LogLevel::kernel_LOG_TRACE: {
-        return "trace";
+        return BCLog::Level::Trace;
     }
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
 
-std::string log_category_to_string(const kernel_LogCategory category)
+BCLog::LogFlags get_bclog_flag(const kernel_LogCategory category)
 {
     switch (category) {
     case kernel_LogCategory::kernel_LOG_BENCH: {
-        return "bench";
+        return BCLog::LogFlags::BENCH;
     }
     case kernel_LogCategory::kernel_LOG_BLOCKSTORAGE: {
-        return "blockstorage";
+        return BCLog::LogFlags::BLOCKSTORAGE;
     }
     case kernel_LogCategory::kernel_LOG_COINDB: {
-        return "coindb";
+        return BCLog::LogFlags::COINDB;
     }
     case kernel_LogCategory::kernel_LOG_LEVELDB: {
-        return "leveldb";
-    }
-    case kernel_LogCategory::kernel_LOG_LOCK: {
-        return "lock";
+        return BCLog::LogFlags::LEVELDB;
     }
     case kernel_LogCategory::kernel_LOG_MEMPOOL: {
-        return "mempool";
+        return BCLog::LogFlags::MEMPOOL;
     }
     case kernel_LogCategory::kernel_LOG_PRUNE: {
-        return "prune";
+        return BCLog::LogFlags::PRUNE;
     }
     case kernel_LogCategory::kernel_LOG_RAND: {
-        return "rand";
+        return BCLog::LogFlags::RAND;
     }
     case kernel_LogCategory::kernel_LOG_REINDEX: {
-        return "reindex";
+        return BCLog::LogFlags::REINDEX;
     }
     case kernel_LogCategory::kernel_LOG_VALIDATION: {
-        return "validation";
+        return BCLog::LogFlags::VALIDATION;
     }
     case kernel_LogCategory::kernel_LOG_KERNEL: {
-        return "kernel";
+        return BCLog::LogFlags::KERNEL;
     }
     case kernel_LogCategory::kernel_LOG_ALL: {
-        return "all";
+        return BCLog::LogFlags::ALL;
     }
     } // no default case, so the compiler can warn about missing cases
     assert(false);
@@ -332,6 +329,12 @@ const CChainParams* cast_const_chain_params(const kernel_ChainParameters* chain_
     return reinterpret_cast<const CChainParams*>(chain_params);
 }
 
+CChainParams* cast_chain_params(kernel_ChainParameters* chain_params)
+{
+    assert(chain_params);
+    return reinterpret_cast<CChainParams*>(chain_params);
+}
+
 Context* cast_context(kernel_Context* context)
 {
     assert(context);
@@ -391,6 +394,13 @@ const CBlockUndo* cast_const_block_undo(const kernel_BlockUndo* undo)
     assert(undo);
     return reinterpret_cast<const CBlockUndo*>(undo);
 }
+
+CBlockUndo* cast_block_undo(kernel_BlockUndo* undo)
+{
+    assert(undo);
+    return reinterpret_cast<CBlockUndo*>(undo);
+}
+
 
 } // namespace
 
@@ -511,24 +521,23 @@ bool kernel_verify_script(const kernel_ScriptPubkey* script_pubkey_,
                         nullptr);
 }
 
-bool kernel_add_log_level_category(const kernel_LogCategory category, const kernel_LogLevel level_)
+void kernel_add_log_level_category(const kernel_LogCategory category, const kernel_LogLevel level)
 {
-    const auto level{log_level_to_string(level_)};
     if (category == kernel_LogCategory::kernel_LOG_ALL) {
-        return LogInstance().SetLogLevel(level);
+        LogInstance().SetLogLevel(get_bclog_level(level));
     }
 
-    return LogInstance().SetCategoryLogLevel(log_category_to_string(category), level);
+    LogInstance().AddCategoryLogLevel(get_bclog_flag(category), get_bclog_level(level));
 }
 
-bool kernel_enable_log_category(const kernel_LogCategory category)
+void kernel_enable_log_category(const kernel_LogCategory category)
 {
-    return LogInstance().EnableCategory(log_category_to_string(category));
+    LogInstance().EnableCategory(get_bclog_flag(category));
 }
 
-bool kernel_disable_log_category(const kernel_LogCategory category)
+void kernel_disable_log_category(const kernel_LogCategory category)
 {
-    return LogInstance().DisableCategory(log_category_to_string(category));
+    LogInstance().DisableCategory(get_bclog_flag(category));
 }
 
 void kernel_disable_logging()
@@ -585,32 +594,37 @@ void kernel_logging_connection_destroy(kernel_LoggingConnection* connection_)
     }
 }
 
-const kernel_ChainParameters* kernel_chain_parameters_create(const kernel_ChainType chain_type)
+kernel_ChainParameters* kernel_chain_parameters_create(const kernel_ChainType chain_type)
 {
     switch (chain_type) {
     case kernel_ChainType::kernel_CHAIN_TYPE_MAINNET: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::Main().release());
+        CChainParams* params = new CChainParams(*CChainParams::Main());
+        return reinterpret_cast<kernel_ChainParameters*>(params);
     }
     case kernel_ChainType::kernel_CHAIN_TYPE_TESTNET: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::TestNet().release());
+        CChainParams* params = new CChainParams(*CChainParams::TestNet());
+        return reinterpret_cast<kernel_ChainParameters*>(params);
     }
     case kernel_ChainType::kernel_CHAIN_TYPE_TESTNET_4: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::TestNet4().release());
+        CChainParams* params = new CChainParams(*CChainParams::TestNet4());
+        return reinterpret_cast<kernel_ChainParameters*>(params);
     }
     case kernel_ChainType::kernel_CHAIN_TYPE_SIGNET: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::SigNet({}).release());
+        CChainParams* params = new CChainParams(*CChainParams::SigNet({}));
+        return reinterpret_cast<kernel_ChainParameters*>(params);
     }
     case kernel_ChainType::kernel_CHAIN_TYPE_REGTEST: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::RegTest({}).release());
+        CChainParams* params = new CChainParams(*CChainParams::RegTest({}));
+        return reinterpret_cast<kernel_ChainParameters*>(params);
     }
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
 
-void kernel_chain_parameters_destroy(const kernel_ChainParameters* chain_parameters)
+void kernel_chain_parameters_destroy(kernel_ChainParameters* chain_parameters)
 {
     if (chain_parameters) {
-        delete cast_const_chain_params(chain_parameters);
+        delete cast_chain_params(chain_parameters);
     }
 }
 
@@ -622,7 +636,7 @@ kernel_ContextOptions* kernel_context_options_create()
 void kernel_context_options_set_chainparams(kernel_ContextOptions* options_, const kernel_ChainParameters* chain_parameters)
 {
     auto options{cast_context_options(options_)};
-    auto chain_params{reinterpret_cast<const CChainParams*>(chain_parameters)};
+    auto chain_params{cast_const_chain_params(chain_parameters)};
     // Copy the chainparams, so the caller can free it again
     options->m_chainparams = std::make_unique<const CChainParams>(*chain_params);
 }
@@ -701,8 +715,6 @@ kernel_BlockValidationResult kernel_get_block_validation_result_from_block_valid
         return kernel_BlockValidationResult::kernel_BLOCK_INVALID_PREV;
     case BlockValidationResult::BLOCK_TIME_FUTURE:
         return kernel_BlockValidationResult::kernel_BLOCK_TIME_FUTURE;
-    case BlockValidationResult::BLOCK_CHECKPOINT:
-        return kernel_BlockValidationResult::kernel_BLOCK_CHECKPOINT;
     case BlockValidationResult::BLOCK_HEADER_LOW_WORK:
         return kernel_BlockValidationResult::kernel_BLOCK_HEADER_LOW_WORK;
     } // no default case, so the compiler can warn about missing cases
@@ -733,7 +745,7 @@ void kernel_chainstate_manager_options_set_worker_threads_num(kernel_ChainstateM
 void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* options)
 {
     if (options) {
-        delete cast_const_chainstate_manager_options(options);
+        delete cast_chainstate_manager_options(options);
     }
 }
 
@@ -1053,7 +1065,7 @@ uint64_t kernel_block_undo_size(const kernel_BlockUndo* block_undo_)
 void kernel_block_undo_destroy(kernel_BlockUndo* block_undo)
 {
     if (block_undo) {
-        delete cast_const_block_undo(block_undo);
+        delete cast_block_undo(block_undo);
     }
 }
 

@@ -304,13 +304,13 @@ class ChainParams
 {
 private:
     struct Deleter {
-        void operator()(const kernel_ChainParameters* ptr) const
+        void operator()(kernel_ChainParameters* ptr) const
         {
             kernel_chain_parameters_destroy(ptr);
         }
     };
 
-    std::unique_ptr<const kernel_ChainParameters, Deleter> m_chain_params;
+    std::unique_ptr<kernel_ChainParameters, Deleter> m_chain_params;
 
 public:
     ChainParams(kernel_ChainType chain_type) noexcept : m_chain_params{kernel_chain_parameters_create(chain_type)} {}

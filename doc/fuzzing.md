@@ -11,7 +11,7 @@ $ cmake --preset=libfuzzer
 # macOS users: If you have problem with this step then make sure to read "macOS hints for
 # libFuzzer" on https://github.com/bitcoin/bitcoin/blob/master/doc/fuzzing.md#macos-hints-for-libfuzzer
 $ cmake --build build_fuzz
-$ FUZZ=process_message build_fuzz/src/test/fuzz/fuzz
+$ FUZZ=process_message build_fuzz/bin/fuzz
 # abort fuzzing using ctrl-c
 ```
 
@@ -35,7 +35,7 @@ If you specify a corpus directory then any new coverage increasing inputs will b
 
 ```sh
 $ mkdir -p process_message-seeded-from-thin-air/
-$ FUZZ=process_message build_fuzz/src/test/fuzz/fuzz process_message-seeded-from-thin-air/
+$ FUZZ=process_message build_fuzz/bin/fuzz process_message-seeded-from-thin-air/
 INFO: Seed: 840522292
 INFO: Loaded 1 modules   (424174 inline 8-bit counters): 424174 [0x55e121ef9ab8, 0x55e121f613a6),
 INFO: Loaded 1 PC tables (424174 PCs): 424174 [0x55e121f613a8,0x55e1225da288),
@@ -79,7 +79,7 @@ of the test. Just make sure to use double-dash to distinguish them from the
 fuzzer's own arguments:
 
 ```sh
-$ FUZZ=address_deserialize_v2 build_fuzz/src/test/fuzz/fuzz -runs=1 fuzz_corpora/address_deserialize_v2 --checkaddrman=5 --printtoconsole=1
+$ FUZZ=address_deserialize_v2 build_fuzz/bin/fuzz -runs=1 fuzz_corpora/address_deserialize_v2 --checkaddrman=5 --printtoconsole=1
 ```
 
 ## Fuzzing corpora
@@ -90,7 +90,7 @@ To fuzz `process_message` using the [`bitcoin-core/qa-assets`](https://github.co
 
 ```sh
 $ git clone https://github.com/bitcoin-core/qa-assets
-$ FUZZ=process_message build_fuzz/src/test/fuzz/fuzz qa-assets/fuzz_corpora/process_message/
+$ FUZZ=process_message build_fuzz/bin/fuzz qa-assets/fuzz_corpora/process_message/
 INFO: Seed: 1346407872
 INFO: Loaded 1 modules   (424174 inline 8-bit counters): 424174 [0x55d8a9004ab8, 0x55d8a906c3a6),
 INFO: Loaded 1 PC tables (424174 PCs): 424174 [0x55d8a906c3a8,0x55d8a96e5288),
@@ -134,7 +134,7 @@ Patience is useful; even with improved throughput, libFuzzer may need days and
   more slowly with sanitizers enabled, but a crash should be reproducible very
   quickly from a crash case)
 - run the fuzzer with the case number appended to the seed corpus path:
-  `FUZZ=process_message build_fuzz/src/test/fuzz/fuzz
+  `FUZZ=process_message build_fuzz/bin/fuzz
   qa-assets/fuzz_corpora/process_message/1bc91feec9fc00b107d97dc225a9f2cdaa078eb6`
 
 ## Submit improved coverage
@@ -153,13 +153,16 @@ You may also need to take care of giving the correct path for `clang` and
 `clang++`, like `CC=/path/to/clang CXX=/path/to/clang++` if the non-systems
 `clang` does not come first in your path.
 
-Full configuration step that was tested on macOS with `brew` installed `llvm`:
+Using `lld` is required due to issues with Apple's `ld` and `LLVM`.
+
+Full configuration step for macOS:
 
 ```sh
+$ brew install llvm lld
 $ cmake --preset=libfuzzer \
    -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" \
    -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" \
-   -DAPPEND_LDFLAGS=-Wl,-no_warn_duplicate_libraries
+   -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"
 ```
 
 Read the [libFuzzer documentation](https://llvm.org/docs/LibFuzzer.html) for more information. This [libFuzzer tutorial](https://github.com/google/fuzzing/blob/master/tutorial/libFuzzerTutorial.md) might also be of interest.
@@ -186,7 +189,7 @@ $ cmake --build build_fuzz
 # try compiling using: AFL_NO_X86=1 cmake --build build_fuzz
 $ mkdir -p inputs/ outputs/
 $ echo A > inputs/thin-air-input
-$ FUZZ=bech32 ./AFLplusplus/afl-fuzz -i inputs/ -o outputs/ -- build_fuzz/src/test/fuzz/fuzz
+$ FUZZ=bech32 ./AFLplusplus/afl-fuzz -i inputs/ -o outputs/ -- build_fuzz/bin/fuzz
 # You may have to change a few kernel parameters to test optimally - afl-fuzz
 # will print an error and suggestion if so.
 ```
@@ -213,7 +216,7 @@ $ cmake -B build_fuzz \
    -DSANITIZERS=address,undefined
 $ cmake --build build_fuzz
 $ mkdir -p inputs/
-$ FUZZ=process_message ./honggfuzz/honggfuzz -i inputs/ -- build_fuzz/src/test/fuzz/fuzz
+$ FUZZ=process_message ./honggfuzz/honggfuzz -i inputs/ -- build_fuzz/bin/fuzz
 ```
 
 Read the [Honggfuzz documentation](https://github.com/google/honggfuzz/blob/master/docs/USAGE.md) for more information.

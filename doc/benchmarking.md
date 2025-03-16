@@ -18,7 +18,7 @@ and lock analysis.
 
 After compiling bitcoin-core, the benchmarks can be run with:
 
-    build/src/bench/bench_bitcoin
+    build/bin/bench_bitcoin
 
 The output will look similar to:
 ```
@@ -40,7 +40,7 @@ The output will look similar to:
 Help
 ---------------------
 
-    build/src/bench/bench_bitcoin -h
+    build/bin/bench_bitcoin -h
 
 To print the various options, like listing the benchmarks without running them
 or using a regex filter to only run certain benchmarks.
@@ -74,6 +74,4 @@ specifically aimed at exploring the possible input space.
 Going Further
 --------------------
 
-To monitor Bitcoin Core performance more in depth (like reindex or IBD): https://github.com/chaincodelabs/bitcoinperf
-
-To generate Flame Graphs for Bitcoin Core: https://github.com/eklitzke/bitcoin/blob/flamegraphs/doc/flamegraphs.md
+To monitor Bitcoin Core performance more in depth (like reindex or IBD): https://github.com/bitcoin-dev-tools/benchcoin

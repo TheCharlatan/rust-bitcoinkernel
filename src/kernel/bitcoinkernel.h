@@ -154,14 +154,11 @@ typedef struct kernel_ContextOptions kernel_ContextOptions;
  * validation objects are instantiated from it, the context needs to be kept in
  * memory for the duration of their lifetimes.
  *
- * The processing of validation events is done through an internal task
- * runner owned by the context. The task runner drives the execution of events
- * triggering validation interface callbacks. Multiple validation interfaces can
- * be registered with the context. The kernel will create an event for each of
- * the registered validation interfaces through the task runner.
+ * The processing of validation events is done through an internal task runner
+ * owned by the context. It passes events through the registered validation
+ * interface callbacks.
  *
- * A constructed context can be safely used from multiple threads, but functions
- * taking it as a non-cost argument need exclusive access to it.
+ * A constructed context can be safely used from multiple threads.
  */
 typedef struct kernel_Context kernel_Context;
 
@@ -287,7 +284,6 @@ typedef enum {
     kernel_BLOCK_MISSING_PREV,    //!< We don't have the previous block the checked one is built on
     kernel_BLOCK_INVALID_PREV,    //!< A block this one builds on is invalid
     kernel_BLOCK_TIME_FUTURE,     //!< block timestamp was > 2 hours in the future (or our clock is bad)
-    kernel_BLOCK_CHECKPOINT,      //!< the block failed to meet one of our checkpoints
     kernel_BLOCK_HEADER_LOW_WORK, //!< the block header may be on a too-little-work chain
 } kernel_BlockValidationResult;
 
@@ -331,7 +327,6 @@ typedef enum {
     kernel_LOG_BLOCKSTORAGE,
     kernel_LOG_COINDB,
     kernel_LOG_LEVELDB,
-    kernel_LOG_LOCK,
     kernel_LOG_MEMPOOL,
     kernel_LOG_PRUNE,
     kernel_LOG_RAND,
@@ -344,9 +339,9 @@ typedef enum {
  * The level at which logs should be produced.
  */
 typedef enum {
-    kernel_LOG_INFO = 0,
+    kernel_LOG_TRACE = 0,
     kernel_LOG_DEBUG,
-    kernel_LOG_TRACE,
+    kernel_LOG_INFO,
 } kernel_LogLevel;
 
 /**
@@ -576,25 +571,22 @@ BITCOINKERNEL_API void kernel_disable_logging();
  *                     will be logged. Otherwise only messages from the specified category
  *                     will be logged at the specified level and above.
  * @param[in] level    Log level at which the log category is set.
- * @return             True on success.
  */
-BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_add_log_level_category(const kernel_LogCategory category, kernel_LogLevel level);
+BITCOINKERNEL_API void kernel_add_log_level_category(const kernel_LogCategory category, kernel_LogLevel level);
 
 /**
  * @brief Enable a specific log category for the global internal logger.
  *
  * @param[in] category If kernel_LOG_ALL is chosen, all categories will be enabled.
- * @return             True on success.
  */
-BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_enable_log_category(const kernel_LogCategory category);
+BITCOINKERNEL_API void kernel_enable_log_category(const kernel_LogCategory category);
 
 /**
  * Disable a specific log category for the global internal logger.
  *
  * @param[in] category If kernel_LOG_ALL is chosen, all categories will be disabled.
- * @return             True on success.
  */
-BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_disable_log_category(const kernel_LogCategory category);
+BITCOINKERNEL_API void kernel_disable_log_category(const kernel_LogCategory category);
 
 /**
  * @brief Start logging messages through the provided callback. Log messages
@@ -632,13 +624,13 @@ BITCOINKERNEL_API void kernel_logging_connection_destroy(kernel_LoggingConnectio
  * @param[in] chain_type Controls the chain parameters type created.
  * @return               An allocated chain parameters opaque struct.
  */
-BITCOINKERNEL_API const kernel_ChainParameters* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chain_parameters_create(
+BITCOINKERNEL_API kernel_ChainParameters* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_chain_parameters_create(
     const kernel_ChainType chain_type);
 
 /**
  * Destroy the chain parameters.
  */
-BITCOINKERNEL_API void kernel_chain_parameters_destroy(const kernel_ChainParameters* chain_parameters);
+BITCOINKERNEL_API void kernel_chain_parameters_destroy(kernel_ChainParameters* chain_parameters);
 
 ///@}
 
