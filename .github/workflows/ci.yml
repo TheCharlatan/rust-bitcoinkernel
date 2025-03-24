@@ -34,9 +34,6 @@ jobs:
     - name: Build
       run: cargo build -vv
 
-    - name: Run tests
-      run: cargo test -vv
-
     - name: Build example binary
       run: |
         cd examples
@@ -44,6 +41,18 @@ jobs:
 
     - name: Check formatting
       run: cargo fmt -- --check
+
+    - name: Run tests
+      run: cargo test -vv
+
+    - name: Install Valgrind
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y valgrind
+
+    - name: Run tests with Valgrind
+      run: |
+        find target/debug/deps -type f -executable -name "test-*" -not -name "*.so" -not -name "*.d" | xargs -I {} valgrind --leak-check=full --show-leak-kinds=all --suppressions=valgrind.supp --error-exitcode=1 {}
 
   fuzzing:
     name: Check Fuzzing Setup
