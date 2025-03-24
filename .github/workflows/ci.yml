@@ -26,14 +26,19 @@ jobs:
     - name: Cache dependencies
       uses: Swatinem/rust-cache@v2
 
+    - name: Install Boost library
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libboost-all-dev
+
     - name: Build
-      run: cargo build --verbose
+      run: cargo build -vv
 
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test -vv
 
     - name: Check packaging
-      run: cargo package --verbose
+      run: cargo package -vv
 
     - name: Check formatting
       run: cargo fmt -- --check
