@@ -340,6 +340,12 @@ void context_test()
         assert(context);
     }
 
+    { // test with context options, but not options set
+      ContextOptions options{};
+      Context context{options};
+      assert(context);
+    }
+
     { // test with context options
         TestKernelNotifications notifications{};
         ContextOptions options{};
@@ -366,6 +372,25 @@ Context create_context(TestKernelNotifications& notifications, kernel_ChainType 
 void chainman_test()
 {
     auto test_directory{TestDirectory{"chainman_test_bitcoin_kernel"}};
+
+    { // test with default context
+        Context context{};
+        assert(context);
+        ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
+        assert(chainman_opts);
+        ChainMan chainman{context, chainman_opts};
+        assert(chainman);
+    }
+
+    { // test with default context options
+        ContextOptions options{};
+        Context context{options};
+        assert(context);
+        ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
+        assert(chainman_opts);
+        ChainMan chainman{context, chainman_opts};
+        assert(chainman);
+    }
 
     TestKernelNotifications notifications{};
     auto context{create_context(notifications, kernel_ChainType::kernel_CHAIN_TYPE_MAINNET)};

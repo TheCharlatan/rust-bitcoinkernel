@@ -122,7 +122,9 @@ typedef struct kernel_TransactionOutput kernel_TransactionOutput;
  *
  * Messages that were logged before a connection is created are buffered in a
  * 1MB buffer. Logging can alternatively be permanently disabled by calling
- * kernel_disable_logging().
+ * kernel_disable_logging(). Functions changing the logging settings are global
+ * (and not thread safe) and change the settings for all existing
+ * kernel_LoggingConnection instances.
  */
 typedef struct kernel_LoggingConnection kernel_LoggingConnection;
 
@@ -557,15 +559,19 @@ BITCOINKERNEL_API bool BITCOINKERNEL_WARN_UNUSED_RESULT kernel_verify_script(
 /**
  * @brief This disables the global internal logger. No log messages will be
  * buffered internally anymore once this is called and the buffer is cleared.
- * This function should only be called once. Log messages will be buffered until
- * this function is called, or a logging connection is created.
+ * This function should only be called once and is not thread or re-entry safe.
+ * Log messages will be buffered until this function is called, or a logging
+ * connection is created.
  */
 BITCOINKERNEL_API void kernel_disable_logging();
 
 /**
- * @brief Set the log level of the global internal logger. This does not enable
- * the selected categories. Use `kernel_enable_log_category` to start logging
- * from a specific, or all categories.
+ * @brief Set the log level of the global internal logger. This does not
+ * enable the selected categories. Use `kernel_enable_log_category` to start
+ * logging from a specific, or all categories. This function is not thread
+ * safe. Mutiple calls from different threads are allowed but must be
+ * synchronized. This changes a global setting and will override settings for
+ * all existing @ref kernel_LoggingConnection instances.
  *
  * @param[in] category If kernel_LOG_ALL is chosen, all messages at the specified level
  *                     will be logged. Otherwise only messages from the specified category
@@ -575,14 +581,20 @@ BITCOINKERNEL_API void kernel_disable_logging();
 BITCOINKERNEL_API void kernel_add_log_level_category(const kernel_LogCategory category, kernel_LogLevel level);
 
 /**
- * @brief Enable a specific log category for the global internal logger.
+ * @brief Enable a specific log category for the global internal logger. This
+ * function is not thread safe. Mutiple calls from different threads are
+ * allowed but must be synchronized. This changes a global setting and will
+ * override settings for all existing @ref kernel_LoggingConnection instances.
  *
  * @param[in] category If kernel_LOG_ALL is chosen, all categories will be enabled.
  */
 BITCOINKERNEL_API void kernel_enable_log_category(const kernel_LogCategory category);
 
 /**
- * Disable a specific log category for the global internal logger.
+ * @brief Disable a specific log category for the global internal logger. This
+ * function is not thread safe. Mutiple calls from different threads are
+ * allowed but must be synchronized. This changes a global setting and will
+ * override settings for all existing @ref kernel_LoggingConnection instances.
  *
  * @param[in] category If kernel_LOG_ALL is chosen, all categories will be disabled.
  */

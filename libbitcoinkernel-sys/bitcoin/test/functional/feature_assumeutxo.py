@@ -9,6 +9,7 @@ to a hash that has been compiled into bitcoind.
 The assumeutxo value generated and used here is committed to in
 `CRegTestParams::m_assumeutxo_data` in `src/kernel/chainparams.cpp`.
 """
+import contextlib
 from shutil import rmtree
 
 from dataclasses import dataclass
@@ -309,7 +310,7 @@ class AssumeutxoTest(BitcoinTestFramework):
         msg = msg_headers()
         for block_num in range(1, miner.getblockcount()+1):
             msg.headers.append(from_hex(CBlockHeader(), miner.getblockheader(miner.getblockhash(block_num), verbose=False)))
-        headers_provider_conn.send_message(msg)
+        headers_provider_conn.send_without_ping(msg)
 
         # Ensure headers arrived
         default_value = {'status': ''}  # No status
@@ -348,6 +349,22 @@ class AssumeutxoTest(BitcoinTestFramework):
         node_services = node.getnetworkinfo()['localservicesnames']
         assert 'NETWORK' not in node_services
         assert 'NETWORK_LIMITED' in node_services
+
+    @contextlib.contextmanager
+    def assert_disk_cleanup(self, node, assumeutxo_used):
+        """
+        Ensure an assumeutxo node is cleaning up the background chainstate
+        """
+        msg = []
+        if assumeutxo_used:
+            # Check that the snapshot actually existed before restart
+            assert (node.datadir_path / node.chain / "chainstate_snapshot").exists()
+            msg = ["cleaning up unneeded background chainstate"]
+
+        with node.assert_debug_log(msg):
+            yield
+
+        assert not (node.datadir_path / node.chain / "chainstate_snapshot").exists()
 
     def run_test(self):
         """
@@ -656,7 +673,8 @@ class AssumeutxoTest(BitcoinTestFramework):
         for i in (0, 1):
             n = self.nodes[i]
             self.log.info(f"Restarting node {i} to ensure (Check|Load)BlockIndex passes")
-            self.restart_node(i, extra_args=self.extra_args[i])
+            with self.assert_disk_cleanup(n, i == 1):
+                self.restart_node(i, extra_args=self.extra_args[i])
 
             assert_equal(n.getblockchaininfo()["blocks"], FINAL_HEIGHT)
 
@@ -733,7 +751,8 @@ class AssumeutxoTest(BitcoinTestFramework):
         for i in (0, 2):
             n = self.nodes[i]
             self.log.info(f"Restarting node {i} to ensure (Check|Load)BlockIndex passes")
-            self.restart_node(i, extra_args=self.extra_args[i])
+            with self.assert_disk_cleanup(n, i == 2):
+                self.restart_node(i, extra_args=self.extra_args[i])
 
             assert_equal(n.getblockchaininfo()["blocks"], FINAL_HEIGHT)
 

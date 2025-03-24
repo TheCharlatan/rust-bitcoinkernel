@@ -214,9 +214,10 @@ protected:
 };
 
 struct ContextOptions {
-    std::unique_ptr<const KernelNotifications> m_notifications;
-    std::unique_ptr<const CChainParams> m_chainparams;
-    std::unique_ptr<const KernelValidationInterface> m_validation_interface;
+    mutable Mutex m_mutex;
+    std::unique_ptr<const CChainParams> m_chainparams GUARDED_BY(m_mutex);
+    std::unique_ptr<const KernelNotifications> m_notifications GUARDED_BY(m_mutex);
+    std::unique_ptr<const KernelValidationInterface> m_validation_interface GUARDED_BY(m_mutex);
 };
 
 class Context
@@ -239,22 +240,27 @@ public:
           m_interrupt{std::make_unique<util::SignalInterrupt>()},
           m_signals{std::make_unique<ValidationSignals>(std::make_unique<ImmediateTaskRunner>())}
     {
-        if (options && options->m_notifications) {
-            m_notifications = std::make_unique<KernelNotifications>(*options->m_notifications);
-        } else {
-            m_notifications = std::make_unique<KernelNotifications>(kernel_NotificationInterfaceCallbacks{
-                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr});
+        if (options) {
+            LOCK(options->m_mutex);
+            if (options->m_chainparams) {
+                m_chainparams = std::make_unique<const CChainParams>(*options->m_chainparams);
+            }
+            if (options->m_notifications) {
+                m_notifications = std::make_unique<KernelNotifications>(*options->m_notifications);
+            }
+            if (options->m_validation_interface) {
+                m_validation_interface = std::make_unique<KernelValidationInterface>(*options->m_validation_interface);
+                m_signals->RegisterValidationInterface(m_validation_interface.get());
+            }
+
         }
 
-        if (options && options->m_chainparams) {
-            m_chainparams = std::make_unique<const CChainParams>(*options->m_chainparams);
-        } else {
+        if (!m_chainparams) {
             m_chainparams = CChainParams::Main();
         }
-
-        if (options && options->m_validation_interface) {
-            m_validation_interface = std::make_unique<KernelValidationInterface>(*options->m_validation_interface);
-            m_signals->RegisterValidationInterface(m_validation_interface.get());
+        if (!m_notifications) {
+            m_notifications = std::make_unique<KernelNotifications>(kernel_NotificationInterfaceCallbacks{
+                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr});
         }
 
         if (!kernel::SanityChecks(*m_context)) {
@@ -270,9 +276,10 @@ public:
 
 //! Helper struct to wrap the ChainstateManager-related Options
 struct ChainstateManagerOptions {
-    ChainstateManager::Options m_chainman_options;
-    node::BlockManager::Options m_blockman_options;
-    node::ChainstateLoadOptions m_chainstate_load_options;
+    mutable Mutex m_mutex;
+    ChainstateManager::Options m_chainman_options GUARDED_BY(m_mutex);
+    node::BlockManager::Options m_blockman_options GUARDED_BY(m_mutex);
+    node::ChainstateLoadOptions m_chainstate_load_options GUARDED_BY(m_mutex);
 
     ChainstateManagerOptions(const Context* context, const fs::path& data_dir, const fs::path& blocks_dir)
         : m_chainman_options{ChainstateManager::Options{
@@ -309,6 +316,7 @@ const CTxOut* cast_transaction_output(const kernel_TransactionOutput* transactio
 {
     assert(transaction_output);
     return reinterpret_cast<const CTxOut*>(transaction_output);
+
 }
 
 const ContextOptions* cast_const_context_options(const kernel_ContextOptions* options)
@@ -638,6 +646,7 @@ void kernel_context_options_set_chainparams(kernel_ContextOptions* options_, con
     auto options{cast_context_options(options_)};
     auto chain_params{cast_const_chain_params(chain_parameters)};
     // Copy the chainparams, so the caller can free it again
+    LOCK(options->m_mutex);
     options->m_chainparams = std::make_unique<const CChainParams>(*chain_params);
 }
 
@@ -645,12 +654,14 @@ void kernel_context_options_set_notifications(kernel_ContextOptions* options_, k
 {
     auto options{cast_context_options(options_)};
     // Copy the notifications, so the caller can free it again
+    LOCK(options->m_mutex);
     options->m_notifications = std::make_unique<const KernelNotifications>(notifications);
 }
 
 void kernel_context_options_set_validation_interface(kernel_ContextOptions* options_, kernel_ValidationInterfaceCallbacks vi_cbs)
 {
     auto options{cast_context_options(options_)};
+    LOCK(options->m_mutex);
     options->m_validation_interface = std::make_unique<KernelValidationInterface>(KernelValidationInterface(vi_cbs));
 }
 
@@ -739,6 +750,7 @@ kernel_ChainstateManagerOptions* kernel_chainstate_manager_options_create(const 
 void kernel_chainstate_manager_options_set_worker_threads_num(kernel_ChainstateManagerOptions* opts_, int worker_threads)
 {
     auto opts{cast_chainstate_manager_options(opts_)};
+    LOCK(opts->m_mutex);
     opts->m_chainman_options.worker_threads_num = worker_threads;
 }
 
@@ -755,9 +767,10 @@ bool kernel_chainstate_manager_options_set_wipe_dbs(kernel_ChainstateManagerOpti
         LogError("Wiping the block tree db without also wiping the chainstate db is currently unsupported.");
         return false;
     }
-    auto chainman_opts{cast_chainstate_manager_options(chainman_opts_)};
-    chainman_opts->m_blockman_options.block_tree_db_params.wipe_data = wipe_block_tree_db;
-    chainman_opts->m_chainstate_load_options.wipe_chainstate_db = wipe_chainstate_db;
+    auto opts{cast_chainstate_manager_options(chainman_opts_)};
+    LOCK(opts->m_mutex);
+    opts->m_blockman_options.block_tree_db_params.wipe_data = wipe_block_tree_db;
+    opts->m_chainstate_load_options.wipe_chainstate_db = wipe_chainstate_db;
     return true;
 }
 
@@ -765,16 +778,18 @@ void kernel_chainstate_manager_options_set_block_tree_db_in_memory(
     kernel_ChainstateManagerOptions* chainstate_load_opts_,
     bool block_tree_db_in_memory)
 {
-    auto chainman_opts{cast_chainstate_manager_options(chainstate_load_opts_)};
-    chainman_opts->m_blockman_options.block_tree_db_params.memory_only = block_tree_db_in_memory;
+    auto opts{cast_chainstate_manager_options(chainstate_load_opts_)};
+    LOCK(opts->m_mutex);
+    opts->m_blockman_options.block_tree_db_params.memory_only = block_tree_db_in_memory;
 }
 
 void kernel_chainstate_manager_options_set_chainstate_db_in_memory(
     kernel_ChainstateManagerOptions* chainstate_load_opts_,
     bool chainstate_db_in_memory)
 {
-    auto chainman_opts{cast_chainstate_manager_options(chainstate_load_opts_)};
-    chainman_opts->m_chainstate_load_options.coins_db_in_memory = chainstate_db_in_memory;
+    auto opts{cast_chainstate_manager_options(chainstate_load_opts_)};
+    LOCK(opts->m_mutex);
+    opts->m_chainstate_load_options.coins_db_in_memory = chainstate_db_in_memory;
 }
 
 kernel_ChainstateManager* kernel_chainstate_manager_create(
@@ -787,6 +802,7 @@ kernel_ChainstateManager* kernel_chainstate_manager_create(
     ChainstateManager* chainman;
 
     try {
+        LOCK(chainman_opts->m_mutex);
         chainman = new ChainstateManager{*context->m_interrupt, chainman_opts->m_chainman_options, chainman_opts->m_blockman_options};
     } catch (const std::exception& e) {
         LogError("Failed to create chainstate manager: %s", e.what());
@@ -794,7 +810,7 @@ kernel_ChainstateManager* kernel_chainstate_manager_create(
     }
 
     try {
-        const auto& chainstate_load_opts{chainman_opts->m_chainstate_load_options};
+        const auto chainstate_load_opts{WITH_LOCK(chainman_opts->m_mutex, return chainman_opts->m_chainstate_load_options)};
 
         kernel::CacheSizes cache_sizes{DEFAULT_KERNEL_CACHE};
         auto [status, chainstate_err]{node::LoadChainstate(*chainman, cache_sizes, chainstate_load_opts)};
@@ -968,7 +984,7 @@ kernel_BlockIndex* kernel_get_block_index_from_hash(const kernel_Context* contex
 {
     auto chainman{cast_chainstate_manager(chainman_)};
 
-    auto hash = uint256{Span<const unsigned char>{(*block_hash).hash, 32}};
+    auto hash = uint256{std::span<const unsigned char>{(*block_hash).hash, 32}};
     auto block_index = WITH_LOCK(::cs_main, return chainman->m_blockman.LookupBlockIndex(hash));
     if (!block_index) {
         LogDebug(BCLog::KERNEL, "A block with the given hash is not indexed.");
