@@ -92,4 +92,6 @@ jobs:
         cargo fuzz build fuzz_target_block
         cargo fuzz build fuzz_target_chainman
         cargo fuzz build fuzz_target_verify
-        cargo fuzz run fuzz_target_verify -- -max_total_time=10
+        cargo fuzz run fuzz_target_verify -- -max_total_time=20
+        cargo fuzz run fuzz_target_chainman -- -max_total_time=20
+        cargo fuzz run fuzz_target_block -- -max_total_time=20
