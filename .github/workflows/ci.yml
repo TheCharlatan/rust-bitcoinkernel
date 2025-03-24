@@ -44,3 +44,52 @@ jobs:
 
     - name: Check formatting
       run: cargo fmt -- --check
+
+  fuzzing:
+    name: Check Fuzzing Setup
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: nightly
+        override: true
+        targets: x86_64-unknown-linux-gnu
+
+    - name: Install LLVM tools for sanitizers
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y llvm
+
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+ 
+    - name: Install Boost library
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libboost-all-dev
+ 
+    - name: Install cargo-fuzz
+      run: cargo install cargo-fuzz
+
+    - name: Set up fuzzing directories
+      run: |
+        mkdir -p /tmp/rust_kernel_fuzz
+        sudo mount -t tmpfs none /tmp/rust_kernel_fuzz || true
+ 
+    - name: Build and run fuzzing with Address Sanitizer
+      env:
+        RUSTFLAGS: "-Zsanitizer=address"
+        ASAN_OPTIONS: "detect_leaks=0"
+      run: |
+        # First compile the main crate with sanitizer flags
+        cargo build --verbose
+        # Now build and run the fuzzing targets with the same sanitizer flags
+        cargo fuzz build fuzz_target_block
+        cargo fuzz build fuzz_target_chainman
+        cargo fuzz build fuzz_target_verify
+        cargo fuzz run fuzz_target_verify -- -max_total_time=10
