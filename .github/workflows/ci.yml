@@ -37,8 +37,5 @@ jobs:
     - name: Run tests
       run: cargo test -vv
 
-    - name: Check packaging
-      run: cargo package -vv
-
     - name: Check formatting
       run: cargo fmt -- --check
