@@ -37,5 +37,10 @@ jobs:
     - name: Run tests
       run: cargo test -vv
 
+    - name: Build example binary
+      run: |
+        cd examples
+        cargo build --verbose
+
     - name: Check formatting
       run: cargo fmt -- --check
