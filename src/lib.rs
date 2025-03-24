@@ -912,6 +912,14 @@ impl ChainstateManagerOptions {
     }
 }
 
+impl Drop for ChainstateManagerOptions {
+    fn drop(&mut self) {
+        unsafe {
+            kernel_chainstate_manager_options_destroy(self.inner);
+        }
+    }
+}
+
 /// The chainstate manager is the central object for doing validation tasks as
 /// well as retrieving data from the chain. Internally it is a complex data
 /// structure with diverse functionality.
