@@ -2,6 +2,7 @@
 name = "bitcoinkernel"
 version = "0.0.18"
 edition = "2021"
+rust-version =  "1.71.0"
 authors = ["TheCharlatan <seb.kung@gmail.com>"]
 description = "Safe Rust bindings to libbitcoinkernel"
 license = "MIT"

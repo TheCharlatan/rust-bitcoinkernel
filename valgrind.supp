@@ -1,11 +1,60 @@
 {
-   leveldb_thread_leak
+   rust_call_once
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   fun:alloc
+   fun:alloc_impl
+   fun:allocate
+   fun:{closure#0}<std::thread::Inner>
+   fun:allocate_for_layout<core::mem::maybe_uninit::MaybeUninit<std::thread::Inner>, alloc::sync::{impl#14}::new_uninit::{closure_env#0}<std::thread::Inner>, fn(*mut u8) -> *mut alloc::sync::ArcInner<core::mem::maybe_uninit::MaybeUninit<std::thread::Inner>>>
+   fun:new_uninit<std::thread::Inner>
+   fun:_ZN3std6thread6Thread3new17h01b65bafcc540cf7E
+   fun:_ZN3std6thread7current12init_current17hfa0a7b0e63f5f1ccE
+   fun:current_or_unnamed
+   fun:_ZN3std4sync4mpmc7context7Context3new17h7a79497c22e8f9afE
+   fun:__init
+   fun:call_once<fn() -> core::cell::Cell<core::option::Option<std::sync::mpmc::context::Context>>, ()>
+   fun:unwrap_or_else<core::cell::Cell<core::option::Option<std::sync::mpmc::context::Context>>, fn() -> core::cell::Cell<core::option::Option<std::sync::mpmc::context::Context>>>
+   fun:_ZN3std3sys12thread_local6native4lazy20Storage$LT$T$C$D$GT$10initialize17h05c9b6cabc3ef7e8E
+   fun:get_or_init<core::cell::Cell<core::option::Option<std::sync::mpmc::context::Context>>, (), fn() -> core::cell::Cell<core::option::Option<std::sync::mpmc::context::Context>>>
+   fun:{closure#0}
+   fun:call_once<std::sync::mpmc::context::{impl#0}::with::CONTEXT::{constant#0}::{closure_env#0}, (core::option::Option<&mut core::option::Option<core::cell::Cell<core::option::Option<std::sync::mpmc::context::Context>>>>)>
+   fun:try_with<core::cell::Cell<core::option::Option<std::sync::mpmc::context::Context>>, std::sync::mpmc::context::{impl#0}::with::{closure_env#1}<std::sync::mpmc::list::{impl#3}::recv::{closure_env#1}<test::event::CompletedTest>, ()>, ()>
+   fun:with<std::sync::mpmc::list::{impl#3}::recv::{closure_env#1}<test::event::CompletedTest>, ()>
+   fun:_ZN3std4sync4mpmc4list16Channel$LT$T$GT$4recv17h45cb766f6edd70a9E
+   fun:recv_deadline<test::event::CompletedTest>
+   fun:recv_timeout<test::event::CompletedTest>
+   fun:recv_timeout<test::event::CompletedTest>
+   fun:run_tests<test::console::run_tests_console::{closure_env#2}>
+   fun:_ZN4test7console17run_tests_console17hdc60411b16932837E
+   fun:_ZN4test9test_main17hf786778ce4879897E
+   fun:_ZN4test16test_main_static17h420f9b985a48810aE
+   fun:_ZN4test4main17h816bdc0ea90ec89fE
+   fun:_ZN4core3ops8function6FnOnce9call_once17h00be825f9a1097f4E
+   fun:_ZN3std3sys9backtrace28__rust_begin_short_backtrace17hfe143d81ae9b8611E
+}
+
+{
+   leveldb
    Memcheck:Leak
    match-leak-kinds: possible
    fun:calloc
-   ...
-   fun:pthread_create*
-   ...
-   fun:*PosixEnv*Schedule*
-   ...
+   fun:calloc
+   fun:allocate_dtv
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create@@GLIBC_2.34
+   fun:_ZNSt6thread15_M_start_threadESt10unique_ptrINS_6_StateESt14default_deleteIS1_EEPFvvE
+   fun:thread<void (&)(leveldb::(anonymous namespace)::PosixEnv*), leveldb::(anonymous namespace)::PosixEnv*>
+   fun:_ZN7leveldb12_GLOBAL__N_18PosixEnv8ScheduleEPFvPvES2_
+   fun:_ZN7leveldb2DB4OpenERKNS_7OptionsERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEPPS0_
+   fun:_ZN10CDBWrapperC1ERK8DBParams
+   fun:BlockTreeDB
+   fun:make_unique<kernel::BlockTreeDB, const DBParams&>
+   fun:_ZN4node12BlockManagerC1ERKN4util15SignalInterruptEN6kernel16BlockManagerOptsE
+   fun:_ZN17ChainstateManagerC1ERKN4util15SignalInterruptEN6kernel21ChainstateManagerOptsENS4_16BlockManagerOptsE
+   fun:kernel_chainstate_manager_create
+   fun:_ZN13bitcoinkernel17ChainstateManager3new17hd7ae08626f71c8a5E
+   fun:_ZN4test5tests18test_invalid_block17hfeb22073bea8a852E
 }

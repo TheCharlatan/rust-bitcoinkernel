@@ -1,3 +1,4 @@
+use bindgen::RustEdition;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
@@ -71,8 +72,11 @@ fn main() {
     let include_path = install_dir.join("include");
     let header = include_path.join("bitcoinkernel.h");
 
+    #[allow(deprecated)]
     let bindings = bindgen::Builder::default()
         .header(header.to_str().unwrap())
+        .rust_target(bindgen::RustTarget::Stable_1_71)
+        .rust_edition(RustEdition::Edition2021)
         .generate()
         .expect("Unable to generate bindings");
 

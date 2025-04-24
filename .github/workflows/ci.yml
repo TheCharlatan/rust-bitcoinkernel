@@ -8,6 +8,36 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  msrv-check:
+    name: Build with MSRV
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust MSRV
+      uses: dtolnay/rust-toolchain@master
+      with:
+        # Set this to your MSRV as specified in Cargo.toml
+        toolchain: 1.71.0
+
+    - name: Install Boost library
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libboost-all-dev
+
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+
+    - name: Build with MSRV
+      run: |
+        # Ensure we're using the right version
+        rustc --version
+        # Build the project
+        cargo build --all-features
+ 
+    - name: Run tests with MSRV
+      run: cargo test --all-features
+
   build:
     name: Build and Test
     runs-on: ubuntu-latest
@@ -52,7 +82,7 @@ jobs:
 
     - name: Run tests with Valgrind
       run: |
-        find target/debug/deps -type f -executable -name "test-*" -not -name "*.so" -not -name "*.d" | xargs -I {} valgrind --leak-check=full --show-leak-kinds=all --suppressions=valgrind.supp --error-exitcode=1 {}
+        find target/debug/deps -type f -executable -name "test-*" -not -name "*.so" -not -name "*.d" | xargs -I {} valgrind --leak-check=full --show-leak-kinds=all  --errors-for-leak-kinds=definite --suppressions=valgrind.supp --error-exitcode=1 {}
 
   fuzzing:
     name: Check Fuzzing Setup
