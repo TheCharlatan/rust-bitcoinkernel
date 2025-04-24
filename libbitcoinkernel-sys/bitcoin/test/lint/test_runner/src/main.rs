@@ -250,7 +250,7 @@ fn lint_scripted_diff() -> LintResult {
 
 fn lint_commit_msg() -> LintResult {
     let mut good = true;
-    let commit_hashes = check_output(git().args(&[
+    let commit_hashes = check_output(git().args([
         "-c",
         "log.showSignature=false",
         "log",
@@ -361,6 +361,7 @@ fn lint_std_filesystem() -> LintResult {
             "std::filesystem",
             "--",
             "./src/",
+            ":(exclude)src/ipc/libmultiprocess/",
             ":(exclude)src/util/fs.h",
             ":(exclude)src/test/kernel/test_kernel.cpp",
             ":(exclude)src/bitcoin-chainstate.cpp",

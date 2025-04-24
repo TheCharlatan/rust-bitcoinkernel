@@ -33,6 +33,7 @@ from .p2p import P2P_SERVICES, P2P_SUBVERSION
 from .util import (
     MAX_NODES,
     assert_equal,
+    assert_not_equal,
     append_config,
     delete_cookie_file,
     get_auth_cookie,
@@ -668,7 +669,7 @@ class TestNode():
                 self.start(extra_args, stdout=log_stdout, stderr=log_stderr, *args, **kwargs)
                 ret = self.process.wait(timeout=self.rpc_timeout)
                 self.log.debug(self._node_msg(f'bitcoind exited with status {ret} during initialization'))
-                assert ret != 0  # Exit code must indicate failure
+                assert_not_equal(ret, 0) # Exit code must indicate failure
                 self.running = False
                 self.process = None
                 # Check stderr for expected message
@@ -826,7 +827,8 @@ class TestNode():
 
     def disconnect_p2ps(self):
         """Close all p2p connections to the node.
-        Use only after each p2p has sent a version message to ensure the wait works."""
+        The state of the peers (such as txrequests) may not be fully cleared
+        yet, even after this method returns."""
         for p in self.p2ps:
             p.peer_disconnect()
         del self.p2ps[:]
@@ -917,6 +919,8 @@ class TestNodeCLI():
             # Ignore cli_stdout, raise with cli_stderr
             raise subprocess.CalledProcessError(returncode, p_args, output=cli_stderr)
         try:
+            if not cli_stdout.strip():
+                return None
             return json.loads(cli_stdout, parse_float=decimal.Decimal)
         except (json.JSONDecodeError, decimal.InvalidOperation):
             return cli_stdout.rstrip("\n")

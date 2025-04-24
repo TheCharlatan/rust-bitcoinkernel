@@ -94,7 +94,7 @@ option(BUILD_DAEMON "Build bitcoind executable." ON)
 option(BUILD_GUI "Build bitcoin-qt executable." OFF)
 option(BUILD_CLI "Build bitcoin-cli executable." ON)
 
-option(BUILD_TESTS "Build test_bitcoin executable." ON)
+option(BUILD_TESTS "Build test_bitcoin and other unit test executables." ON)
 option(BUILD_TX "Build bitcoin-tx executable." ${BUILD_TESTS})
 option(BUILD_UTIL "Build bitcoin-util executable." ${BUILD_TESTS})
 
@@ -154,8 +154,9 @@ endif()
 
 cmake_dependent_option(WITH_DBUS "Enable DBus support." ON "CMAKE_SYSTEM_NAME STREQUAL \"Linux\" AND BUILD_GUI" OFF)
 
-option(WITH_MULTIPROCESS "Build multiprocess bitcoin-node and bitcoin-gui executables in addition to monolithic bitcoind and bitcoin-qt executables. Requires libmultiprocess library. Experimental." OFF)
-if(WITH_MULTIPROCESS)
+option(ENABLE_IPC "Build multiprocess bitcoin-node and bitcoin-gui executables in addition to monolithic bitcoind and bitcoin-qt executables. Requires libmultiprocess library. Experimental." OFF)
+cmake_dependent_option(WITH_EXTERNAL_LIBMULTIPROCESS "Build with external libmultiprocess library instead of with local git subtree when ENABLE_IPC is enabled. This is not normally recommended, but can be useful for developing libmultiprocess itself." OFF "ENABLE_IPC" OFF)
+if(ENABLE_IPC AND WITH_EXTERNAL_LIBMULTIPROCESS)
   find_package(Libmultiprocess REQUIRED COMPONENTS Lib)
   find_package(LibmultiprocessNative REQUIRED COMPONENTS Bin
     NAMES Libmultiprocess
@@ -175,7 +176,7 @@ if(BUILD_GUI)
   if(BUILD_GUI_TESTS)
     list(APPEND qt_components Test)
   endif()
-  find_package(Qt 5.11.3 MODULE REQUIRED
+  find_package(Qt 6.2 MODULE REQUIRED
     COMPONENTS ${qt_components}
   )
   unset(qt_components)
@@ -348,13 +349,28 @@ target_link_libraries(core_interface INTERFACE
   Threads::Threads
 )
 
+# Define sanitize_interface with -fsanitize flags intended to apply to all
+# libraries and executables.
 add_library(sanitize_interface INTERFACE)
 target_link_libraries(core_interface INTERFACE sanitize_interface)
 if(SANITIZERS)
+  # Transform list of sanitizers into -fsanitize flags, replacing "fuzzer" with
+  # "fuzzer-no-link" in sanitize_interface flags, and moving "fuzzer" to
+  # fuzzer_interface flags. If -DSANITIZERS=fuzzer is specified, the fuzz test
+  # binary should be built with -fsanitize=fuzzer (so it can use libFuzzer's
+  # main function), but libraries should be built with -fsanitize=fuzzer-no-link
+  # (so they can be linked into other executables that have their own main
+  # functions).
+  string(REGEX REPLACE "(^|,)fuzzer($|,)" "\\1fuzzer-no-link\\2" sanitize_opts "${SANITIZERS}")
+  set(fuzz_flag "")
+  if(NOT sanitize_opts STREQUAL SANITIZERS)
+    set(fuzz_flag "-fsanitize=fuzzer")
+  endif()
+
   # First check if the compiler accepts flags. If an incompatible pair like
   # -fsanitize=address,thread is used here, this check will fail. This will also
   # fail if a bad argument is passed, e.g. -fsanitize=undfeined
-  try_append_cxx_flags("-fsanitize=${SANITIZERS}" TARGET sanitize_interface
+  try_append_cxx_flags("-fsanitize=${sanitize_opts}" TARGET sanitize_interface
     RESULT_VAR cxx_supports_sanitizers
     SKIP_LINK
   )
@@ -367,15 +383,15 @@ if(SANITIZERS)
   # flag. This is a separate check so we can give a better error message when
   # the sanitize flags are supported by the compiler but the actual sanitizer
   # libs are missing.
-  try_append_linker_flag("-fsanitize=${SANITIZERS}" VAR SANITIZER_LDFLAGS
+  try_append_linker_flag("-fsanitize=${sanitize_opts}" VAR SANITIZER_LDFLAGS
     SOURCE "
       #include <cstdint>
       #include <cstddef>
       extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) { return 0; }
-      __attribute__((weak)) // allow for libFuzzer linking
       int main() { return 0; }
     "
     RESULT_VAR linker_supports_sanitizers
+    NO_CACHE_IF_FAILED
   )
   if(NOT linker_supports_sanitizers)
     message(FATAL_ERROR "Linker did not accept requested flags, you are missing required libraries.")
@@ -383,8 +399,10 @@ if(SANITIZERS)
 endif()
 target_link_options(sanitize_interface INTERFACE ${SANITIZER_LDFLAGS})
 
+# Define fuzzer_interface with flags intended to apply to the fuzz test binary,
+# and perform a test compilation to determine correct value of
+# FUZZ_BINARY_LINKS_WITHOUT_MAIN_FUNCTION.
 if(BUILD_FUZZ_BINARY)
-  target_link_libraries(core_interface INTERFACE ${FUZZ_LIBS})
   include(CheckSourceCompilesWithFlags)
   check_cxx_source_compiles_with_flags("
       #include <cstdint>
@@ -392,9 +410,12 @@ if(BUILD_FUZZ_BINARY)
       extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) { return 0; }
       // No main() function.
     " FUZZ_BINARY_LINKS_WITHOUT_MAIN_FUNCTION
-    LDFLAGS ${SANITIZER_LDFLAGS}
+    LDFLAGS ${SANITIZER_LDFLAGS} ${fuzz_flag}
     LINK_LIBRARIES ${FUZZ_LIBS}
   )
+  add_library(fuzzer_interface INTERFACE)
+  target_link_options(fuzzer_interface INTERFACE ${fuzz_flag})
+  target_link_libraries(fuzzer_interface INTERFACE ${FUZZ_LIBS})
 endif()
 
 include(AddBoostIfNeeded)
@@ -630,14 +651,14 @@ message("Configure summary")
 message("=================")
 message("Executables:")
 message("  bitcoind ............................ ${BUILD_DAEMON}")
-if(BUILD_DAEMON AND WITH_MULTIPROCESS)
+if(BUILD_DAEMON AND ENABLE_IPC)
   set(bitcoin_daemon_status ON)
 else()
   set(bitcoin_daemon_status OFF)
 endif()
 message("  bitcoin-node (multiprocess) ......... ${bitcoin_daemon_status}")
 message("  bitcoin-qt (GUI) .................... ${BUILD_GUI}")
-if(BUILD_GUI AND WITH_MULTIPROCESS)
+if(BUILD_GUI AND ENABLE_IPC)
   set(bitcoin_gui_status ON)
 else()
   set(bitcoin_gui_status OFF)
@@ -657,6 +678,16 @@ if(ENABLE_WALLET)
 endif()
 message("  external signer ..................... ${ENABLE_EXTERNAL_SIGNER}")
 message("  ZeroMQ .............................. ${WITH_ZMQ}")
+if(ENABLE_IPC)
+  if (WITH_EXTERNAL_LIBMULTIPROCESS)
+    set(ipc_status "ON (with external libmultiprocess)")
+  else()
+    set(ipc_status ON)
+  endif()
+else()
+  set(ipc_status OFF)
+endif()
+message("  IPC ................................. ${ipc_status}")
 message("  USDT tracing ........................ ${WITH_USDT}")
 message("  QR code (GUI) ....................... ${WITH_QRENCODE}")
 message("  DBus (GUI, Linux only) .............. ${WITH_DBUS}")

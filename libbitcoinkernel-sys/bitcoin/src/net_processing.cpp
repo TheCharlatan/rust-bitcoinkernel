@@ -6,40 +6,55 @@
 #include <net_processing.h>
 
 #include <addrman.h>
+#include <arith_uint256.h>
 #include <banman.h>
 #include <blockencodings.h>
 #include <blockfilter.h>
+#include <chain.h>
 #include <chainparams.h>
+#include <common/bloom.h>
 #include <consensus/amount.h>
+#include <consensus/params.h>
 #include <consensus/validation.h>
+#include <core_memusage.h>
+#include <crypto/siphash.h>
 #include <deploymentstatus.h>
-#include <hash.h>
+#include <flatfile.h>
 #include <headerssync.h>
 #include <index/blockfilterindex.h>
 #include <kernel/chain.h>
-#include <kernel/mempool_entry.h>
 #include <logging.h>
 #include <merkleblock.h>
+#include <net.h>
+#include <net_permissions.h>
+#include <netaddress.h>
 #include <netbase.h>
 #include <netmessagemaker.h>
 #include <node/blockstorage.h>
+#include <node/connection_types.h>
+#include <node/protocol_version.h>
 #include <node/timeoffsets.h>
 #include <node/txdownloadman.h>
 #include <node/txreconciliation.h>
 #include <node/warnings.h>
+#include <policy/feerate.h>
 #include <policy/fees.h>
+#include <policy/packages.h>
 #include <policy/policy.h>
-#include <policy/settings.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
+#include <protocol.h>
 #include <random.h>
 #include <scheduler.h>
+#include <script/script.h>
+#include <serialize.h>
+#include <span.h>
 #include <streams.h>
 #include <sync.h>
 #include <tinyformat.h>
 #include <txmempool.h>
 #include <txorphanage.h>
-#include <txrequest.h>
+#include <uint256.h>
 #include <util/check.h>
 #include <util/strencodings.h>
 #include <util/time.h>
@@ -47,11 +62,26 @@
 #include <validation.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <compare>
+#include <cstddef>
+#include <deque>
+#include <exception>
+#include <functional>
 #include <future>
+#include <initializer_list>
+#include <iterator>
+#include <limits>
+#include <list>
+#include <map>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <ranges>
+#include <ratio>
+#include <set>
+#include <span>
 #include <typeinfo>
 #include <utility>
 
@@ -1156,7 +1186,7 @@ void PeerManagerImpl::RemoveBlockRequest(const uint256& hash, std::optional<Node
     Assume(mapBlocksInFlight.count(hash) <= MAX_CMPCTBLOCKS_INFLIGHT_PER_BLOCK);
 
     while (range.first != range.second) {
-        auto [node_id, list_it] = range.first->second;
+        const auto& [node_id, list_it]{range.first->second};
 
         if (from_peer && *from_peer != node_id) {
             range.first++;
@@ -2425,6 +2455,9 @@ void PeerManagerImpl::ProcessGetData(CNode& pfrom, Peer& peer, const std::atomic
         }
         // else: If the first item on the queue is an unknown type, we erase it
         // and continue processing the queue on the next call.
+        // NOTE: previously we wouldn't do so and the peer sending us a malformed GETDATA could
+        // result in never making progress and this thread using 100% allocated CPU. See
+        // https://bitcoincore.org/en/2024/07/03/disclose-getdata-cpu.
     }
 
     peer.m_getdata_requests.erase(peer.m_getdata_requests.begin(), it);
@@ -3068,6 +3101,8 @@ void PeerManagerImpl::ProcessPackageResult(const node::PackageToValidate& packag
     }
 }
 
+// NOTE: the orphan processing used to be uninterruptible and quadratic, which could allow a peer to stall the node for
+// hours with specially crafted transactions. See https://bitcoincore.org/en/2024/07/03/disclose-orphan-dos.
 bool PeerManagerImpl::ProcessOrphanTx(Peer& peer)
 {
     AssertLockHeld(g_msgproc_mutex);
