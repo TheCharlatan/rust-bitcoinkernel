@@ -3,14 +3,15 @@
 // file COPYING or https://www.opensource.org/licenses/mit-license.php.
 
 #include <bench/bench.h>
-#include <kernel/chain.h>
 #include <interfaces/chain.h>
+#include <interfaces/wallet.h>
+#include <kernel/chain.h>
 #include <node/context.h>
 #include <test/util/mining.h>
 #include <test/util/setup_common.h>
-#include <wallet/test/util.h>
 #include <wallet/context.h>
 #include <wallet/receive.h>
+#include <wallet/test/util.h>
 #include <wallet/wallet.h>
 
 #include <optional>
@@ -19,11 +20,8 @@ namespace wallet{
 
 static void WalletMigration(benchmark::Bench& bench)
 {
-    const auto test_setup = MakeNoLogFileContext<TestingSetup>();
-
-    WalletContext context;
-    context.args = &test_setup->m_args;
-    context.chain = test_setup->m_node.chain.get();
+    const auto test_setup{MakeNoLogFileContext<TestingSetup>()};
+    const auto loader{MakeWalletLoader(*test_setup->m_node.chain, test_setup->m_args)};
 
     // Number of imported watch only addresses
     int NUM_WATCH_ONLY_ADDR = 20;
@@ -32,6 +30,7 @@ static void WalletMigration(benchmark::Bench& bench)
     std::unique_ptr<CWallet> wallet = std::make_unique<CWallet>(test_setup->m_node.chain.get(), "", CreateMockableWalletDatabase());
     wallet->chainStateFlushed(ChainstateRole::NORMAL, CBlockLocator{});
     LegacyDataSPKM* legacy_spkm = wallet->GetOrCreateLegacyDataSPKM();
+    WalletBatch batch{wallet->GetDatabase()};
 
     // Add watch-only addresses
     std::vector<CScript> scripts_watch_only;
@@ -42,6 +41,7 @@ static void WalletMigration(benchmark::Bench& bench)
         const CScript& script = scripts_watch_only.emplace_back(GetScriptForDestination(dest));
         assert(legacy_spkm->LoadWatchOnly(script));
         assert(wallet->SetAddressBook(dest, strprintf("watch_%d", w), /*purpose=*/std::nullopt));
+        batch.WriteWatchOnly(script, CKeyMetadata());
     }
 
     // Generate transactions and local addresses
@@ -58,14 +58,16 @@ static void WalletMigration(benchmark::Bench& bench)
         mtx.vout.emplace_back(COIN, scripts_watch_only.at(j % NUM_WATCH_ONLY_ADDR));
         mtx.vin.resize(2);
         wallet->AddToWallet(MakeTransactionRef(mtx), TxStateInactive{}, /*update_wtx=*/nullptr, /*fFlushOnClose=*/false, /*rescanning_old_block=*/true);
+        batch.WriteKey(pubkey, key.GetPrivKey(), CKeyMetadata());
     }
 
-    bench.epochs(/*numEpochs=*/1).run([&context, &wallet] {
-        util::Result<MigrationResult> res = MigrateLegacyToDescriptor(std::move(wallet), /*passphrase=*/"", context, /*was_loaded=*/false);
-        assert(res);
-        assert(res->wallet);
-        assert(res->watchonly_wallet);
-    });
+    bench.epochs(/*numEpochs=*/1).epochIterations(/*numIters=*/1) // run the migration exactly once
+         .run([&] {
+             auto res{MigrateLegacyToDescriptor(std::move(wallet), /*passphrase=*/"", *loader->context(), /*was_loaded=*/false)};
+             assert(res);
+             assert(res->wallet);
+             assert(res->watchonly_wallet);
+         });
 }
 
 BENCHMARK(WalletMigration, benchmark::PriorityLevel::LOW);

@@ -826,7 +826,7 @@ kernel_ChainstateManager* kernel_chainstate_manager_create(
             return nullptr;
         }
 
-        for (Chainstate* chainstate : WITH_LOCK(::cs_main, return chainman->GetAll())) {
+        for (Chainstate* chainstate : WITH_LOCK(chainman->GetMutex(), return chainman->GetAll())) {
             BlockValidationState state;
             if (!chainstate->ActivateBestChain(state, nullptr)) {
                 LogError("Failed to connect best block: %s", state.ToString());
@@ -849,7 +849,7 @@ void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainman_, cons
     auto chainman{cast_chainstate_manager(chainman_)};
 
     {
-        LOCK(cs_main);
+        LOCK(chainman->GetMutex());
         for (Chainstate* chainstate : chainman->GetAll()) {
             if (chainstate->CanFlushToDisk()) {
                 chainstate->ForceFlushStateToDisk();
@@ -971,13 +971,13 @@ void kernel_block_destroy(kernel_Block* block)
 kernel_BlockIndex* kernel_get_block_index_from_tip(const kernel_Context* context_, kernel_ChainstateManager* chainman_)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
-    return reinterpret_cast<kernel_BlockIndex*>(WITH_LOCK(::cs_main, return chainman->ActiveChain().Tip()));
+    return reinterpret_cast<kernel_BlockIndex*>(WITH_LOCK(chainman->GetMutex(), return chainman->ActiveChain().Tip()));
 }
 
 kernel_BlockIndex* kernel_get_block_index_from_genesis(const kernel_Context* context_, kernel_ChainstateManager* chainman_)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
-    return reinterpret_cast<kernel_BlockIndex*>(WITH_LOCK(::cs_main, return chainman->ActiveChain().Genesis()));
+    return reinterpret_cast<kernel_BlockIndex*>(WITH_LOCK(chainman->GetMutex(), return chainman->ActiveChain().Genesis()));
 }
 
 kernel_BlockIndex* kernel_get_block_index_from_hash(const kernel_Context* context_, kernel_ChainstateManager* chainman_, kernel_BlockHash* block_hash)
@@ -985,7 +985,7 @@ kernel_BlockIndex* kernel_get_block_index_from_hash(const kernel_Context* contex
     auto chainman{cast_chainstate_manager(chainman_)};
 
     auto hash = uint256{std::span<const unsigned char>{(*block_hash).hash, 32}};
-    auto block_index = WITH_LOCK(::cs_main, return chainman->m_blockman.LookupBlockIndex(hash));
+    auto block_index = WITH_LOCK(chainman->GetMutex(), return chainman->m_blockman.LookupBlockIndex(hash));
     if (!block_index) {
         LogDebug(BCLog::KERNEL, "A block with the given hash is not indexed.");
         return nullptr;
@@ -997,7 +997,7 @@ kernel_BlockIndex* kernel_get_block_index_from_height(const kernel_Context* cont
 {
     auto chainman{cast_chainstate_manager(chainman_)};
 
-    LOCK(cs_main);
+    LOCK(chainman->GetMutex());
 
     if (height < 0 || height > chainman->ActiveChain().Height()) {
         LogDebug(BCLog::KERNEL, "Block height is out of range.");
@@ -1011,7 +1011,7 @@ kernel_BlockIndex* kernel_get_next_block_index(const kernel_Context* context_, k
     const auto block_index{cast_const_block_index(block_index_)};
     auto chainman{cast_chainstate_manager(chainman_)};
 
-    auto next_block_index{WITH_LOCK(::cs_main, return chainman->ActiveChain().Next(block_index))};
+    auto next_block_index{WITH_LOCK(chainman->GetMutex(), return chainman->ActiveChain().Next(block_index))};
 
     if (!next_block_index) {
         LogTrace(BCLog::KERNEL, "The block index is the tip of the current chain, it does not have a next.");
