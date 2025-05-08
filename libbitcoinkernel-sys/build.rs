@@ -52,12 +52,19 @@ fn main() {
         .status()
         .unwrap();
 
-    // Add the lib directory to the search path
-    let lib_dir = install_dir.join("lib");
+    // Check multiple possible lib directories
+    let possible_lib_dirs = vec![install_dir.join("lib"), install_dir.join("lib64")];
+
+    // Find the first existing lib directory
+    let lib_dir = possible_lib_dirs
+        .iter()
+        .find(|dir| dir.exists())
+        .expect("No library directory found in the install directory");
+
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
     // Link all static libraries found in the install directory
-    for entry in std::fs::read_dir(&lib_dir).expect("Library directory has to readable") {
+    for entry in std::fs::read_dir(&lib_dir).expect("Library directory has to be readable") {
         let path = entry.unwrap().path();
         if path.extension().map_or(false, |extension| extension == "a") {
             if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
