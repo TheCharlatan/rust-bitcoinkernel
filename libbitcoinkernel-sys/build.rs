@@ -94,12 +94,18 @@ fn main() {
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 
-    let compiler = cc::Build::new().get_compiler();
-    if compiler.is_like_clang() {
-        println!("cargo:rustc-link-lib=dylib=c++");
-    } else if compiler.is_like_gnu() {
-        println!("cargo:rustc-link-lib=dylib=stdc++");
+    // Check if the user specifies explicitly which stdlib to use
+    if let Ok(stdlib) = env::var("CXX_STDLIB") {
+        println!("cargo:rustc-link-lib=dylib={}", stdlib);
     } else {
-        panic!("Cannot figure out the c++ standard library to link with this compiler.");
+        // Fall back to a best guess based on the compiler
+        let compiler = cc::Build::new().get_compiler();
+        if compiler.is_like_clang() {
+            println!("cargo:rustc-link-lib=dylib=c++");
+        } else if compiler.is_like_gnu() {
+            println!("cargo:rustc-link-lib=dylib=stdc++");
+        } else {
+            panic!("Cannot figure out the c++ standard library to link with this compiler.");
+        }
     }
 }
