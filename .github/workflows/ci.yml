@@ -84,6 +84,43 @@ jobs:
       run: |
         find target/debug/deps -type f -executable -name "test-*" -not -name "*.so" -not -name "*.d" | xargs -I {} valgrind --leak-check=full --show-leak-kinds=all  --errors-for-leak-kinds=definite --suppressions=valgrind.supp --error-exitcode=1 {}
 
+  windows-build:
+    name: Build and Test on Windows
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+        components: rustfmt
+
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+
+    - name: Install Boost library
+      run: |
+        # Using vcpkg to install Boost on Windows
+        git clone https://github.com/microsoft/vcpkg.git
+        cd vcpkg
+        .\bootstrap-vcpkg.bat
+        .\vcpkg install boost:x64-windows-static
+        echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+        echo "$env:GITHUB_WORKSPACE\vcpkg\installed\x64-windows-static\lib" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+    - name: Set environment variables for static linking
+      run: |
+        echo "BOOST_ROOT=$env:GITHUB_WORKSPACE\vcpkg\installed\x64-windows-static" | Out-File -FilePath $env:GITHUB_ENV -Append
+        echo "BOOST_INCLUDEDIR=$env:GITHUB_WORKSPACE\vcpkg\installed\x64-windows-static\include" | Out-File -FilePath $env:GITHUB_ENV -Append
+        echo "BOOST_LIBRARYDIR=$env:GITHUB_WORKSPACE\vcpkg\installed\x64-windows-static\lib" | Out-File -FilePath $env:GITHUB_ENV -Append
+        echo "RUSTFLAGS=-Ctarget-feature=+crt-static" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+    - name: Run tests
+      run: cargo test -vv
   
   macos-build:
     name: Build and Test on macOS
