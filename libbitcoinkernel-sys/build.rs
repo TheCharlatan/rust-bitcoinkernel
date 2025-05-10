@@ -89,7 +89,12 @@ fn main() {
 
     let compiler = cc::Build::new().get_compiler();
     if compiler.is_like_clang() {
-        println!("cargo:rustc-link-lib=dylib=c++");
+        let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+        if target_os == "macos" {
+            println!("cargo:rustc-link-lib=dylib=c++");
+        } else {
+            println!("cargo:rustc-link-lib=dylib=stdc++");
+        }
     } else if compiler.is_like_gnu() {
         println!("cargo:rustc-link-lib=dylib=stdc++");
     } else {
