@@ -30,6 +30,7 @@ fn main() {
         .arg("-DBUILD_UTIL_CHAINSTATE=OFF")
         .arg("-DBUILD_CLI=OFF")
         .arg("-DBUILD_SHARED_LIBS=OFF")
+        .arg("-DCMAKE_INSTALL_LIBDIR=lib")
         .arg(format!("-DCMAKE_INSTALL_PREFIX={}", install_dir.display()))
         .status()
         .unwrap();
@@ -52,12 +53,11 @@ fn main() {
         .status()
         .unwrap();
 
-    // Add the lib directory to the search path
     let lib_dir = install_dir.join("lib");
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
     // Link all static libraries found in the install directory
-    for entry in std::fs::read_dir(&lib_dir).expect("Library directory has to readable") {
+    for entry in std::fs::read_dir(&lib_dir).expect("Library directory has to be readable") {
         let path = entry.unwrap().path();
         if path.extension().map_or(false, |extension| extension == "a") {
             if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
@@ -89,7 +89,12 @@ fn main() {
 
     let compiler = cc::Build::new().get_compiler();
     if compiler.is_like_clang() {
-        println!("cargo:rustc-link-lib=dylib=c++");
+        let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+        if target_os == "macos" {
+            println!("cargo:rustc-link-lib=dylib=c++");
+        } else {
+            println!("cargo:rustc-link-lib=dylib=stdc++");
+        }
     } else if compiler.is_like_gnu() {
         println!("cargo:rustc-link-lib=dylib=stdc++");
     } else {
