@@ -173,8 +173,8 @@ impl From<ChainType> for kernel_ChainType {
 }
 
 /// The chain's tip was updated to the provided block hash.
-pub trait BlockTip: Fn(SynchronizationState, BlockHash) {}
-impl<F: Fn(SynchronizationState, BlockHash)> BlockTip for F {}
+pub trait BlockTip: Fn(SynchronizationState, BlockHash, f64) {}
+impl<F: Fn(SynchronizationState, BlockHash, f64)> BlockTip for F {}
 
 /// A new best block header was added.
 pub trait HeaderTip: Fn(SynchronizationState, i64, i64, bool) {}
@@ -215,14 +215,13 @@ unsafe extern "C" fn kn_block_tip_wrapper(
     user_data: *mut c_void,
     state: kernel_SynchronizationState,
     block_index: *const kernel_BlockIndex,
+    verification_progress: f64,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     let hash = kernel_block_index_get_block_hash(block_index);
-    let res = BlockHash {
-        hash: (&*hash).hash,
-    };
+    let res = BlockHash { hash: (*hash).hash };
     kernel_block_hash_destroy(hash);
-    (holder.kn_block_tip)(state.into(), res);
+    (holder.kn_block_tip)(state.into(), res, verification_progress);
 }
 
 unsafe extern "C" fn kn_header_tip_wrapper(

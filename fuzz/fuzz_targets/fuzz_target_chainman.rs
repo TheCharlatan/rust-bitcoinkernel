@@ -17,7 +17,7 @@ fn create_context(chain_type: ChainType) -> Arc<Context> {
         ContextBuilder::new()
             .chain_type(chain_type)
             .kn_callbacks(Box::new(KernelNotificationInterfaceCallbacks {
-                kn_block_tip: Box::new(|_state, _block_index| {}),
+                kn_block_tip: Box::new(|_state, _block_index, _verification_progress| {}),
                 kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
                 kn_progress: Box::new(|_title, _progress, _resume_possible| {}),
                 kn_warning_set: Box::new(|_warning, _message| {}),

@@ -36,7 +36,7 @@ mod tests {
         let builder = ContextBuilder::new()
             .chain_type(ChainType::REGTEST)
             .kn_callbacks(Box::new(KernelNotificationInterfaceCallbacks {
-                kn_block_tip: Box::new(|_state, _block_tip| {
+                kn_block_tip: Box::new(|_state, _block_tip, _verification_progress| {
                     log::info!("Received block tip.");
                 }),
                 kn_header_tip: Box::new(|_state, height, timestamp, _presync| {
