@@ -153,8 +153,15 @@ class FullBlockTest(BitcoinTestFramework):
         for TxTemplate in invalid_txs.iter_all_templates():
             template = TxTemplate(spend_tx=attempt_spend_tx)
 
+            # belt-and-suspenders checking we won't pass up validating something
+            # we expect a disconnect from
+            if template.expect_disconnect:
+                assert not template.valid_in_block
+
             if template.valid_in_block:
                 continue
+
+            assert template.block_reject_reason or template.reject_reason
 
             self.log.info(f"Reject block with invalid tx: {TxTemplate.__name__}")
             blockname = f"for_invalid.{TxTemplate.__name__}"
@@ -831,6 +838,7 @@ class FullBlockTest(BitcoinTestFramework):
         self.log.info("Reject a block with a transaction with a duplicate hash of a previous transaction (BIP30)")
         self.move_tip(60)
         b61 = self.next_block(61)
+        b61.vtx[0].nLockTime = 0
         b61.vtx[0].vin[0].scriptSig = DUPLICATE_COINBASE_SCRIPT_SIG
         b61.vtx[0].rehash()
         b61 = self.update_block(61, [])
@@ -853,6 +861,7 @@ class FullBlockTest(BitcoinTestFramework):
         b_spend_dup_cb = self.update_block('spend_dup_cb', [tx])
 
         b_dup_2 = self.next_block('dup_2')
+        b_dup_2.vtx[0].nLockTime = 0
         b_dup_2.vtx[0].vin[0].scriptSig = DUPLICATE_COINBASE_SCRIPT_SIG
         b_dup_2.vtx[0].rehash()
         b_dup_2 = self.update_block('dup_2', [])

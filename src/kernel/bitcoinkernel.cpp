@@ -164,9 +164,9 @@ public:
     {
     }
 
-    kernel::InterruptResult blockTip(SynchronizationState state, CBlockIndex& index) override
+    kernel::InterruptResult blockTip(SynchronizationState state, CBlockIndex& index, double verification_progress) override
     {
-        if (m_cbs.block_tip) m_cbs.block_tip((void*)m_cbs.user_data, cast_state(state), reinterpret_cast<const kernel_BlockIndex*>(&index));
+        if (m_cbs.block_tip) m_cbs.block_tip((void*)m_cbs.user_data, cast_state(state), reinterpret_cast<const kernel_BlockIndex*>(&index), verification_progress);
         return {};
     }
     void headerTip(SynchronizationState state, int64_t height, int64_t timestamp, bool presync) override

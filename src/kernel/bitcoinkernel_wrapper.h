@@ -177,8 +177,8 @@ private:
     {
         return kernel_NotificationInterfaceCallbacks{
             .user_data = this,
-            .block_tip = [](void* user_data, kernel_SynchronizationState state, const kernel_BlockIndex* index) {
-                static_cast<T*>(user_data)->BlockTipHandler(state, index);
+            .block_tip = [](void* user_data, kernel_SynchronizationState state, const kernel_BlockIndex* index, double verification_progress) {
+                static_cast<T*>(user_data)->BlockTipHandler(state, index, verification_progress);
             },
             .header_tip = [](void* user_data, kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync) {
                 static_cast<T*>(user_data)->HeaderTipHandler(state, height, timestamp, presync);
@@ -202,7 +202,7 @@ public:
 
     virtual ~KernelNotifications() = default;
 
-    virtual void BlockTipHandler(kernel_SynchronizationState state, const kernel_BlockIndex* index) {}
+    virtual void BlockTipHandler(kernel_SynchronizationState state, const kernel_BlockIndex* index, double verification_progress) {}
 
     virtual void HeaderTipHandler(kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync) {}
 
