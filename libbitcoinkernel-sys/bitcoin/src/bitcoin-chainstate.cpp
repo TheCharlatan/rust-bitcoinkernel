@@ -100,7 +100,7 @@ public:
 class TestKernelNotifications : public KernelNotifications<TestKernelNotifications>
 {
 public:
-    void BlockTipHandler(kernel_SynchronizationState state, const kernel_BlockIndex* index) override
+    void BlockTipHandler(kernel_SynchronizationState, const kernel_BlockIndex*, double) override
     {
         std::cout << "Block tip changed" << std::endl;
     }

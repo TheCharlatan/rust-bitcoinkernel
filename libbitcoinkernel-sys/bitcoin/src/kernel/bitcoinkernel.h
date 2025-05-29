@@ -259,7 +259,7 @@ typedef void (*kernel_LogCallback)(void* user_data, const char* message, size_t 
 /**
  * Function signatures for the kernel notifications.
  */
-typedef void (*kernel_NotifyBlockTip)(void* user_data, kernel_SynchronizationState state, const kernel_BlockIndex* index);
+typedef void (*kernel_NotifyBlockTip)(void* user_data, kernel_SynchronizationState state, const kernel_BlockIndex* index, double verification_progress);
 typedef void (*kernel_NotifyHeaderTip)(void* user_data, kernel_SynchronizationState state, int64_t height, int64_t timestamp, bool presync);
 typedef void (*kernel_NotifyProgress)(void* user_data, const char* title, size_t title_len, int progress_percent, bool resume_possible);
 typedef void (*kernel_NotifyWarningSet)(void* user_data, kernel_Warning warning, const char* message, size_t message_len);
