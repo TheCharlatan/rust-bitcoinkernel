@@ -813,6 +813,21 @@ impl BlockUndo {
         unsafe { kernel_get_transaction_undo_size(self.inner, transaction_index) }
     }
 
+    /// Gets the previous output creation height by its index.
+    pub fn get_prevout_height_by_index(
+        &self,
+        transaction_index: u64,
+        prevout_index: u64,
+    ) -> Result<u32, KernelError> {
+        let height = unsafe {
+            kernel_get_undo_output_height_by_index(self.inner, transaction_index, prevout_index)
+        };
+        if height == 0 {
+            return Err(KernelError::OutOfBounds);
+        }
+        Ok(height)
+    }
+
     /// Gets the previous output of a transaction by its index.
     pub fn get_prevout_by_index(
         &self,

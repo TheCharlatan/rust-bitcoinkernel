@@ -158,6 +158,7 @@ mod tests {
         #[allow(dead_code)]
         #[derive(Debug)]
         struct Input {
+            height: u32,
             prevout: Vec<u8>,
             script_sig: Vec<u8>,
             witness: Vec<Vec<u8>>,
@@ -223,6 +224,7 @@ mod tests {
             };
             for j in 0..transaction_input_size {
                 helper.ins.push(Input {
+                    height: undo.get_prevout_height_by_index(i as u64, j).unwrap(),
                     prevout: undo
                         .get_prevout_by_index(i as u64, j)
                         .unwrap()
