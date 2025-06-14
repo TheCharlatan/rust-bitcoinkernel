@@ -546,11 +546,19 @@ void chainman_regtest_validation_test()
     assert(block_undo);
     auto tx_undo_size = block_undo->GetTxOutSize(block_undo->m_size - 1);
     auto output = block_undo->GetTxUndoPrevoutByIndex(block_undo->m_size - 1, tx_undo_size - 1);
+    uint32_t output_height = block_undo->GetTxUndoPrevoutHeight(block_undo->m_size - 1, tx_undo_size - 1);
+    assert(output_height == 205);
     assert(output);
     assert(output.GetOutputAmount() == 100000000);
     auto script_pubkey = output.GetScriptPubkey();
     assert(script_pubkey);
     assert(script_pubkey.GetScriptPubkeyData().size() == 22);
+
+    // Test that reading past the size returns null data
+    output = block_undo->GetTxUndoPrevoutByIndex(block_undo->m_size, tx_undo_size);
+    assert(!output);
+    output_height = block_undo->GetTxUndoPrevoutHeight(block_undo->m_size, tx_undo_size);
+    assert(!output_height);
 }
 
 void chainman_reindex_test(TestDirectory& test_directory)

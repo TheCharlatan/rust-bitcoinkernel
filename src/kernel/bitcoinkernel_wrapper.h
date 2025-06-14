@@ -492,6 +492,13 @@ public:
         return kernel_get_transaction_undo_size(m_block_undo.get(), index);
     }
 
+    uint32_t GetTxUndoPrevoutHeight(
+        uint64_t tx_undo_index,
+        uint64_t tx_prevout_index) const noexcept
+    {
+        return kernel_get_undo_output_height_by_index(m_block_undo.get(), tx_undo_index, tx_prevout_index);
+    }
+
     TransactionOutput GetTxUndoPrevoutByIndex(
         uint64_t tx_undo_index,
         uint64_t tx_prevout_index) const noexcept
