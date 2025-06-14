@@ -79,28 +79,18 @@ add_library(bitcoinkernel
   ../validation.cpp
   ../validationinterface.cpp
   ../versionbits.cpp
-  $<TARGET_OBJECTS:bitcoin_clientversion>
-  $<TARGET_OBJECTS:bitcoin_crypto>
-  $<TARGET_OBJECTS:crc32c>
-  $<TARGET_OBJECTS:leveldb>
-  $<TARGET_OBJECTS:secp256k1>
 )
-
 target_link_libraries(bitcoinkernel
   PRIVATE
     core_interface
-    secp256k1_precomputed
-    secp256k1_asm
+    bitcoin_clientversion
+    bitcoin_crypto
+    leveldb
+    secp256k1
     $<$<PLATFORM_ID:Windows>:bcrypt>
     $<TARGET_NAME_IF_EXISTS:USDT::headers>
   PUBLIC
     Boost::headers
-)
-
-target_include_directories(bitcoinkernel
-  PRIVATE
-    $<BUILD_INTERFACE:$<TARGET_PROPERTY:leveldb,INTERFACE_INCLUDE_DIRECTORIES>>
-    $<BUILD_INTERFACE:$<TARGET_PROPERTY:secp256k1,INTERFACE_INCLUDE_DIRECTORIES>>
 )
 
 # libbitcoinkernel requires default symbol visibility, explicitly

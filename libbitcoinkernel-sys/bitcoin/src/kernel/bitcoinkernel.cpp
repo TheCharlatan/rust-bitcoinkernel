@@ -316,7 +316,6 @@ const CTxOut* cast_transaction_output(const kernel_TransactionOutput* transactio
 {
     assert(transaction_output);
     return reinterpret_cast<const CTxOut*>(transaction_output);
-
 }
 
 const ContextOptions* cast_const_context_options(const kernel_ContextOptions* options)
@@ -1089,6 +1088,25 @@ uint64_t kernel_get_transaction_undo_size(const kernel_BlockUndo* block_undo_, u
 {
     const auto block_undo{cast_const_block_undo(block_undo_)};
     return block_undo->vtxundo[transaction_undo_index].vprevout.size();
+}
+
+uint32_t kernel_get_undo_output_height_by_index(const kernel_BlockUndo* block_undo_, uint64_t transaction_undo_index, uint64_t output_index)
+{
+    const auto block_undo{cast_const_block_undo(block_undo_)};
+
+    if (transaction_undo_index >= block_undo->vtxundo.size()) {
+        LogInfo("transaction undo index is out of bounds.");
+        return 0;
+    }
+
+    const auto& tx_undo = block_undo->vtxundo[transaction_undo_index];
+
+    if (output_index >= tx_undo.vprevout.size()) {
+        LogInfo("previous output index is out of bounds.");
+        return 0;
+    }
+
+    return tx_undo.vprevout[output_index].nHeight;
 }
 
 kernel_TransactionOutput* kernel_get_undo_output_by_index(const kernel_BlockUndo* block_undo_,

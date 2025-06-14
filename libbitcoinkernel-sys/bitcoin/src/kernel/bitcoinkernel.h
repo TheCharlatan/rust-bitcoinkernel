@@ -1154,6 +1154,23 @@ BITCOINKERNEL_API uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_transacti
 ) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
+ * @brief Returns the block height of the block that contains the output at
+ * output_index within the transaction undo data at the provided index of the
+ * block undo data.
+ *
+ * @param[in] block_undo             Non-null.
+ * @param[in] transaction_undo_index The index of the transaction undo data within the block undo data.
+ * @param[in] output_index           The index of the targeted transaction output within the transaction
+ *                                   undo data.
+ * @return                           The block height of the output, or 0 if provided indices are out of bounds.
+ */
+BITCOINKERNEL_API uint32_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_undo_output_height_by_index(
+    const kernel_BlockUndo* block_undo,
+    uint64_t transaction_undo_index,
+    uint64_t output_index
+) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
  * @brief Return a transaction output contained in the transaction undo data of
  * a block undo data at a certain index.
  *
@@ -1161,7 +1178,7 @@ BITCOINKERNEL_API uint64_t BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_transacti
  * @param[in] transaction_undo_index The index of the transaction undo data within the block undo data.
  * @param[in] output_index           The index of the to be retrieved transaction output within the
  *                                   transaction undo data.
- * @return                           A transaction output pointer, or null on error.
+ * @return                           A transaction output pointer, or null if provided indices are out of bounds.
  */
 BITCOINKERNEL_API kernel_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT kernel_get_undo_output_by_index(
     const kernel_BlockUndo* block_undo,
