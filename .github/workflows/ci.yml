@@ -149,7 +149,7 @@ jobs:
     - name: Build and run fuzzing with Address Sanitizer
       env:
         RUSTFLAGS: "-Zsanitizer=address"
-        ASAN_OPTIONS: "detect_leaks=0"
+        ASAN_OPTIONS: "detect_leaks=1"
       run: |
         # First compile the main crate with sanitizer flags
         cargo build --verbose
