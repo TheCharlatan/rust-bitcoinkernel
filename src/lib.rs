@@ -54,7 +54,7 @@ pub fn verify(
         kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_ALL
     };
     let mut status = kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_OK;
-    let kernel_amount = if let Some(a) = amount { a } else { 0 };
+    let kernel_amount = amount.unwrap_or_default();
     let kernel_spent_outputs: Vec<*const kernel_TransactionOutput> = spent_outputs
         .iter()
         .map(|utxo| utxo.inner as *const kernel_TransactionOutput)
@@ -369,14 +369,19 @@ pub struct ContextBuilder {
     vi_callbacks: Option<Box<ValidationInterfaceCallbacks>>,
 }
 
+impl Default for ContextBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ContextBuilder {
     pub fn new() -> ContextBuilder {
-        let context = ContextBuilder {
+        ContextBuilder {
             inner: unsafe { kernel_context_options_create() },
             kn_callbacks: None,
             vi_callbacks: None,
-        };
-        context
+        }
     }
 
     /// Consumes the builder and creates a [`Context`].
@@ -479,7 +484,7 @@ impl fmt::Display for KernelError {
         match self {
             KernelError::Internal(msg)
             | KernelError::CStringCreationFailed(msg)
-            | KernelError::InvalidOptions(msg) => write!(f, "{}", msg),
+            | KernelError::InvalidOptions(msg) => write!(f, "{msg}"),
             _ => write!(f, "Error!"),
         }
     }
@@ -555,13 +560,9 @@ unsafe impl Sync for ScriptPubkey {}
 impl ScriptPubkey {
     pub fn get(&self) -> Vec<u8> {
         let script_pubkey = unsafe { kernel_copy_script_pubkey_data(self.inner) };
-        let res = unsafe {
-            std::slice::from_raw_parts(
-                (*script_pubkey).data,
-                (*script_pubkey).size.try_into().unwrap(),
-            )
-        }
-        .to_vec();
+        let res =
+            unsafe { std::slice::from_raw_parts((*script_pubkey).data, (*script_pubkey).size) }
+                .to_vec();
         unsafe { kernel_byte_array_destroy(script_pubkey) };
         res
     }
@@ -672,17 +673,15 @@ impl UnownedBlock {
             hash: unsafe { (&*hash).hash },
         };
         unsafe { kernel_block_hash_destroy(hash) };
-        return res;
+        res
     }
 }
 
-impl Into<Vec<u8>> for UnownedBlock {
-    fn into(self) -> Vec<u8> {
-        let raw_block = unsafe { kernel_copy_block_pointer_data(self.inner) };
-        let vec = unsafe {
-            std::slice::from_raw_parts((*raw_block).data, (*raw_block).size.try_into().unwrap())
-        }
-        .to_vec();
+impl From<UnownedBlock> for Vec<u8> {
+    fn from(block: UnownedBlock) -> Self {
+        let raw_block = unsafe { kernel_copy_block_pointer_data(block.inner) };
+        let vec =
+            unsafe { std::slice::from_raw_parts((*raw_block).data, (*raw_block).size) }.to_vec();
         unsafe { kernel_byte_array_destroy(raw_block) };
         vec
     }
@@ -703,17 +702,15 @@ impl Block {
             hash: unsafe { (&*hash).hash },
         };
         unsafe { kernel_block_hash_destroy(hash) };
-        return res;
+        res
     }
 }
 
-impl Into<Vec<u8>> for Block {
-    fn into(self) -> Vec<u8> {
-        let raw_block = unsafe { kernel_copy_block_data(self.inner) };
-        let vec = unsafe {
-            std::slice::from_raw_parts((*raw_block).data, (*raw_block).size.try_into().unwrap())
-        }
-        .to_vec();
+impl From<Block> for Vec<u8> {
+    fn from(block: Block) -> Vec<u8> {
+        let raw_block = unsafe { kernel_copy_block_data(block.inner) };
+        let vec =
+            unsafe { std::slice::from_raw_parts((*raw_block).data, (*raw_block).size) }.to_vec();
         unsafe { kernel_byte_array_destroy(raw_block) };
         vec
     }
@@ -786,11 +783,11 @@ impl BlockIndex {
             hash: unsafe { (&*hash).hash },
         };
         unsafe { kernel_block_hash_destroy(hash) };
-        return res;
+        res
     }
 }
 
-impl<'a> Drop for BlockIndex {
+impl Drop for BlockIndex {
     fn drop(&mut self) {
         unsafe { kernel_block_index_destroy(self.inner) };
     }
@@ -950,7 +947,7 @@ pub struct ChainstateManager {
 unsafe impl Send for ChainstateManager {}
 unsafe impl Sync for ChainstateManager {}
 
-impl<'a> ChainstateManager {
+impl ChainstateManager {
     pub fn new(
         chainman_opts: ChainstateManagerOptions,
         context: Arc<Context>,
@@ -971,7 +968,7 @@ impl<'a> ChainstateManager {
     /// fails to validate the `block_checked` callback's ['BlockValidationState'] will
     /// contain details.
     pub fn process_block(&self, block: &Block) -> (bool /* accepted */, bool /* duplicate */) {
-        let mut new_block = true.into();
+        let mut new_block = true;
         let accepted = unsafe {
             kernel_chainstate_manager_process_block(
                 self.context.inner,

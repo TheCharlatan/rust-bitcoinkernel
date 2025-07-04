@@ -19,7 +19,7 @@ fn main() {
         .arg("-B")
         .arg(&build_dir)
         .arg("-S")
-        .arg(&bitcoin_dir)
+        .arg(bitcoin_dir)
         .arg("-DBUILD_KERNEL_LIB=ON")
         .arg("-DBUILD_TESTS=OFF")
         .arg("-DBUILD_TX=OFF")
@@ -43,7 +43,7 @@ fn main() {
     Command::new("cmake")
         .arg("--build")
         .arg(&build_dir)
-        .arg(format!("--parallel={}", num_jobs))
+        .arg(format!("--parallel={num_jobs}"))
         .status()
         .unwrap();
 
@@ -59,11 +59,11 @@ fn main() {
     // Link all static libraries found in the install directory
     for entry in std::fs::read_dir(&lib_dir).expect("Library directory has to be readable") {
         let path = entry.unwrap().path();
-        if path.extension().map_or(false, |extension| extension == "a") {
+        if path.extension().is_some_and(|extension| extension == "a") {
             if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
                 // Remove the 'lib' prefix from the filename
                 let lib_name = name.strip_prefix("lib").unwrap_or(name);
-                println!("cargo:rustc-link-lib=static={}", lib_name);
+                println!("cargo:rustc-link-lib=static={lib_name}");
             }
         }
     }
