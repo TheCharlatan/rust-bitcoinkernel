@@ -1,6 +1,6 @@
 [package]
 name = "bitcoinkernel"
-version = "0.0.19"
+version = "0.0.21"
 edition = "2021"
 rust-version =  "1.71.0"
 authors = ["TheCharlatan <seb.kung@gmail.com>"]
@@ -13,7 +13,7 @@ categories = ["cryptography::cryptocurrencies"]
 readme = "README.md"
 
 [dependencies]
-libbitcoinkernel-sys = { path = "libbitcoinkernel-sys", version = "0.0.18" }
+libbitcoinkernel-sys = { path = "libbitcoinkernel-sys", version = "0.0.20" }
 
 [dev-dependencies]
 hex = "0.4"
