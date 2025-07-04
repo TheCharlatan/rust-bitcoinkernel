@@ -84,6 +84,31 @@ jobs:
       run: |
         find target/debug/deps -type f -executable -name "test-*" -not -name "*.so" -not -name "*.d" | xargs -I {} valgrind --leak-check=full --show-leak-kinds=all  --errors-for-leak-kinds=definite --suppressions=valgrind.supp --error-exitcode=1 {}
 
+  linux-aarch64:
+    name: Build and Test on Linux ARM64
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+        components: rustfmt
+
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+
+    - name: Install Boost library
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libboost-all-dev
+
+    - name: Build and test
+      run: cargo test -vv
 
   macos-build:
     name: Build and Test on macOS
