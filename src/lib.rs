@@ -868,9 +868,9 @@ impl ChainstateManagerOptions {
         let inner = unsafe {
             kernel_chainstate_manager_options_create(
                 context.inner,
-                c_data_dir.as_ptr().cast::<i8>(),
+                c_data_dir.as_ptr(),
                 c_data_dir.as_bytes().len(),
-                c_blocks_dir.as_ptr().cast::<i8>(),
+                c_blocks_dir.as_ptr(),
                 c_blocks_dir.as_bytes().len(),
             )
         };
