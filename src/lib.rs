@@ -324,8 +324,8 @@ unsafe extern "C" fn vi_block_checked_wrapper(
     stateIn: *const kernel_BlockValidationState,
 ) {
     let holder = &*(user_data as *mut ValidationInterfaceCallbacks);
-    let result = kernel_get_block_validation_result_from_block_validation_state(stateIn);
-    let mode = kernel_get_validation_mode_from_block_validation_state(stateIn);
+    let result = kernel_block_validation_state_get_block_validation_result(stateIn);
+    let mode = kernel_block_validation_state_get_validation_mode(stateIn);
     (holder.block_checked)(UnownedBlock::new(block), mode.into(), result.into());
 }
 
@@ -559,7 +559,7 @@ unsafe impl Sync for ScriptPubkey {}
 
 impl ScriptPubkey {
     pub fn get(&self) -> Vec<u8> {
-        let script_pubkey = unsafe { kernel_copy_script_pubkey_data(self.inner) };
+        let script_pubkey = unsafe { kernel_script_pubkey_copy_data(self.inner) };
         let res =
             unsafe { std::slice::from_raw_parts((*script_pubkey).data, (*script_pubkey).size) }
                 .to_vec();
@@ -611,13 +611,13 @@ impl TxOut {
 
     /// Get the amount associated with this transaction output
     pub fn get_value(&self) -> i64 {
-        unsafe { kernel_get_transaction_output_amount(self.inner) }
+        unsafe { kernel_transaction_output_get_amount(self.inner) }
     }
 
     /// Get the script pubkey of this output
     pub fn get_script_pubkey(&self) -> ScriptPubkey {
         ScriptPubkey {
-            inner: unsafe { kernel_copy_script_pubkey_from_output(self.inner) },
+            inner: unsafe { kernel_transaction_output_copy_script_pubkey(self.inner) },
         }
     }
 }
@@ -679,7 +679,7 @@ impl UnownedBlock {
 
 impl From<UnownedBlock> for Vec<u8> {
     fn from(block: UnownedBlock) -> Self {
-        let raw_block = unsafe { kernel_copy_block_pointer_data(block.inner) };
+        let raw_block = unsafe { kernel_block_pointer_copy_data(block.inner) };
         let vec =
             unsafe { std::slice::from_raw_parts((*raw_block).data, (*raw_block).size) }.to_vec();
         unsafe { kernel_byte_array_destroy(raw_block) };
@@ -708,7 +708,7 @@ impl Block {
 
 impl From<Block> for Vec<u8> {
     fn from(block: Block) -> Vec<u8> {
-        let raw_block = unsafe { kernel_copy_block_data(block.inner) };
+        let raw_block = unsafe { kernel_block_copy_data(block.inner) };
         let vec =
             unsafe { std::slice::from_raw_parts((*raw_block).data, (*raw_block).size) }.to_vec();
         unsafe { kernel_byte_array_destroy(raw_block) };
@@ -760,7 +760,7 @@ impl BlockIndex {
     /// Move to the previous entry in the block tree. E.g. from height n to
     /// height n-1.
     pub fn prev(self) -> Result<BlockIndex, KernelError> {
-        let inner = unsafe { kernel_get_previous_block_index(self.inner) };
+        let inner = unsafe { kernel_block_index_get_previous(self.inner) };
         if inner.is_null() {
             return Err(KernelError::OutOfBounds);
         }
@@ -807,7 +807,7 @@ impl BlockUndo {
     /// Gets the number of previous outputs associated with a transaction in a
     /// [`Block`] by its index.
     pub fn get_transaction_undo_size(&self, transaction_index: u64) -> u64 {
-        unsafe { kernel_get_transaction_undo_size(self.inner, transaction_index) }
+        unsafe { kernel_block_undo_get_transaction_undo_size(self.inner, transaction_index) }
     }
 
     /// Gets the previous output creation height by its index.
@@ -817,7 +817,11 @@ impl BlockUndo {
         prevout_index: u64,
     ) -> Result<u32, KernelError> {
         let height = unsafe {
-            kernel_get_undo_output_height_by_index(self.inner, transaction_index, prevout_index)
+            kernel_block_undo_get_transaction_output_height_by_index(
+                self.inner,
+                transaction_index,
+                prevout_index,
+            )
         };
         if height == 0 {
             return Err(KernelError::OutOfBounds);
@@ -832,7 +836,11 @@ impl BlockUndo {
         prevout_index: u64,
     ) -> Result<TxOut, KernelError> {
         let prev_out = unsafe {
-            kernel_get_undo_output_by_index(self.inner, transaction_index, prevout_index)
+            kernel_block_undo_copy_transaction_output_by_index(
+                self.inner,
+                transaction_index,
+                prevout_index,
+            )
         };
         if prev_out.is_null() {
             return Err(KernelError::OutOfBounds);
@@ -986,7 +994,7 @@ impl ChainstateManager {
     /// array of existing block files selected by the user.
     pub fn import_blocks(&self) -> Result<(), KernelError> {
         if !unsafe {
-            kernel_import_blocks(
+            kernel_chainstate_manager_import_blocks(
                 self.context.inner,
                 self.inner,
                 std::ptr::null_mut(),
@@ -1005,7 +1013,7 @@ impl ChainstateManager {
     /// there is no guarantee that it remains in the active chain.
     pub fn get_block_index_tip(&self) -> BlockIndex {
         BlockIndex {
-            inner: unsafe { kernel_get_block_index_from_tip(self.context.inner, self.inner) },
+            inner: unsafe { kernel_block_index_get_tip(self.context.inner, self.inner) },
             marker: PhantomData,
         }
     }
@@ -1013,7 +1021,7 @@ impl ChainstateManager {
     /// Get the block index entry of the genesis block.
     pub fn get_block_index_genesis(&self) -> BlockIndex {
         BlockIndex {
-            inner: unsafe { kernel_get_block_index_from_genesis(self.context.inner, self.inner) },
+            inner: unsafe { kernel_block_index_get_genesis(self.context.inner, self.inner) },
             marker: PhantomData,
         }
     }
@@ -1022,7 +1030,7 @@ impl ChainstateManager {
     /// Once retrieved there is no guarantee that it remains in the active chain.
     pub fn get_block_index_by_height(&self, block_height: i32) -> Result<BlockIndex, KernelError> {
         let inner = unsafe {
-            kernel_get_block_index_from_height(self.context.inner, self.inner, block_height)
+            kernel_block_index_get_by_height(self.context.inner, self.inner, block_height)
         };
         if inner.is_null() {
             return Err(KernelError::OutOfBounds);
@@ -1037,7 +1045,7 @@ impl ChainstateManager {
     pub fn get_block_index_by_hash(&self, hash: BlockHash) -> Result<BlockIndex, KernelError> {
         let mut block_hash = kernel_BlockHash { hash: hash.hash };
         let inner = unsafe {
-            kernel_get_block_index_from_hash(self.context.inner, self.inner, &mut block_hash)
+            kernel_block_index_get_by_hash(self.context.inner, self.inner, &mut block_hash)
         };
         if inner.is_null() {
             return Err(KernelError::Internal(
@@ -1054,7 +1062,7 @@ impl ChainstateManager {
     /// otherwise a leaf in the block tree, return an error.
     pub fn get_next_block_index(&self, block_index: BlockIndex) -> Result<BlockIndex, KernelError> {
         let inner = unsafe {
-            kernel_get_next_block_index(self.context.inner, self.inner, block_index.inner)
+            kernel_block_index_get_next(self.context.inner, self.inner, block_index.inner)
         };
         if inner.is_null() {
             return Err(KernelError::OutOfBounds);
@@ -1067,9 +1075,7 @@ impl ChainstateManager {
 
     /// Read a block from disk by its block index.
     pub fn read_block_data(&self, block_index: &BlockIndex) -> Result<Block, KernelError> {
-        let inner = unsafe {
-            kernel_read_block_from_disk(self.context.inner, self.inner, block_index.inner)
-        };
+        let inner = unsafe { kernel_block_read(self.context.inner, self.inner, block_index.inner) };
         if inner.is_null() {
             return Err(KernelError::Internal("Failed to read block.".to_string()));
         }
@@ -1078,9 +1084,8 @@ impl ChainstateManager {
 
     /// Read a block's undo data from disk by its block index.
     pub fn read_undo_data(&self, block_index: &BlockIndex) -> Result<BlockUndo, KernelError> {
-        let inner = unsafe {
-            kernel_read_block_undo_from_disk(self.context.inner, self.inner, block_index.inner)
-        };
+        let inner =
+            unsafe { kernel_block_undo_read(self.context.inner, self.inner, block_index.inner) };
         if inner.is_null() {
             return Err(KernelError::Internal(
                 "Failed to read undo data.".to_string(),
@@ -1133,7 +1138,7 @@ impl<T> Drop for Logger<T> {
 /// Permanently disable logging and stop buffering.
 pub fn disable_logging() {
     unsafe {
-        kernel_disable_logging();
+        kernel_logging_disable();
     }
 }
 
