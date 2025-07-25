@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2009-present The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -47,12 +47,13 @@
 #include <util/check.h>
 #include <util/fs.h>
 #include <util/strencodings.h>
+#include <util/syserror.h>
 #include <util/translation.h>
 #include <validation.h>
 #include <validationinterface.h>
 #include <versionbits.h>
 
-#include <stdint.h>
+#include <cstdint>
 
 #include <condition_variable>
 #include <iterator>
@@ -82,7 +83,7 @@ UniValue WriteUTXOSnapshot(
     CCoinsViewCursor* pcursor,
     CCoinsStats* maybe_stats,
     const CBlockIndex* tip,
-    AutoFile& afile,
+    AutoFile&& afile,
     const fs::path& path,
     const fs::path& temppath,
     const std::function<void()>& interruption_point = {});
@@ -660,9 +661,9 @@ static CBlock GetBlockChecked(BlockManager& blockman, const CBlockIndex& blockin
     return block;
 }
 
-static std::vector<uint8_t> GetRawBlockChecked(BlockManager& blockman, const CBlockIndex& blockindex)
+static std::vector<std::byte> GetRawBlockChecked(BlockManager& blockman, const CBlockIndex& blockindex)
 {
-    std::vector<uint8_t> data{};
+    std::vector<std::byte> data{};
     FlatFilePos pos{};
     {
         LOCK(cs_main);
@@ -812,7 +813,7 @@ static RPCHelpMan getblock()
         }
     }
 
-    const std::vector<uint8_t> block_data{GetRawBlockChecked(chainman.m_blockman, *pblockindex)};
+    const std::vector<std::byte> block_data{GetRawBlockChecked(chainman.m_blockman, *pblockindex)};
 
     if (verbosity <= 0) {
         return HexStr(block_data);
@@ -3114,7 +3115,14 @@ static RPCHelpMan dumptxoutset()
         }
     }
 
-    UniValue result = WriteUTXOSnapshot(*chainstate, cursor.get(), &stats, tip, afile, path, temppath, node.rpc_interruption_point);
+    UniValue result = WriteUTXOSnapshot(*chainstate,
+                                        cursor.get(),
+                                        &stats,
+                                        tip,
+                                        std::move(afile),
+                                        path,
+                                        temppath,
+                                        node.rpc_interruption_point);
     fs::rename(temppath, path);
 
     result.pushKV("path", path.utf8string());
@@ -3166,7 +3174,7 @@ UniValue WriteUTXOSnapshot(
     CCoinsViewCursor* pcursor,
     CCoinsStats* maybe_stats,
     const CBlockIndex* tip,
-    AutoFile& afile,
+    AutoFile&& afile,
     const fs::path& path,
     const fs::path& temppath,
     const std::function<void()>& interruption_point)
@@ -3225,7 +3233,10 @@ UniValue WriteUTXOSnapshot(
 
     CHECK_NONFATAL(written_coins_count == maybe_stats->coins_count);
 
-    afile.fclose();
+    if (afile.fclose() != 0) {
+        throw std::ios_base::failure(
+            strprintf("Error closing %s: %s", fs::PathToString(temppath), SysErrorString(errno)));
+    }
 
     UniValue result(UniValue::VOBJ);
     result.pushKV("coins_written", written_coins_count);
@@ -3240,12 +3251,19 @@ UniValue WriteUTXOSnapshot(
 UniValue CreateUTXOSnapshot(
     node::NodeContext& node,
     Chainstate& chainstate,
-    AutoFile& afile,
+    AutoFile&& afile,
     const fs::path& path,
     const fs::path& tmppath)
 {
     auto [cursor, stats, tip]{WITH_LOCK(::cs_main, return PrepareUTXOSnapshot(chainstate, node.rpc_interruption_point))};
-    return WriteUTXOSnapshot(chainstate, cursor.get(), &stats, tip, afile, path, tmppath, node.rpc_interruption_point);
+    return WriteUTXOSnapshot(chainstate,
+                             cursor.get(),
+                             &stats,
+                             tip,
+                             std::move(afile),
+                             path,
+                             tmppath,
+                             node.rpc_interruption_point);
 }
 
 static RPCHelpMan loadtxoutset()

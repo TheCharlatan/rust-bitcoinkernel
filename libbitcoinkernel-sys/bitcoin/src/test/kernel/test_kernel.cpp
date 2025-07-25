@@ -315,15 +315,15 @@ void logging_test()
         .always_print_category_levels = true,
     };
 
-    kernel_add_log_level_category(kernel_LogCategory::kernel_LOG_BENCH, kernel_LogLevel::kernel_LOG_TRACE);
-    kernel_disable_log_category(kernel_LogCategory::kernel_LOG_BENCH);
-    kernel_enable_log_category(kernel_LogCategory::kernel_LOG_VALIDATION);
-    kernel_disable_log_category(kernel_LogCategory::kernel_LOG_VALIDATION);
+    kernel_logging_set_level_category(kernel_LogCategory::kernel_LOG_BENCH, kernel_LogLevel::kernel_LOG_TRACE);
+    kernel_logging_disable_category(kernel_LogCategory::kernel_LOG_BENCH);
+    kernel_logging_enable_category(kernel_LogCategory::kernel_LOG_VALIDATION);
+    kernel_logging_disable_category(kernel_LogCategory::kernel_LOG_VALIDATION);
 
     // Check that connecting, connecting another, and then disconnecting and connecting a logger again works.
     {
-        kernel_add_log_level_category(kernel_LogCategory::kernel_LOG_KERNEL, kernel_LogLevel::kernel_LOG_TRACE);
-        kernel_enable_log_category(kernel_LogCategory::kernel_LOG_KERNEL);
+        kernel_logging_set_level_category(kernel_LogCategory::kernel_LOG_KERNEL, kernel_LogLevel::kernel_LOG_TRACE);
+        kernel_logging_enable_category(kernel_LogCategory::kernel_LOG_KERNEL);
         Logger logger{std::make_unique<TestLog>(TestLog{}), logging_options};
         assert(logger);
         Logger logger_2{std::make_unique<TestLog>(TestLog{}), logging_options};
@@ -544,6 +544,7 @@ void chainman_regtest_validation_test()
 
     auto block_undo{chainman->ReadBlockUndo(tip)};
     assert(block_undo);
+    assert(block_undo->GetTxOutSize(block_undo->m_size) == 0);
     auto tx_undo_size = block_undo->GetTxOutSize(block_undo->m_size - 1);
     auto output = block_undo->GetTxUndoPrevoutByIndex(block_undo->m_size - 1, tx_undo_size - 1);
     uint32_t output_height = block_undo->GetTxUndoPrevoutHeight(block_undo->m_size - 1, tx_undo_size - 1);

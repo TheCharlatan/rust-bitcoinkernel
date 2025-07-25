@@ -72,6 +72,7 @@ void initialize_chain()
     const auto params{CreateChainParams(ArgsManager{}, ChainType::REGTEST)};
     static const auto chain{CreateBlockChain(2 * COINBASE_MATURITY, *params)};
     g_chain = &chain;
+    SetMockTime(chain.back()->Time());
 
     // Make sure we can generate a valid snapshot.
     sanity_check_snapshot();
@@ -150,6 +151,7 @@ void utxo_snapshot_fuzz(FuzzBufferType buffer)
             WriteCompactSize(outfile, 999); // index of coin
             outfile << Coin{coinbase->vout[0], /*nHeightIn=*/999, /*fCoinBaseIn=*/0};
         }
+        assert(outfile.fclose() == 0);
     }
 
     const auto ActivateFuzzedSnapshot{[&] {
