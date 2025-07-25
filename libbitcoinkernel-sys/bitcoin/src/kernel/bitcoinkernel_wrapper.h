@@ -61,7 +61,7 @@ public:
 
     std::vector<unsigned char> GetScriptPubkeyData() const noexcept
     {
-        auto serialized_data{kernel_copy_script_pubkey_data(m_script_pubkey.get())};
+        auto serialized_data{kernel_script_pubkey_copy_data(m_script_pubkey.get())};
         std::vector<unsigned char> vec{serialized_data->data, serialized_data->data + serialized_data->size};
         kernel_byte_array_destroy(serialized_data);
         return vec;
@@ -99,12 +99,12 @@ public:
 
     ScriptPubkey GetScriptPubkey() noexcept
     {
-        return kernel_copy_script_pubkey_from_output(m_transaction_output.get());
+        return kernel_transaction_output_copy_script_pubkey(m_transaction_output.get());
     }
 
     int64_t GetOutputAmount() noexcept
     {
-        return kernel_get_transaction_output_amount(m_transaction_output.get());
+        return kernel_transaction_output_get_amount(m_transaction_output.get());
     }
 };
 
@@ -246,7 +246,7 @@ public:
 
     std::vector<unsigned char> GetBlockData() const noexcept
     {
-        auto serialized_block{kernel_copy_block_pointer_data(m_block)};
+        auto serialized_block{kernel_block_pointer_copy_data(m_block)};
         std::vector<unsigned char> vec{serialized_block->data, serialized_block->data + serialized_block->size};
         kernel_byte_array_destroy(serialized_block);
         return vec;
@@ -268,12 +268,12 @@ public:
 
     kernel_ValidationMode ValidationMode() const noexcept
     {
-        return kernel_get_validation_mode_from_block_validation_state(m_state);
+        return kernel_block_validation_state_get_validation_mode(m_state);
     }
 
     kernel_BlockValidationResult BlockValidationResult() const noexcept
     {
-        return kernel_get_block_validation_result_from_block_validation_state(m_state);
+        return kernel_block_validation_state_get_block_validation_result(m_state);
     }
 };
 
@@ -454,7 +454,7 @@ public:
 
     std::vector<unsigned char> GetBlockData() const noexcept
     {
-        auto serialized_block{kernel_copy_block_data(m_block.get())};
+        auto serialized_block{kernel_block_copy_data(m_block.get())};
         std::vector<unsigned char> vec{serialized_block->data, serialized_block->data + serialized_block->size};
         kernel_byte_array_destroy(serialized_block);
         return vec;
@@ -489,21 +489,21 @@ public:
 
     uint64_t GetTxOutSize(uint64_t index) const noexcept
     {
-        return kernel_get_transaction_undo_size(m_block_undo.get(), index);
+        return kernel_block_undo_get_transaction_undo_size(m_block_undo.get(), index);
     }
 
     uint32_t GetTxUndoPrevoutHeight(
         uint64_t tx_undo_index,
         uint64_t tx_prevout_index) const noexcept
     {
-        return kernel_get_undo_output_height_by_index(m_block_undo.get(), tx_undo_index, tx_prevout_index);
+        return kernel_block_undo_get_transaction_output_height_by_index(m_block_undo.get(), tx_undo_index, tx_prevout_index);
     }
 
     TransactionOutput GetTxUndoPrevoutByIndex(
         uint64_t tx_undo_index,
         uint64_t tx_prevout_index) const noexcept
     {
-        return TransactionOutput{kernel_get_undo_output_by_index(m_block_undo.get(), tx_undo_index, tx_prevout_index)};
+        return TransactionOutput{kernel_block_undo_copy_transaction_output_by_index(m_block_undo.get(), tx_undo_index, tx_prevout_index)};
     }
 };
 
@@ -527,7 +527,7 @@ public:
         if (!m_block_index) {
             return std::nullopt;
         }
-        auto index{kernel_get_previous_block_index(m_block_index.get())};
+        auto index{kernel_block_index_get_previous(m_block_index.get())};
         if (!index) return std::nullopt;
         return index;
     }
@@ -586,7 +586,7 @@ public:
             c_paths_lens.push_back(path.length());
         }
 
-        return kernel_import_blocks(m_context.m_context.get(), m_chainman, c_paths.data(), c_paths_lens.data(), c_paths.size());
+        return kernel_chainstate_manager_import_blocks(m_context.m_context.get(), m_chainman, c_paths.data(), c_paths_lens.data(), c_paths.size());
     }
 
     bool ProcessBlock(const Block& block, bool* new_block) const noexcept
@@ -596,43 +596,43 @@ public:
 
     BlockIndex GetBlockIndexFromTip() const noexcept
     {
-        return kernel_get_block_index_from_tip(m_context.m_context.get(), m_chainman);
+        return kernel_block_index_get_tip(m_context.m_context.get(), m_chainman);
     }
 
     BlockIndex GetBlockIndexFromGenesis() const noexcept
     {
-        return kernel_get_block_index_from_genesis(m_context.m_context.get(), m_chainman);
+        return kernel_block_index_get_genesis(m_context.m_context.get(), m_chainman);
     }
 
     BlockIndex GetBlockIndexByHash(kernel_BlockHash* block_hash) const noexcept
     {
-        return kernel_get_block_index_from_hash(m_context.m_context.get(), m_chainman, block_hash);
+        return kernel_block_index_get_by_hash(m_context.m_context.get(), m_chainman, block_hash);
     }
 
     std::optional<BlockIndex> GetBlockIndexByHeight(int height) const noexcept
     {
-        auto index{kernel_get_block_index_from_height(m_context.m_context.get(), m_chainman, height)};
+        auto index{kernel_block_index_get_by_height(m_context.m_context.get(), m_chainman, height)};
         if (!index) return std::nullopt;
         return index;
     }
 
     std::optional<BlockIndex> GetNextBlockIndex(BlockIndex& block_index) const noexcept
     {
-        auto index{kernel_get_next_block_index(m_context.m_context.get(), m_chainman, block_index.m_block_index.get())};
+        auto index{kernel_block_index_get_next(m_context.m_context.get(), m_chainman, block_index.m_block_index.get())};
         if (!index) return std::nullopt;
         return index;
     }
 
     std::optional<Block> ReadBlock(BlockIndex& block_index) const noexcept
     {
-        auto block{kernel_read_block_from_disk(m_context.m_context.get(), m_chainman, block_index.m_block_index.get())};
+        auto block{kernel_block_read(m_context.m_context.get(), m_chainman, block_index.m_block_index.get())};
         if (!block) return std::nullopt;
         return block;
     }
 
     std::optional<BlockUndo> ReadBlockUndo(const BlockIndex& block_index) const noexcept
     {
-        auto undo{kernel_read_block_undo_from_disk(m_context.m_context.get(), m_chainman, block_index.m_block_index.get())};
+        auto undo{kernel_block_undo_read(m_context.m_context.get(), m_chainman, block_index.m_block_index.get())};
         if (!undo) return std::nullopt;
         return undo;
     }

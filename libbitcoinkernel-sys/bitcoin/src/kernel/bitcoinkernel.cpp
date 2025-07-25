@@ -435,7 +435,7 @@ kernel_ScriptPubkey* kernel_script_pubkey_create(const unsigned char* script_pub
     return reinterpret_cast<kernel_ScriptPubkey*>(script_pubkey);
 }
 
-kernel_ByteArray* kernel_copy_script_pubkey_data(const kernel_ScriptPubkey* script_pubkey_)
+kernel_ByteArray* kernel_script_pubkey_copy_data(const kernel_ScriptPubkey* script_pubkey_)
 {
     auto script_pubkey{cast_script_pubkey(script_pubkey_)};
 
@@ -528,7 +528,7 @@ bool kernel_verify_script(const kernel_ScriptPubkey* script_pubkey_,
                         nullptr);
 }
 
-void kernel_add_log_level_category(const kernel_LogCategory category, const kernel_LogLevel level)
+void kernel_logging_set_level_category(const kernel_LogCategory category, const kernel_LogLevel level)
 {
     if (category == kernel_LogCategory::kernel_LOG_ALL) {
         LogInstance().SetLogLevel(get_bclog_level(level));
@@ -537,17 +537,17 @@ void kernel_add_log_level_category(const kernel_LogCategory category, const kern
     LogInstance().AddCategoryLogLevel(get_bclog_flag(category), get_bclog_level(level));
 }
 
-void kernel_enable_log_category(const kernel_LogCategory category)
+void kernel_logging_enable_category(const kernel_LogCategory category)
 {
     LogInstance().EnableCategory(get_bclog_flag(category));
 }
 
-void kernel_disable_log_category(const kernel_LogCategory category)
+void kernel_logging_disable_category(const kernel_LogCategory category)
 {
     LogInstance().DisableCategory(get_bclog_flag(category));
 }
 
-void kernel_disable_logging()
+void kernel_logging_disable()
 {
     LogInstance().DisableLogging();
 }
@@ -594,8 +594,8 @@ void kernel_logging_connection_destroy(kernel_LoggingConnection* connection_)
     LogInstance().DeleteCallback(*connection);
     delete connection;
 
-    // We are not buffering if we have a connection, so check that it is not the
-    // last available connection.
+    // Switch back to buffering by calling DisconnectTestLogger if the
+    // connection that was just removed was the last one.
     if (!LogInstance().Enabled()) {
         LogInstance().DisconnectTestLogger();
     }
@@ -652,7 +652,7 @@ void kernel_context_options_set_chainparams(kernel_ContextOptions* options_, con
 void kernel_context_options_set_notifications(kernel_ContextOptions* options_, kernel_NotificationInterfaceCallbacks notifications)
 {
     auto options{cast_context_options(options_)};
-    // Copy the notifications, so the caller can free it again
+    // The KernelNotifications are copy-initialized, so the caller can free them again.
     LOCK(options->m_mutex);
     options->m_notifications = std::make_unique<const KernelNotifications>(notifications);
 }
@@ -697,7 +697,7 @@ void kernel_context_destroy(kernel_Context* context)
     }
 }
 
-kernel_ValidationMode kernel_get_validation_mode_from_block_validation_state(const kernel_BlockValidationState* block_validation_state_)
+kernel_ValidationMode kernel_block_validation_state_get_validation_mode(const kernel_BlockValidationState* block_validation_state_)
 {
     auto& block_validation_state = *cast_block_validation_state(block_validation_state_);
     if (block_validation_state.IsValid()) return kernel_ValidationMode::kernel_VALIDATION_STATE_VALID;
@@ -705,7 +705,7 @@ kernel_ValidationMode kernel_get_validation_mode_from_block_validation_state(con
     return kernel_ValidationMode::kernel_VALIDATION_STATE_ERROR;
 }
 
-kernel_BlockValidationResult kernel_get_block_validation_result_from_block_validation_state(const kernel_BlockValidationState* block_validation_state_)
+kernel_BlockValidationResult kernel_block_validation_state_get_block_validation_result(const kernel_BlockValidationState* block_validation_state_)
 {
     auto& block_validation_state = *cast_block_validation_state(block_validation_state_);
     switch (block_validation_state.GetResult()) {
@@ -861,7 +861,7 @@ void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainman_, cons
     return;
 }
 
-bool kernel_import_blocks(const kernel_Context* context_,
+bool kernel_chainstate_manager_import_blocks(const kernel_Context* context_,
                           kernel_ChainstateManager* chainman_,
                           const char** block_file_paths,
                           size_t* block_file_paths_lens,
@@ -908,7 +908,7 @@ void kernel_byte_array_destroy(kernel_ByteArray* byte_array)
     if (byte_array) delete byte_array;
 }
 
-kernel_ByteArray* kernel_copy_block_data(kernel_Block* block_)
+kernel_ByteArray* kernel_block_copy_data(kernel_Block* block_)
 {
     auto block{cast_cblocksharedpointer(block_)};
 
@@ -925,7 +925,7 @@ kernel_ByteArray* kernel_copy_block_data(kernel_Block* block_)
     return byte_array;
 }
 
-kernel_ByteArray* kernel_copy_block_pointer_data(const kernel_BlockPointer* block_)
+kernel_ByteArray* kernel_block_pointer_copy_data(const kernel_BlockPointer* block_)
 {
     auto block{cast_const_cblock(block_)};
 
@@ -967,19 +967,19 @@ void kernel_block_destroy(kernel_Block* block)
     }
 }
 
-kernel_BlockIndex* kernel_get_block_index_from_tip(const kernel_Context* context_, kernel_ChainstateManager* chainman_)
+kernel_BlockIndex* kernel_block_index_get_tip(const kernel_Context* context_, kernel_ChainstateManager* chainman_)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
     return reinterpret_cast<kernel_BlockIndex*>(WITH_LOCK(chainman->GetMutex(), return chainman->ActiveChain().Tip()));
 }
 
-kernel_BlockIndex* kernel_get_block_index_from_genesis(const kernel_Context* context_, kernel_ChainstateManager* chainman_)
+kernel_BlockIndex* kernel_block_index_get_genesis(const kernel_Context* context_, kernel_ChainstateManager* chainman_)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
     return reinterpret_cast<kernel_BlockIndex*>(WITH_LOCK(chainman->GetMutex(), return chainman->ActiveChain().Genesis()));
 }
 
-kernel_BlockIndex* kernel_get_block_index_from_hash(const kernel_Context* context_, kernel_ChainstateManager* chainman_, kernel_BlockHash* block_hash)
+kernel_BlockIndex* kernel_block_index_get_by_hash(const kernel_Context* context_, kernel_ChainstateManager* chainman_, kernel_BlockHash* block_hash)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
 
@@ -992,7 +992,7 @@ kernel_BlockIndex* kernel_get_block_index_from_hash(const kernel_Context* contex
     return reinterpret_cast<kernel_BlockIndex*>(block_index);
 }
 
-kernel_BlockIndex* kernel_get_block_index_from_height(const kernel_Context* context_, kernel_ChainstateManager* chainman_, int height)
+kernel_BlockIndex* kernel_block_index_get_by_height(const kernel_Context* context_, kernel_ChainstateManager* chainman_, int height)
 {
     auto chainman{cast_chainstate_manager(chainman_)};
 
@@ -1005,7 +1005,7 @@ kernel_BlockIndex* kernel_get_block_index_from_height(const kernel_Context* cont
     return reinterpret_cast<kernel_BlockIndex*>(chainman->ActiveChain()[height]);
 }
 
-kernel_BlockIndex* kernel_get_next_block_index(const kernel_Context* context_, kernel_ChainstateManager* chainman_, const kernel_BlockIndex* block_index_)
+kernel_BlockIndex* kernel_block_index_get_next(const kernel_Context* context_, kernel_ChainstateManager* chainman_, const kernel_BlockIndex* block_index_)
 {
     const auto block_index{cast_const_block_index(block_index_)};
     auto chainman{cast_chainstate_manager(chainman_)};
@@ -1019,7 +1019,7 @@ kernel_BlockIndex* kernel_get_next_block_index(const kernel_Context* context_, k
     return reinterpret_cast<kernel_BlockIndex*>(next_block_index);
 }
 
-kernel_BlockIndex* kernel_get_previous_block_index(const kernel_BlockIndex* block_index_)
+kernel_BlockIndex* kernel_block_index_get_previous(const kernel_BlockIndex* block_index_)
 {
     const CBlockIndex* block_index{cast_const_block_index(block_index_)};
 
@@ -1031,7 +1031,7 @@ kernel_BlockIndex* kernel_get_previous_block_index(const kernel_BlockIndex* bloc
     return reinterpret_cast<kernel_BlockIndex*>(block_index->pprev);
 }
 
-kernel_Block* kernel_read_block_from_disk(const kernel_Context* context_,
+kernel_Block* kernel_block_read(const kernel_Context* context_,
                                           kernel_ChainstateManager* chainman_,
                                           const kernel_BlockIndex* block_index_)
 {
@@ -1046,7 +1046,7 @@ kernel_Block* kernel_read_block_from_disk(const kernel_Context* context_,
     return reinterpret_cast<kernel_Block*>(block);
 }
 
-kernel_BlockUndo* kernel_read_block_undo_from_disk(const kernel_Context* context_,
+kernel_BlockUndo* kernel_block_undo_read(const kernel_Context* context_,
                                                    kernel_ChainstateManager* chainman_,
                                                    const kernel_BlockIndex* block_index_)
 {
@@ -1084,13 +1084,17 @@ void kernel_block_undo_destroy(kernel_BlockUndo* block_undo)
     }
 }
 
-uint64_t kernel_get_transaction_undo_size(const kernel_BlockUndo* block_undo_, uint64_t transaction_undo_index)
+uint64_t kernel_block_undo_get_transaction_undo_size(const kernel_BlockUndo* block_undo_, uint64_t transaction_undo_index)
 {
     const auto block_undo{cast_const_block_undo(block_undo_)};
+    if (transaction_undo_index >= block_undo->vtxundo.size()) {
+        LogInfo("transaction undo index is out of bounds.");
+        return 0;
+    }
     return block_undo->vtxundo[transaction_undo_index].vprevout.size();
 }
 
-uint32_t kernel_get_undo_output_height_by_index(const kernel_BlockUndo* block_undo_, uint64_t transaction_undo_index, uint64_t output_index)
+uint32_t kernel_block_undo_get_transaction_output_height_by_index(const kernel_BlockUndo* block_undo_, uint64_t transaction_undo_index, uint64_t output_index)
 {
     const auto block_undo{cast_const_block_undo(block_undo_)};
 
@@ -1109,7 +1113,7 @@ uint32_t kernel_get_undo_output_height_by_index(const kernel_BlockUndo* block_un
     return tx_undo.vprevout[output_index].nHeight;
 }
 
-kernel_TransactionOutput* kernel_get_undo_output_by_index(const kernel_BlockUndo* block_undo_,
+kernel_TransactionOutput* kernel_block_undo_copy_transaction_output_by_index(const kernel_BlockUndo* block_undo_,
                                                           uint64_t transaction_undo_index,
                                                           uint64_t output_index)
 {
@@ -1153,14 +1157,14 @@ void kernel_block_hash_destroy(kernel_BlockHash* hash)
     if (hash) delete hash;
 }
 
-kernel_ScriptPubkey* kernel_copy_script_pubkey_from_output(kernel_TransactionOutput* output_)
+kernel_ScriptPubkey* kernel_transaction_output_copy_script_pubkey(kernel_TransactionOutput* output_)
 {
     auto output{cast_transaction_output(output_)};
     auto script_pubkey = new CScript{output->scriptPubKey};
     return reinterpret_cast<kernel_ScriptPubkey*>(script_pubkey);
 }
 
-int64_t kernel_get_transaction_output_amount(kernel_TransactionOutput* output_)
+int64_t kernel_transaction_output_get_amount(kernel_TransactionOutput* output_)
 {
     auto output{cast_transaction_output(output_)};
     return output->nValue;

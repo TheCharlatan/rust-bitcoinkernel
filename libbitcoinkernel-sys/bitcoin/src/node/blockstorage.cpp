@@ -33,6 +33,7 @@
 #include <util/fs.h>
 #include <util/signalinterrupt.h>
 #include <util/strencodings.h>
+#include <util/syserror.h>
 #include <util/translation.h>
 #include <validation.h>
 
@@ -941,13 +942,13 @@ bool BlockManager::WriteBlockUndo(const CBlockUndo& blockundo, BlockValidationSt
             return false;
         }
 
+        // Open history file to append
+        AutoFile file{OpenUndoFile(pos)};
+        if (file.IsNull()) {
+            LogError("OpenUndoFile failed for %s while writing block undo", pos.ToString());
+            return FatalError(m_opts.notifications, state, _("Failed to write undo data."));
+        }
         {
-            // Open history file to append
-            AutoFile file{OpenUndoFile(pos)};
-            if (file.IsNull()) {
-                LogError("OpenUndoFile failed for %s while writing block undo", pos.ToString());
-                return FatalError(m_opts.notifications, state, _("Failed to write undo data."));
-            }
             BufferedWriter fileout{file};
 
             // Write index header
@@ -960,8 +961,13 @@ bool BlockManager::WriteBlockUndo(const CBlockUndo& blockundo, BlockValidationSt
                 // Write undo data & checksum
                 fileout << blockundo << hasher.GetHash();
             }
+            // BufferedWriter will flush pending data to file when fileout goes out of scope.
+        }
 
-            fileout.flush(); // Make sure `AutoFile`/`BufferedWriter` go out of scope before we call `FlushUndoFile`
+        // Make sure that the file is closed before we call `FlushUndoFile`.
+        if (file.fclose() != 0) {
+            LogError("Failed to close block undo file %s: %s", pos.ToString(), SysErrorString(errno));
+            return FatalError(m_opts.notifications, state, _("Failed to close block undo file."));
         }
 
         // rev files are written in block height order, whereas blk files are written as blocks come in (often out of order)
@@ -995,7 +1001,7 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::o
     block.SetNull();
 
     // Open history file to read
-    std::vector<uint8_t> block_data;
+    std::vector<std::byte> block_data;
     if (!ReadRawBlock(block_data, pos)) {
         return false;
     }
@@ -1037,7 +1043,7 @@ bool BlockManager::ReadBlock(CBlock& block, const CBlockIndex& index) const
     return ReadBlock(block, block_pos, index.GetBlockHash());
 }
 
-bool BlockManager::ReadRawBlock(std::vector<uint8_t>& block, const FlatFilePos& pos) const
+bool BlockManager::ReadRawBlock(std::vector<std::byte>& block, const FlatFilePos& pos) const
 {
     if (pos.nPos < STORAGE_HEADER_BYTES) {
         // If nPos is less than STORAGE_HEADER_BYTES, we can't read the header that precedes the block data
@@ -1071,7 +1077,7 @@ bool BlockManager::ReadRawBlock(std::vector<uint8_t>& block, const FlatFilePos& 
         }
 
         block.resize(blk_size); // Zeroing of memory is intentional here
-        filein.read(MakeWritableByteSpan(block));
+        filein.read(block);
     } catch (const std::exception& e) {
         LogError("Read from block file failed: %s for %s while reading raw block", e.what(), pos.ToString());
         return false;
@@ -1094,13 +1100,22 @@ FlatFilePos BlockManager::WriteBlock(const CBlock& block, int nHeight)
         m_opts.notifications.fatalError(_("Failed to write block."));
         return FlatFilePos();
     }
-    BufferedWriter fileout{file};
+    {
+        BufferedWriter fileout{file};
 
-    // Write index header
-    fileout << GetParams().MessageStart() << block_size;
-    pos.nPos += STORAGE_HEADER_BYTES;
-    // Write block
-    fileout << TX_WITH_WITNESS(block);
+        // Write index header
+        fileout << GetParams().MessageStart() << block_size;
+        pos.nPos += STORAGE_HEADER_BYTES;
+        // Write block
+        fileout << TX_WITH_WITNESS(block);
+    }
+
+    if (file.fclose() != 0) {
+        LogError("Failed to close block file %s: %s", pos.ToString(), SysErrorString(errno));
+        m_opts.notifications.fatalError(_("Failed to close file when writing block."));
+        return FlatFilePos();
+    }
+
     return pos;
 }
 
@@ -1143,6 +1158,11 @@ static auto InitBlocksdirXorKey(const BlockManager::Options& opts)
 #endif
         )};
         xor_key_file << xor_key;
+        if (xor_key_file.fclose() != 0) {
+            throw std::runtime_error{strprintf("Error closing XOR key file %s: %s",
+                                               fs::PathToString(xor_key_path),
+                                               SysErrorString(errno))};
+        }
     }
     // If the user disabled the key, it must be zero.
     if (!opts.use_xor && xor_key != decltype(xor_key){}) {

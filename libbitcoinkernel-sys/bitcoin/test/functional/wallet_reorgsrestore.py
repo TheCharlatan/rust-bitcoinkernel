@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2019-2022 The Bitcoin Core developers
+# Copyright (c) 2019-present The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -90,7 +90,7 @@ class ReorgsRestoreTest(BitcoinTestFramework):
         assert_equal(wallet0.gettransaction(descendant_tx_id)['details'][0]['abandoned'], True)
 
     def test_reorg_handling_during_unclean_shutdown(self):
-        self.log.info("Test that wallet doesn't crash due to a duplicate block disconnection event after an unclean shutdown")
+        self.log.info("Test that wallet transactions are un-abandoned in case of temporarily invalidated blocks and wallet doesn't crash due to a duplicate block disconnection event after an unclean shutdown")
         node = self.nodes[0]
         # Receive coinbase reward on a new wallet
         node.createwallet(wallet_name="reorg_crash", load_on_startup=True)
@@ -100,15 +100,16 @@ class ReorgsRestoreTest(BitcoinTestFramework):
         # Restart to ensure node and wallet are flushed
         self.restart_node(0)
         wallet = node.get_wallet_rpc("reorg_crash")
-        assert_greater_than(wallet.getwalletinfo()['immature_balance'], 0)
+        assert_greater_than(wallet.getbalances()["mine"]["immature"], 0)
 
         # Disconnect tip and sync wallet state
         tip = wallet.getbestblockhash()
+        tip_height = wallet.getblockstats(hash_or_height=self.convert_to_json_for_cli(tip))["height"]
         wallet.invalidateblock(tip)
         wallet.syncwithvalidationinterfacequeue()
 
         # Tip was disconnected, ensure coinbase has been abandoned
-        assert_equal(wallet.getwalletinfo()['immature_balance'], 0)
+        assert_equal(wallet.getbalances()["mine"]["immature"], 0)
         coinbase_tx_id = wallet.getblock(tip, verbose=1)["tx"][0]
         assert_equal(wallet.gettransaction(coinbase_tx_id)['details'][0]['abandoned'], True)
 
@@ -116,14 +117,17 @@ class ReorgsRestoreTest(BitcoinTestFramework):
         node.kill_process()
 
         # Restart the node and confirm that it has not persisted the last chain state changes to disk
-        self.start_node(0)
+        # that leads to a rescan by the wallet
+        with self.nodes[0].assert_debug_log(expected_msgs=[f"Rescanning last 1 blocks (from block {tip_height - 1})...\n"]):
+            self.start_node(0)
         assert_equal(node.getbestblockhash(), tip)
 
         # After disconnecting the block, the wallet should record the new best block.
         # Upon reload after the crash, since the chainstate was not flushed, the tip contains the previously abandoned
-        # coinbase. This should be rescanned and now un-abandoned.
+        # coinbase. This was rescanned and now un-abandoned.
         wallet = node.get_wallet_rpc("reorg_crash")
         assert_equal(wallet.gettransaction(coinbase_tx_id)['details'][0]['abandoned'], False)
+        assert_greater_than(wallet.getbalances()["mine"]["immature"], 0)
 
         # Previously, a bug caused the node to crash if two block disconnection events occurred consecutively.
         # Ensure this is no longer the case by simulating a new reorg.
@@ -131,12 +135,12 @@ class ReorgsRestoreTest(BitcoinTestFramework):
         assert(node.getbestblockhash() != tip)
         # Ensure wallet state is consistent now
         assert_equal(wallet.gettransaction(coinbase_tx_id)['details'][0]['abandoned'], True)
-        assert_equal(wallet.getwalletinfo()['immature_balance'], 0)
+        assert_equal(wallet.getbalances()["mine"]["immature"], 0)
 
         # And finally, verify the state if the block ends up being into the best chain again
         node.reconsiderblock(tip)
         assert_equal(wallet.gettransaction(coinbase_tx_id)['details'][0]['abandoned'], False)
-        assert_greater_than(wallet.getwalletinfo()['immature_balance'], 0)
+        assert_greater_than(wallet.getbalances()["mine"]["immature"], 0)
 
     def run_test(self):
         # Send a tx from which to conflict outputs later
