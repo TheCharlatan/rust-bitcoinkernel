@@ -15,11 +15,14 @@ fn main() {
     // Iterate through all files in the Bitcoin Core submodule directory
     println!("cargo:rerun-if-changed={}", bitcoin_dir.display());
 
+    let build_config = "RelWithDebInfo";
+
     Command::new("cmake")
         .arg("-B")
         .arg(&build_dir)
         .arg("-S")
         .arg(bitcoin_dir)
+        .arg(format!("-DCMAKE_BUILD_TYPE={build_config}"))
         .arg("-DBUILD_KERNEL_LIB=ON")
         .arg("-DBUILD_TESTS=OFF")
         .arg("-DBUILD_TX=OFF")
@@ -45,6 +48,8 @@ fn main() {
     Command::new("cmake")
         .arg("--build")
         .arg(&build_dir)
+        .arg("--config")
+        .arg(build_config)
         .arg(format!("--parallel={num_jobs}"))
         .status()
         .unwrap();
@@ -52,19 +57,33 @@ fn main() {
     Command::new("cmake")
         .arg("--install")
         .arg(&build_dir)
+        .arg("--config")
+        .arg(build_config)
         .status()
         .unwrap();
 
-    let lib_dir = install_dir.join("lib");
+    // Check if the build system used a multi-config generator
+    let lib_dir = if install_dir.join("lib").join(build_config).exists() {
+        install_dir.join("lib").join(build_config)
+    } else {
+        install_dir.join("lib")
+    };
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
     // Link all static libraries found in the install directory
     for entry in std::fs::read_dir(&lib_dir).expect("Library directory has to be readable") {
         let path = entry.unwrap().path();
-        if path.extension().is_some_and(|extension| extension == "a") {
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "a" || extension == "lib")
+        {
             if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
-                // Remove the 'lib' prefix from the filename
-                let lib_name = name.strip_prefix("lib").unwrap_or(name);
+                // Special case for libsecp256k1 on Windows
+                let lib_name = if name == "libsecp256k1" && cfg!(target_env = "msvc") {
+                    "libsecp256k1" // Use full name
+                } else {
+                    name.strip_prefix("lib").unwrap_or(name) // Strip lib prefix for others
+                };
                 println!("cargo:rustc-link-lib=static={lib_name}");
             }
         }
@@ -77,6 +96,7 @@ fn main() {
     #[allow(deprecated)]
     let bindings = bindgen::Builder::default()
         .header(header.to_str().unwrap())
+        .clang_arg("-DBITCOINKERNEL_STATIC")
         .rust_target(bindgen::RustTarget::Stable_1_71)
         .rust_edition(RustEdition::Edition2021)
         .generate()
@@ -99,7 +119,5 @@ fn main() {
         }
     } else if compiler.is_like_gnu() {
         println!("cargo:rustc-link-lib=dylib=stdc++");
-    } else {
-        panic!("Cannot figure out the c++ standard library to link with this compiler.");
     }
 }
