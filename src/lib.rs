@@ -10,16 +10,26 @@ use std::sync::Arc;
 
 use libbitcoinkernel_sys::*;
 
-pub const VERIFY_NONE: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_NONE;
-pub const VERIFY_P2SH: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_P2SH;
-pub const VERIFY_DERSIG: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_DERSIG;
-pub const VERIFY_NULLDUMMY: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_NULLDUMMY;
+#[allow(clippy::unnecessary_cast)]
+pub const VERIFY_NONE: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_NONE as u32;
+#[allow(clippy::unnecessary_cast)]
+pub const VERIFY_P2SH: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_P2SH as u32;
+#[allow(clippy::unnecessary_cast)]
+pub const VERIFY_DERSIG: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_DERSIG as u32;
+#[allow(clippy::unnecessary_cast)]
+pub const VERIFY_NULLDUMMY: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_NULLDUMMY as u32;
+#[allow(clippy::unnecessary_cast)]
 pub const VERIFY_CHECKLOCKTIMEVERIFY: u32 =
-    kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_CHECKLOCKTIMEVERIFY;
+    kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_CHECKLOCKTIMEVERIFY as u32;
+#[allow(clippy::unnecessary_cast)]
 pub const VERIFY_CHECKSEQUENCEVERIFY: u32 =
-    kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_CHECKSEQUENCEVERIFY;
-pub const VERIFY_WITNESS: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_WITNESS;
-pub const VERIFY_TAPROOT: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_TAPROOT;
+    kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_CHECKSEQUENCEVERIFY as u32;
+#[allow(clippy::unnecessary_cast)]
+pub const VERIFY_WITNESS: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_WITNESS as u32;
+#[allow(clippy::unnecessary_cast)]
+pub const VERIFY_TAPROOT: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_TAPROOT as u32;
+#[allow(clippy::unnecessary_cast)]
+pub const VERIFY_ALL: u32 = kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_ALL as u32;
 pub const VERIFY_ALL_PRE_TAPROOT: u32 = VERIFY_P2SH
     | VERIFY_DERSIG
     | VERIFY_NULLDUMMY
@@ -51,7 +61,7 @@ pub fn verify(
     let kernel_flags = if let Some(flag) = flags {
         flag
     } else {
-        kernel_ScriptFlags_kernel_SCRIPT_FLAGS_VERIFY_ALL
+        VERIFY_ALL
     };
     let mut status = kernel_ScriptVerifyStatus_kernel_SCRIPT_VERIFY_OK;
     let kernel_amount = amount.unwrap_or_default();
