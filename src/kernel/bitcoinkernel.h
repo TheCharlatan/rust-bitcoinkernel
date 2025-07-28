@@ -15,17 +15,21 @@
 #endif // __cplusplus
 
 #ifndef BITCOINKERNEL_API
-#if defined(_WIN32)
-#ifdef BITCOINKERNEL_BUILD
-#define BITCOINKERNEL_API __declspec(dllexport)
-#else
-#define BITCOINKERNEL_API
-#endif
-#elif defined(__GNUC__) && defined(BITCOINKERNEL_BUILD)
-#define BITCOINKERNEL_API __attribute__((visibility("default")))
-#else
-#define BITCOINKERNEL_API
-#endif
+    #ifdef BITCOINKERNEL_BUILD
+        #if defined(_WIN32)
+            #define BITCOINKERNEL_API __declspec(dllexport)
+        #elif !defined(_WIN32) && defined(__GNUC__)
+            #define BITCOINKERNEL_API __attribute__((visibility("default")))
+        #else
+            #define BITCOINKERNEL_API
+        #endif
+    #else
+        #if defined(_WIN32) && !defined(BITCOINKERNEL_STATIC)
+            #define BITCOINKERNEL_API __declspec(dllimport)
+        #else
+            #define BITCOINKERNEL_API
+        #endif
+    #endif
 #endif
 
 #if !defined(BITCOINKERNEL_GNUC_PREREQ)
