@@ -78,11 +78,21 @@ fn main() {
             .is_some_and(|extension| extension == "a" || extension == "lib")
         {
             if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
-                // Remove the 'lib' prefix from the filename
-                let lib_name = name.strip_prefix("lib").unwrap_or(name);
+                // Special case for libsecp256k1 on Windows
+                let lib_name = if name == "libsecp256k1" && cfg!(target_env = "msvc") {
+                    "libsecp256k1"  // Use full name
+                } else {
+                    name.strip_prefix("lib").unwrap_or(name)  // Strip lib prefix for others
+                };
                 println!("cargo:rustc-link-lib=static={lib_name}");
             }
         }
+    }
+
+    println!("cargo:warning=Files in lib directory:");
+    for entry in std::fs::read_dir(&lib_dir).expect("Library directory has to be readable") {
+        let path = entry.unwrap().path();
+        println!("cargo:warning=  Found: {}", path.display());
     }
 
     // Header path for bindgen
