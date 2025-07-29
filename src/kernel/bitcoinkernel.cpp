@@ -505,7 +505,7 @@ bool kernel_verify_script(const kernel_ScriptPubkey* script_pubkey_,
         }
         spent_outputs.reserve(spent_outputs_len);
         for (size_t i = 0; i < spent_outputs_len; i++) {
-            const CTxOut& tx_out{*reinterpret_cast<const CTxOut*>(spent_outputs_[i])};
+            const CTxOut& tx_out{*cast_transaction_output(spent_outputs_[i])};
             spent_outputs.push_back(tx_out);
         }
     }
@@ -1041,6 +1041,7 @@ kernel_Block* kernel_block_read(const kernel_Context* context_,
     auto block{new std::shared_ptr<CBlock>(new CBlock{})};
     if (!chainman->m_blockman.ReadBlock(**block, *block_index)) {
         LogError("Failed to read block.");
+        delete block;
         return nullptr;
     }
     return reinterpret_cast<kernel_Block*>(block);
@@ -1057,12 +1058,12 @@ kernel_BlockUndo* kernel_block_undo_read(const kernel_Context* context_,
         LogDebug(BCLog::KERNEL, "The genesis block does not have undo data.");
         return nullptr;
     }
-    auto block_undo{new CBlockUndo{}};
+    auto block_undo{std::make_unique<CBlockUndo>()};
     if (!chainman->m_blockman.ReadBlockUndo(*block_undo, *block_index)) {
         LogError("Failed to read block undo data.");
         return nullptr;
     }
-    return reinterpret_cast<kernel_BlockUndo*>(block_undo);
+    return reinterpret_cast<kernel_BlockUndo*>(block_undo.release());
 }
 
 void kernel_block_index_destroy(kernel_BlockIndex* block_index)

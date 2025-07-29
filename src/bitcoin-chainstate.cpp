@@ -10,7 +10,9 @@
 #include <vector>
 
 #ifdef WIN32
+// clang-format off
 #include <windows.h>
+// clang-format on
 #include <codecvt>
 #include <shellapi.h>
 #include <locale>

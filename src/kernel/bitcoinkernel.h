@@ -15,38 +15,33 @@
 #endif // __cplusplus
 
 #ifndef BITCOINKERNEL_API
-#if defined(_WIN32)
-#ifdef BITCOINKERNEL_BUILD
-#define BITCOINKERNEL_API __declspec(dllexport)
-#else
-#define BITCOINKERNEL_API
-#endif
-#elif defined(__GNUC__) && defined(BITCOINKERNEL_BUILD)
-#define BITCOINKERNEL_API __attribute__((visibility("default")))
-#else
-#define BITCOINKERNEL_API
-#endif
-#endif
-
-#if !defined(BITCOINKERNEL_GNUC_PREREQ)
-#if defined(__GNUC__) && defined(__GNUC_MINOR__)
-#define BITCOINKERNEL_GNUC_PREREQ(_maj, _min) \
-    ((__GNUC__ << 16) + __GNUC_MINOR__ >= ((_maj) << 16) + (_min))
-#else
-#define BITCOINKERNEL_GNUC_PREREQ(_maj, _min) 0
-#endif
+    #ifdef BITCOINKERNEL_BUILD
+        #if defined(_WIN32)
+            #define BITCOINKERNEL_API __declspec(dllexport)
+        #elif !defined(_WIN32) && defined(__GNUC__)
+            #define BITCOINKERNEL_API __attribute__((visibility("default")))
+        #else
+            #define BITCOINKERNEL_API
+        #endif
+    #else
+        #if defined(_WIN32) && !defined(BITCOINKERNEL_STATIC)
+            #define BITCOINKERNEL_API __declspec(dllimport)
+        #else
+            #define BITCOINKERNEL_API
+        #endif
+    #endif
 #endif
 
 /* Warning attributes */
-#if defined(__GNUC__) && BITCOINKERNEL_GNUC_PREREQ(3, 4)
-#define BITCOINKERNEL_WARN_UNUSED_RESULT __attribute__((__warn_unused_result__))
+#if defined(__GNUC__)
+    #define BITCOINKERNEL_WARN_UNUSED_RESULT __attribute__((__warn_unused_result__))
 #else
-#define BITCOINKERNEL_WARN_UNUSED_RESULT
+    #define BITCOINKERNEL_WARN_UNUSED_RESULT
 #endif
-#if !defined(BITCOINKERNEL_BUILD) && defined(__GNUC__) && BITCOINKERNEL_GNUC_PREREQ(3, 4)
-#define BITCOINKERNEL_ARG_NONNULL(...) __attribute__((__nonnull__(__VA_ARGS__)))
+#if !defined(BITCOINKERNEL_BUILD) && defined(__GNUC__)
+    #define BITCOINKERNEL_ARG_NONNULL(...) __attribute__((__nonnull__(__VA_ARGS__)))
 #else
-#define BITCOINKERNEL_ARG_NONNULL(...)
+    #define BITCOINKERNEL_ARG_NONNULL(...)
 #endif
 
 #ifdef __cplusplus
@@ -130,8 +125,8 @@ typedef struct kernel_TransactionOutput kernel_TransactionOutput;
  *
  * Messages that were logged before a connection is created are buffered in a
  * 1MB buffer. Logging can alternatively be permanently disabled by calling
- * kernel_disable_logging(). Functions changing the logging settings are global
- * (and not thread safe) and change the settings for all existing
+ * @ref kernel_logging_disable. Functions changing the logging settings are
+ * global (and not thread safe) and change the settings for all existing
  * kernel_LoggingConnection instances.
  */
 typedef struct kernel_LoggingConnection kernel_LoggingConnection;
@@ -576,9 +571,9 @@ BITCOINKERNEL_API void kernel_logging_disable();
 
 /**
  * @brief Set the log level of the global internal logger. This does not
- * enable the selected categories. Use `kernel_enable_log_category` to start
- * logging from a specific, or all categories. This function is not thread
- * safe. Mutiple calls from different threads are allowed but must be
+ * enable the selected categories. Use @ref kernel_logging_enable_category to
+ * start logging from a specific, or all categories. This function is not
+ * thread safe. Mutiple calls from different threads are allowed but must be
  * synchronized. This changes a global setting and will override settings for
  * all existing @ref kernel_LoggingConnection instances.
  *
@@ -786,7 +781,7 @@ BITCOINKERNEL_API void kernel_chainstate_manager_options_set_worker_threads_num(
 
 /**
  * @brief Sets wipe db in the options. In combination with calling
- * @ref kernel_import_blocks this triggers either a full reindex,
+ * @ref kernel_chainstate_manager_import_blocks this triggers either a full reindex,
  * or a reindex of just the chainstate database.
  *
  * @param[in] chainstate_manager_options Non-null, created by @ref kernel_chainstate_manager_options_create.
