@@ -473,7 +473,7 @@ private:
         }
     };
 
-    const std::unique_ptr<kernel_BlockUndo, Deleter> m_block_undo;
+    std::unique_ptr<kernel_BlockUndo, Deleter> m_block_undo;
 
 public:
     const uint64_t m_size;
