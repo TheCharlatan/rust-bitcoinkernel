@@ -691,6 +691,8 @@ UniValue MempoolInfoToJSON(const CTxMemPool& pool)
     ret.pushKV("incrementalrelayfee", ValueFromAmount(pool.m_opts.incremental_relay_feerate.GetFeePerK()));
     ret.pushKV("unbroadcastcount", uint64_t{pool.GetUnbroadcastTxs().size()});
     ret.pushKV("fullrbf", true);
+    ret.pushKV("permitbaremultisig", pool.m_opts.permit_bare_multisig);
+    ret.pushKV("maxdatacarriersize", pool.m_opts.max_datacarrier_bytes.value_or(0));
     return ret;
 }
 
@@ -713,6 +715,8 @@ static RPCHelpMan getmempoolinfo()
                 {RPCResult::Type::NUM, "incrementalrelayfee", "minimum fee rate increment for mempool limiting or replacement in " + CURRENCY_UNIT + "/kvB"},
                 {RPCResult::Type::NUM, "unbroadcastcount", "Current number of transactions that haven't passed initial broadcast yet"},
                 {RPCResult::Type::BOOL, "fullrbf", "True if the mempool accepts RBF without replaceability signaling inspection (DEPRECATED)"},
+                {RPCResult::Type::BOOL, "permitbaremultisig", "True if the mempool accepts transactions with bare multisig outputs"},
+                {RPCResult::Type::NUM, "maxdatacarriersize", "Maximum number of bytes that can be used by OP_RETURN outputs in the mempool"},
             }},
         RPCExamples{
             HelpExampleCli("getmempoolinfo", "")
@@ -832,8 +836,6 @@ static std::vector<RPCResult> OrphanDescription()
         RPCResult{RPCResult::Type::NUM, "bytes", "The serialized transaction size in bytes"},
         RPCResult{RPCResult::Type::NUM, "vsize", "The virtual transaction size as defined in BIP 141. This is different from actual serialized size for witness transactions as witness data is discounted."},
         RPCResult{RPCResult::Type::NUM, "weight", "The transaction weight as defined in BIP 141."},
-        RPCResult{RPCResult::Type::NUM_TIME, "entry", "The entry time into the orphanage expressed in " + UNIX_EPOCH_TIME},
-        RPCResult{RPCResult::Type::NUM_TIME, "expiration", "The orphan expiration time expressed in " + UNIX_EPOCH_TIME},
         RPCResult{RPCResult::Type::ARR, "from", "",
         {
             RPCResult{RPCResult::Type::NUM, "peer_id", "Peer ID"},
@@ -841,7 +843,7 @@ static std::vector<RPCResult> OrphanDescription()
     };
 }
 
-static UniValue OrphanToJSON(const TxOrphanage::OrphanTxBase& orphan)
+static UniValue OrphanToJSON(const node::TxOrphanage::OrphanInfo& orphan)
 {
     UniValue o(UniValue::VOBJ);
     o.pushKV("txid", orphan.tx->GetHash().ToString());
@@ -849,8 +851,6 @@ static UniValue OrphanToJSON(const TxOrphanage::OrphanTxBase& orphan)
     o.pushKV("bytes", orphan.tx->GetTotalSize());
     o.pushKV("vsize", GetVirtualTransactionSize(*orphan.tx));
     o.pushKV("weight", GetTransactionWeight(*orphan.tx));
-    o.pushKV("entry", int64_t{TicksSinceEpoch<std::chrono::seconds>(orphan.nTimeExpire - ORPHAN_TX_EXPIRE_TIME)});
-    o.pushKV("expiration", int64_t{TicksSinceEpoch<std::chrono::seconds>(orphan.nTimeExpire)});
     UniValue from(UniValue::VARR);
     for (const auto fromPeer: orphan.announcers) {
         from.push_back(fromPeer);
@@ -899,7 +899,7 @@ static RPCHelpMan getorphantxs()
         {
             const NodeContext& node = EnsureAnyNodeContext(request.context);
             PeerManager& peerman = EnsurePeerman(node);
-            std::vector<TxOrphanage::OrphanTxBase> orphanage = peerman.GetOrphanTransactions();
+            std::vector<node::TxOrphanage::OrphanInfo> orphanage = peerman.GetOrphanTransactions();
 
             int verbosity{ParseVerbosity(request.params[0], /*default_verbosity=*/0, /*allow_bool*/false)};
 

@@ -469,10 +469,8 @@ public:
         const bool m_allow_replacement;
         /** When true, allow sibling eviction. This only occurs in single transaction package settings. */
         const bool m_allow_sibling_eviction;
-        /** When true, the mempool will not be trimmed when any transactions are submitted in
-         * Finalize(). Instead, limits should be enforced at the end to ensure the package is not
-         * partially submitted.
-         */
+        /** Used to skip the LimitMempoolSize() call within AcceptSingleTransaction(). This should be used when multiple
+         * AcceptSubPackage calls are expected and the mempool will be trimmed at the end of AcceptPackage(). */
         const bool m_package_submission;
         /** When true, use package feerates instead of individual transaction feerates for fee-based
          * policies such as mempool min fee and min relay fee.
@@ -522,7 +520,7 @@ public:
             };
         }
 
-        /** Parameters for child-with-unconfirmed-parents package validation. */
+        /** Parameters for child-with-parents package validation. */
         static ATMPArgs PackageChildWithParents(const CChainParams& chainparams, int64_t accept_time,
                                                 std::vector<COutPoint>& coins_to_uncache, const std::optional<CFeeRate>& client_maxfeerate) {
             return ATMPArgs{/* m_chainparams */ chainparams,
@@ -548,7 +546,7 @@ public:
                             /* m_test_accept */ package_args.m_test_accept,
                             /* m_allow_replacement */ true,
                             /* m_allow_sibling_eviction */ true,
-                            /* m_package_submission */ true, // do not LimitMempoolSize in Finalize()
+                            /* m_package_submission */ true, // trim at the end of AcceptPackage()
                             /* m_package_feerates */ false, // only 1 transaction
                             /* m_client_maxfeerate */ package_args.m_client_maxfeerate,
                             /* m_allow_carveouts */ false,
@@ -725,8 +723,27 @@ private:
 
 private:
     CTxMemPool& m_pool;
+
+    /** Holds a cached view of available coins from the UTXO set, mempool, and artificial temporary coins (to enable package validation).
+     * The view doesn't track whether a coin previously existed but has now been spent. We detect conflicts in other ways:
+     * - conflicts within a transaction are checked in CheckTransaction (bad-txns-inputs-duplicate)
+     * - conflicts within a package are checked in IsWellFormedPackage (conflict-in-package)
+     * - conflicts with an existing mempool transaction are found in CTxMemPool::GetConflictTx and replacements are allowed
+     * The temporary coins should persist between individual transaction checks so that package validation is possible,
+     * but must be cleaned up when we finish validating a subpackage, whether accepted or rejected. The cache must also
+     * be cleared when mempool contents change (when a changeset is applied or when the mempool trims itself) because it
+     * can return cached coins that no longer exist in the backend. Use CleanupTemporaryCoins() anytime you are finished
+     * with a SubPackageState or call LimitMempoolSize().
+     */
     CCoinsViewCache m_view;
+
+    // These are the two possible backends for m_view.
+    /** When m_view is connected to m_viewmempool as its backend, it can pull coins from the mempool and from the UTXO
+     * set. This is also where temporary coins are stored. */
     CCoinsViewMemPool m_viewmempool;
+    /** When m_view is connected to m_dummy, it can no longer look up coins from the mempool or UTXO set (meaning no disk
+     * operations happen), but can still return coins it accessed previously. Useful for keeping track of which coins
+     * were pulled from disk. */
     CCoinsView m_dummy;
 
     Chainstate& m_active_chainstate;
@@ -1470,6 +1487,10 @@ MempoolAcceptResult MemPoolAccept::AcceptSingleTransaction(const CTransactionRef
     // Limit the mempool, if appropriate.
     if (!args.m_package_submission && !args.m_bypass_limits) {
         LimitMempoolSize(m_pool, m_active_chainstate.CoinsTip());
+        // If mempool contents change, then the m_view cache is dirty. Given this isn't a package
+        // submission, we won't be using the cache anymore, but clear it anyway for clarity.
+        CleanupTemporaryCoins();
+
         if (!m_pool.exists(ws.m_hash)) {
             // The tx no longer meets our (new) mempool minimum feerate but could be reconsidered in a package.
             ws.m_state.Invalid(TxValidationResult::TX_RECONSIDERABLE, "mempool full");
@@ -1647,7 +1668,8 @@ void MemPoolAccept::CleanupTemporaryCoins()
     // (3) Confirmed coins don't need to be removed. The chainstate has not changed (we are
     // holding cs_main and no blocks have been processed) so the confirmed tx cannot disappear like
     // a mempool tx can. The coin may now be spent after we submitted a tx to mempool, but
-    // we have already checked that the package does not have 2 transactions spending the same coin.
+    // we have already checked that the package does not have 2 transactions spending the same coin
+    // and we check whether a mempool transaction spends conflicting coins (CTxMemPool::GetConflictTx).
     // Keeping them in m_view is an optimization to not re-fetch confirmed coins if we later look up
     // inputs for this transaction again.
     for (const auto& outpoint : m_viewmempool.GetNonBaseCoins()) {
@@ -1694,7 +1716,7 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptPackage(const Package& package, 
 
     // There are two topologies we are able to handle through this function:
     // (1) A single transaction
-    // (2) A child-with-unconfirmed-parents package.
+    // (2) A child-with-parents package.
     // Check that the package is well-formed. If it isn't, we won't try to validate any of the
     // transactions and thus won't return any MempoolAcceptResults, just a package-wide error.
 
@@ -1703,49 +1725,11 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptPackage(const Package& package, 
         return PackageMempoolAcceptResult(package_state_quit_early, {});
     }
 
-    if (package.size() > 1) {
+    if (package.size() > 1 && !IsChildWithParents(package)) {
         // All transactions in the package must be a parent of the last transaction. This is just an
         // opportunity for us to fail fast on a context-free check without taking the mempool lock.
-        if (!IsChildWithParents(package)) {
-            package_state_quit_early.Invalid(PackageValidationResult::PCKG_POLICY, "package-not-child-with-parents");
-            return PackageMempoolAcceptResult(package_state_quit_early, {});
-        }
-
-        // IsChildWithParents() guarantees the package is > 1 transactions.
-        assert(package.size() > 1);
-        // The package must be 1 child with all of its unconfirmed parents. The package is expected to
-        // be sorted, so the last transaction is the child.
-        const auto& child = package.back();
-        std::unordered_set<uint256, SaltedTxidHasher> unconfirmed_parent_txids;
-        std::transform(package.cbegin(), package.cend() - 1,
-                       std::inserter(unconfirmed_parent_txids, unconfirmed_parent_txids.end()),
-                       [](const auto& tx) { return tx->GetHash(); });
-
-        // All child inputs must refer to a preceding package transaction or a confirmed UTXO. The only
-        // way to verify this is to look up the child's inputs in our current coins view (not including
-        // mempool), and enforce that all parents not present in the package be available at chain tip.
-        // Since this check can bring new coins into the coins cache, keep track of these coins and
-        // uncache them if we don't end up submitting this package to the mempool.
-        const CCoinsViewCache& coins_tip_cache = m_active_chainstate.CoinsTip();
-        for (const auto& input : child->vin) {
-            if (!coins_tip_cache.HaveCoinInCache(input.prevout)) {
-                args.m_coins_to_uncache.push_back(input.prevout);
-            }
-        }
-        // Using the MemPoolAccept m_view cache allows us to look up these same coins faster later.
-        // This should be connecting directly to CoinsTip, not to m_viewmempool, because we specifically
-        // require inputs to be confirmed if they aren't in the package.
-        m_view.SetBackend(m_active_chainstate.CoinsTip());
-        const auto package_or_confirmed = [this, &unconfirmed_parent_txids](const auto& input) {
-             return unconfirmed_parent_txids.count(input.prevout.hash) > 0 || m_view.HaveCoin(input.prevout);
-        };
-        if (!std::all_of(child->vin.cbegin(), child->vin.cend(), package_or_confirmed)) {
-            package_state_quit_early.Invalid(PackageValidationResult::PCKG_POLICY, "package-not-child-with-unconfirmed-parents");
-            return PackageMempoolAcceptResult(package_state_quit_early, {});
-        }
-        // Protect against bugs where we pull more inputs from disk that miss being added to
-        // coins_to_uncache. The backend will be connected again when needed in PreChecks.
-        m_view.SetBackend(m_dummy);
+        package_state_quit_early.Invalid(PackageValidationResult::PCKG_POLICY, "package-not-child-with-parents");
+        return PackageMempoolAcceptResult(package_state_quit_early, {});
     }
 
     LOCK(m_pool.cs);
@@ -1831,6 +1815,7 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptPackage(const Package& package, 
 
     // Make sure we haven't exceeded max mempool size.
     // Package transactions that were submitted to mempool or already in mempool may be evicted.
+    // If mempool contents change, then the m_view cache is dirty. It has already been cleared above.
     LimitMempoolSize(m_pool, m_active_chainstate.CoinsTip());
 
     for (const auto& tx : package) {
@@ -2035,7 +2020,7 @@ bool ChainstateManager::IsInitialBlockDownload() const
     if (chain.Tip()->Time() < Now<NodeSeconds>() - m_options.max_tip_age) {
         return true;
     }
-    LogPrintf("Leaving InitialBlockDownload (latching to false)\n");
+    LogInfo("Leaving InitialBlockDownload (latching to false)");
     m_cached_finished_ibd.store(true, std::memory_order_relaxed);
     return false;
 }
@@ -2136,7 +2121,7 @@ ValidationCache::ValidationCache(const size_t script_execution_cache_bytes, cons
     m_script_execution_cache_hasher.Write(nonce.begin(), 32);
 
     const auto [num_elems, approx_size_bytes] = m_script_execution_cache.setup_bytes(script_execution_cache_bytes);
-    LogPrintf("Using %zu MiB out of %zu MiB requested for script execution cache, able to store %zu elements\n",
+    LogInfo("Using %zu MiB out of %zu MiB requested for script execution cache, able to store %zu elements",
               approx_size_bytes >> 20, script_execution_cache_bytes >> 20, num_elems);
 }
 
@@ -4695,7 +4680,7 @@ bool Chainstate::LoadChainTip()
     PruneBlockIndexCandidates();
 
     tip = m_chain.Tip();
-    LogPrintf("Loaded best chain: hashBestChain=%s height=%d date=%s progress=%f\n",
+    LogInfo("Loaded best chain: hashBestChain=%s height=%d date=%s progress=%f",
               tip->GetBlockHash().ToString(),
               m_chain.Height(),
               FormatISO8601DateTime(tip->GetBlockTime()),
@@ -4741,7 +4726,7 @@ VerifyDBResult CVerifyDB::VerifyDB(
         nCheckDepth = chainstate.m_chain.Height();
     }
     nCheckLevel = std::max(0, std::min(4, nCheckLevel));
-    LogPrintf("Verifying last %i blocks at level %i\n", nCheckDepth, nCheckLevel);
+    LogInfo("Verifying last %i blocks at level %i", nCheckDepth, nCheckLevel);
     CCoinsViewCache coins(&coinsview);
     CBlockIndex* pindex;
     CBlockIndex* pindexFailure = nullptr;
@@ -4750,7 +4735,7 @@ VerifyDBResult CVerifyDB::VerifyDB(
     int reportDone = 0;
     bool skipped_no_block_data{false};
     bool skipped_l3_checks{false};
-    LogPrintf("Verification progress: 0%%\n");
+    LogInfo("Verification progress: 0%%");
 
     const bool is_snapshot_cs{chainstate.m_from_snapshot_blockhash};
 
@@ -4758,7 +4743,7 @@ VerifyDBResult CVerifyDB::VerifyDB(
         const int percentageDone = std::max(1, std::min(99, (int)(((double)(chainstate.m_chain.Height() - pindex->nHeight)) / (double)nCheckDepth * (nCheckLevel >= 4 ? 50 : 100))));
         if (reportDone < percentageDone / 10) {
             // report every 10% step
-            LogPrintf("Verification progress: %d%%\n", percentageDone);
+            LogInfo("Verification progress: %d%%", percentageDone);
             reportDone = percentageDone / 10;
         }
         m_notifications.progress(_("Verifying blocks…"), percentageDone, false);
@@ -4768,7 +4753,7 @@ VerifyDBResult CVerifyDB::VerifyDB(
         if ((chainstate.m_blockman.IsPruneMode() || is_snapshot_cs) && !(pindex->nStatus & BLOCK_HAVE_DATA)) {
             // If pruning or running under an assumeutxo snapshot, only go
             // back as far as we have data.
-            LogPrintf("VerifyDB(): block verification stopping at height %d (no data). This could be due to pruning or use of an assumeutxo snapshot.\n", pindex->nHeight);
+            LogInfo("Block verification stopping at height %d (no data). This could be due to pruning or use of an assumeutxo snapshot.", pindex->nHeight);
             skipped_no_block_data = true;
             break;
         }
@@ -4834,7 +4819,7 @@ VerifyDBResult CVerifyDB::VerifyDB(
             const int percentageDone = std::max(1, std::min(99, 100 - (int)(((double)(chainstate.m_chain.Height() - pindex->nHeight)) / (double)nCheckDepth * 50)));
             if (reportDone < percentageDone / 10) {
                 // report every 10% step
-                LogPrintf("Verification progress: %d%%\n", percentageDone);
+                LogInfo("Verification progress: %d%%", percentageDone);
                 reportDone = percentageDone / 10;
             }
             m_notifications.progress(_("Verifying blocks…"), percentageDone, false);
@@ -4852,7 +4837,7 @@ VerifyDBResult CVerifyDB::VerifyDB(
         }
     }
 
-    LogPrintf("Verification: No coin database inconsistencies in last %i blocks (%i transactions)\n", block_count, nGoodTransactions);
+    LogInfo("Verification: No coin database inconsistencies in last %i blocks (%i transactions)", block_count, nGoodTransactions);
 
     if (skipped_l3_checks) {
         return VerifyDBResult::SKIPPED_L3_CHECKS;
@@ -4901,7 +4886,7 @@ bool Chainstate::ReplayBlocks()
     }
 
     m_chainman.GetNotifications().progress(_("Replaying blocks…"), 0, false);
-    LogPrintf("Replaying blocks\n");
+    LogInfo("Replaying blocks");
 
     const CBlockIndex* pindexOld = nullptr;  // Old tip during the interrupted flush.
     const CBlockIndex* pindexNew;            // New tip during the interrupted flush.
@@ -4931,7 +4916,7 @@ bool Chainstate::ReplayBlocks()
                 LogError("RollbackBlock(): ReadBlock() failed at %d, hash=%s\n", pindexOld->nHeight, pindexOld->GetBlockHash().ToString());
                 return false;
             }
-            LogPrintf("Rolling back %s (%i)\n", pindexOld->GetBlockHash().ToString(), pindexOld->nHeight);
+            LogInfo("Rolling back %s (%i)", pindexOld->GetBlockHash().ToString(), pindexOld->nHeight);
             DisconnectResult res = DisconnectBlock(block, pindexOld, cache);
             if (res == DISCONNECT_FAILED) {
                 LogError("RollbackBlock(): DisconnectBlock failed at %d, hash=%s\n", pindexOld->nHeight, pindexOld->GetBlockHash().ToString());
@@ -4950,7 +4935,7 @@ bool Chainstate::ReplayBlocks()
     for (int nHeight = nForkHeight + 1; nHeight <= pindexNew->nHeight; ++nHeight) {
         const CBlockIndex& pindex{*Assert(pindexNew->GetAncestor(nHeight))};
 
-        LogPrintf("Rolling forward %s (%i)\n", pindex.GetBlockHash().ToString(), nHeight);
+        LogInfo("Rolling forward %s (%i)", pindex.GetBlockHash().ToString(), nHeight);
         m_chainman.GetNotifications().progress(_("Replaying blocks…"), (int)((nHeight - nForkHeight) * 100.0 / (pindexNew->nHeight - nForkHeight)), false);
         if (!RollforwardBlock(&pindex, cache)) return false;
     }
@@ -5228,7 +5213,7 @@ void ChainstateManager::LoadExternalBlockFile(
     } catch (const std::runtime_error& e) {
         GetNotifications().fatalError(strprintf(_("System error while loading external block file: %s"), e.what()));
     }
-    LogPrintf("Loaded %i blocks from external file in %dms\n", nLoaded, Ticks<std::chrono::milliseconds>(SteadyClock::now() - start));
+    LogInfo("Loaded %i blocks from external file in %dms", nLoaded, Ticks<std::chrono::milliseconds>(SteadyClock::now() - start));
 }
 
 bool ChainstateManager::ShouldCheckBlockIndex() const
@@ -5578,9 +5563,9 @@ bool Chainstate::ResizeCoinsCaches(size_t coinstip_size, size_t coinsdb_size)
     m_coinsdb_cache_size_bytes = coinsdb_size;
     CoinsDB().ResizeCache(coinsdb_size);
 
-    LogPrintf("[%s] resized coinsdb cache to %.1f MiB\n",
+    LogInfo("[%s] resized coinsdb cache to %.1f MiB",
         this->ToString(), coinsdb_size * (1.0 / 1024 / 1024));
-    LogPrintf("[%s] resized coinstip cache to %.1f MiB\n",
+    LogInfo("[%s] resized coinstip cache to %.1f MiB",
         this->ToString(), coinstip_size * (1.0 / 1024 / 1024));
 
     BlockValidationState state;
@@ -5687,7 +5672,7 @@ Chainstate& ChainstateManager::InitializeChainstate(CTxMemPool* mempool)
     }
 
     std::string path_str = fs::PathToString(db_path);
-    LogPrintf("Removing leveldb dir at %s\n", path_str);
+    LogInfo("Removing leveldb dir at %s\n", path_str);
 
     // We have to destruct before this call leveldb::DB in order to release the db
     // lock, otherwise `DestroyDB` will fail. See `leveldb::~DBImpl()`.
@@ -5850,8 +5835,8 @@ util::Result<CBlockIndex*> ChainstateManager::ActivateSnapshot(
     m_active_chainstate = m_snapshot_chainstate.get();
     m_blockman.m_snapshot_height = this->GetSnapshotBaseHeight();
 
-    LogPrintf("[snapshot] successfully activated snapshot %s\n", base_blockhash.ToString());
-    LogPrintf("[snapshot] (%.2f MB)\n",
+    LogInfo("[snapshot] successfully activated snapshot %s", base_blockhash.ToString());
+    LogInfo("[snapshot] (%.2f MB)",
         m_snapshot_chainstate->CoinsTip().DynamicMemoryUsage() / (1000 * 1000));
 
     this->MaybeRebalanceCaches();
@@ -5922,7 +5907,7 @@ util::Result<void> ChainstateManager::PopulateAndValidateSnapshot(
     const uint64_t coins_count = metadata.m_coins_count;
     uint64_t coins_left = metadata.m_coins_count;
 
-    LogPrintf("[snapshot] loading %d coins from snapshot %s\n", coins_left, base_blockhash.ToString());
+    LogInfo("[snapshot] loading %d coins from snapshot %s", coins_left, base_blockhash.ToString());
     int64_t coins_processed{0};
 
     while (coins_left > 0) {
@@ -5958,7 +5943,7 @@ util::Result<void> ChainstateManager::PopulateAndValidateSnapshot(
                 ++coins_processed;
 
                 if (coins_processed % 1000000 == 0) {
-                    LogPrintf("[snapshot] %d coins loaded (%.2f%%, %.2f MB)\n",
+                    LogInfo("[snapshot] %d coins loaded (%.2f%%, %.2f MB)",
                         coins_processed,
                         static_cast<float>(coins_processed) * 100 / static_cast<float>(coins_count),
                         coins_cache.DynamicMemoryUsage() / (1000 * 1000));
@@ -6013,7 +5998,7 @@ util::Result<void> ChainstateManager::PopulateAndValidateSnapshot(
             coins_count))};
     }
 
-    LogPrintf("[snapshot] loaded %d (%.2f MB) coins from snapshot %s\n",
+    LogInfo("[snapshot] loaded %d (%.2f MB) coins from snapshot %s",
         coins_count,
         coins_cache.DynamicMemoryUsage() / (1000 * 1000),
         base_blockhash.ToString());
@@ -6080,7 +6065,7 @@ util::Result<void> ChainstateManager::PopulateAndValidateSnapshot(
     index->m_chain_tx_count = au_data.m_chain_tx_count;
     snapshot_chainstate.setBlockIndexCandidates.insert(snapshot_start_block);
 
-    LogPrintf("[snapshot] validated snapshot (%.2f MB)\n",
+    LogInfo("[snapshot] validated snapshot (%.2f MB)",
         coins_cache.DynamicMemoryUsage() / (1000 * 1000));
     return {};
 }
@@ -6184,8 +6169,8 @@ SnapshotCompletionResult ChainstateManager::MaybeCompleteSnapshotValidation()
 
     const AssumeutxoData& au_data = *maybe_au_data;
     std::optional<CCoinsStats> maybe_ibd_stats;
-    LogPrintf("[snapshot] computing UTXO stats for background chainstate to validate "
-        "snapshot - this could take a few minutes\n");
+    LogInfo("[snapshot] computing UTXO stats for background chainstate to validate "
+        "snapshot - this could take a few minutes");
     try {
         maybe_ibd_stats = ComputeUTXOStats(
             CoinStatsHashType::HASH_SERIALIZED,
@@ -6221,7 +6206,7 @@ SnapshotCompletionResult ChainstateManager::MaybeCompleteSnapshotValidation()
         return SnapshotCompletionResult::HASH_MISMATCH;
     }
 
-    LogPrintf("[snapshot] snapshot beginning at %s has been fully validated\n",
+    LogInfo("[snapshot] snapshot beginning at %s has been fully validated",
         snapshot_blockhash.ToString());
 
     m_ibd_chainstate->m_disabled = true;
@@ -6257,7 +6242,7 @@ void ChainstateManager::MaybeRebalanceCaches()
     }
     else if (snapshot_usable && !ibd_usable) {
         // If background validation has completed and snapshot is our active chain...
-        LogPrintf("[snapshot] allocating all cache to the snapshot chainstate\n");
+        LogInfo("[snapshot] allocating all cache to the snapshot chainstate");
         // Allocate everything to the snapshot chainstate.
         m_snapshot_chainstate->ResizeCoinsCaches(m_total_coinstip_cache, m_total_coinsdb_cache);
     }
@@ -6326,7 +6311,7 @@ bool ChainstateManager::DetectSnapshotChainstate()
     if (!base_blockhash) {
         return false;
     }
-    LogPrintf("[snapshot] detected active snapshot chainstate (%s) - loading\n",
+    LogInfo("[snapshot] detected active snapshot chainstate (%s) - loading",
         fs::PathToString(*path));
 
     this->ActivateExistingSnapshot(*base_blockhash);
@@ -6338,7 +6323,7 @@ Chainstate& ChainstateManager::ActivateExistingSnapshot(uint256 base_blockhash)
     assert(!m_snapshot_chainstate);
     m_snapshot_chainstate =
         std::make_unique<Chainstate>(nullptr, m_blockman, *this, base_blockhash);
-    LogPrintf("[snapshot] switching active chainstate to %s\n", m_snapshot_chainstate->ToString());
+    LogInfo("[snapshot] switching active chainstate to %s", m_snapshot_chainstate->ToString());
 
     // Mempool is empty at this point because we're still in IBD.
     Assert(m_active_chainstate->m_mempool->size() == 0);
@@ -6382,7 +6367,7 @@ util::Result<void> Chainstate::InvalidateCoinsDBOnDisk()
     auto invalid_path = snapshot_datadir + "_INVALID";
     std::string dbpath = fs::PathToString(snapshot_datadir);
     std::string target = fs::PathToString(invalid_path);
-    LogPrintf("[snapshot] renaming snapshot datadir %s to %s\n", dbpath, target);
+    LogInfo("[snapshot] renaming snapshot datadir %s to %s", dbpath, target);
 
     // The invalid snapshot datadir is simply moved and not deleted because we may
     // want to do forensics later during issue investigation. The user is instructed
@@ -6494,7 +6479,7 @@ bool ChainstateManager::ValidatedSnapshotCleanup()
     // No chainstates should be considered usable.
     assert(this->GetAll().size() == 0);
 
-    LogPrintf("[snapshot] deleting background chainstate directory (now unnecessary) (%s)\n",
+    LogInfo("[snapshot] deleting background chainstate directory (now unnecessary) (%s)",
               fs::PathToString(ibd_chainstate_path));
 
     fs::path tmp_old{ibd_chainstate_path + "_todelete"};
@@ -6518,8 +6503,8 @@ bool ChainstateManager::ValidatedSnapshotCleanup()
         throw;
     }
 
-    LogPrintf("[snapshot] moving snapshot chainstate (%s) to "
-              "default chainstate directory (%s)\n",
+    LogInfo("[snapshot] moving snapshot chainstate (%s) to "
+              "default chainstate directory (%s)",
               fs::PathToString(snapshot_chainstate_path), fs::PathToString(ibd_chainstate_path));
 
     try {
@@ -6536,7 +6521,7 @@ bool ChainstateManager::ValidatedSnapshotCleanup()
                   "directory is now unnecessary.\n",
                   fs::PathToString(tmp_old));
     } else {
-        LogPrintf("[snapshot] deleted background chainstate directory (%s)\n",
+        LogInfo("[snapshot] deleted background chainstate directory (%s)",
                   fs::PathToString(ibd_chainstate_path));
     }
     return true;

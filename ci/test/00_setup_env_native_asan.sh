@@ -23,11 +23,12 @@ export APT_LLVM_V="20"
 export PACKAGES="systemtap-sdt-dev clang-${APT_LLVM_V} llvm-${APT_LLVM_V} libclang-rt-${APT_LLVM_V}-dev python3-zmq qt6-base-dev qt6-tools-dev qt6-l10n-tools libevent-dev libboost-dev libzmq3-dev libqrencode-dev libsqlite3-dev ${BPFCC_PACKAGE}"
 export NO_DEPENDS=1
 export GOAL="install"
+export CI_LIMIT_STACK_SIZE=1
 export BITCOIN_CONFIG="\
  -DWITH_USDT=ON -DWITH_ZMQ=ON -DBUILD_GUI=ON \
  -DSANITIZERS=address,float-divide-by-zero,integer,undefined \
- -DCMAKE_C_COMPILER=clang-${APT_LLVM_V} \
- -DCMAKE_CXX_COMPILER=clang++-${APT_LLVM_V} \
+ -DCMAKE_C_COMPILER=clang \
+ -DCMAKE_CXX_COMPILER=clang++ \
  -DCMAKE_C_FLAGS='-ftrivial-auto-var-init=pattern' \
  -DCMAKE_CXX_FLAGS='-ftrivial-auto-var-init=pattern' \
  -DAPPEND_CXXFLAGS='-std=c++23' \
