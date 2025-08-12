@@ -16,7 +16,7 @@ pub struct VerifyInput {
     pub script_pubkey: Vec<u8>,
     pub amount: Option<i64>,
     pub tx_to: Vec<u8>,
-    pub input_index: u32,
+    pub input_index: usize,
     pub flags: Option<u32>,
     pub spent_outputs: Vec<UtxoWrapper>,
 }
