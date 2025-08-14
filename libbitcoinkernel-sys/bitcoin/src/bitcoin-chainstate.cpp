@@ -18,6 +18,8 @@
 #include <locale>
 #endif
 
+using namespace btck;
+
 std::vector<unsigned char> hex_string_to_char_vec(std::string_view hex)
 {
     std::vector<unsigned char> bytes;
@@ -53,45 +55,45 @@ public:
     {
         auto mode{state.ValidationMode()};
         switch (mode) {
-        case kernel_ValidationMode::kernel_VALIDATION_STATE_VALID: {
+        case btck_ValidationMode::btck_VALIDATION_STATE_VALID: {
             std::cout << "Valid block" << std::endl;
             return;
         }
-        case kernel_ValidationMode::kernel_VALIDATION_STATE_INVALID: {
+        case btck_ValidationMode::btck_VALIDATION_STATE_INVALID: {
             std::cout << "Invalid block: ";
             auto result{state.BlockValidationResult()};
             switch (result) {
-            case kernel_BlockValidationResult::kernel_BLOCK_RESULT_UNSET:
+            case btck_BlockValidationResult::btck_BLOCK_RESULT_UNSET:
                 std::cout << "initial value. Block has not yet been rejected" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_HEADER_LOW_WORK:
+            case btck_BlockValidationResult::btck_BLOCK_HEADER_LOW_WORK:
                 std::cout << "the block header may be on a too-little-work chain" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_CONSENSUS:
+            case btck_BlockValidationResult::btck_BLOCK_CONSENSUS:
                 std::cout << "invalid by consensus rules (excluding any below reasons)" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_CACHED_INVALID:
+            case btck_BlockValidationResult::btck_BLOCK_CACHED_INVALID:
                 std::cout << "this block was cached as being invalid and we didn't store the reason why" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_INVALID_HEADER:
+            case btck_BlockValidationResult::btck_BLOCK_INVALID_HEADER:
                 std::cout << "invalid proof of work or time too old" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_MUTATED:
+            case btck_BlockValidationResult::btck_BLOCK_MUTATED:
                 std::cout << "the block's data didn't match the data committed to by the PoW" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_MISSING_PREV:
+            case btck_BlockValidationResult::btck_BLOCK_MISSING_PREV:
                 std::cout << "We don't have the previous block the checked one is built on" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_INVALID_PREV:
+            case btck_BlockValidationResult::btck_BLOCK_INVALID_PREV:
                 std::cout << "A block this one builds on is invalid" << std::endl;
                 break;
-            case kernel_BlockValidationResult::kernel_BLOCK_TIME_FUTURE:
+            case btck_BlockValidationResult::btck_BLOCK_TIME_FUTURE:
                 std::cout << "block timestamp was > 2 hours in the future (or our clock is bad)" << std::endl;
                 break;
             }
             return;
         }
-        case kernel_ValidationMode::kernel_VALIDATION_STATE_ERROR: {
+        case btck_ValidationMode::btck_VALIDATION_STATE_ERROR: {
             std::cout << "Internal error" << std::endl;
             return;
         }
@@ -102,7 +104,7 @@ public:
 class TestKernelNotifications : public KernelNotifications<TestKernelNotifications>
 {
 public:
-    void BlockTipHandler(kernel_SynchronizationState, const kernel_BlockIndex*, double) override
+    void BlockTipHandler(btck_SynchronizationState, const btck_BlockIndex*, double) override
     {
         std::cout << "Block tip changed" << std::endl;
     }
@@ -112,12 +114,12 @@ public:
         std::cout << "Made progress: " << title << " " << progress_percent << "%" << std::endl;
     }
 
-    void WarningSetHandler(kernel_Warning warning, std::string_view message) override
+    void WarningSetHandler(btck_Warning warning, std::string_view message) override
     {
         std::cout << message << std::endl;
     }
 
-    void WarningUnsetHandler(kernel_Warning warning) override
+    void WarningUnsetHandler(btck_Warning warning) override
     {
         std::cout << "Warning unset: " << warning << std::endl;
     }
@@ -164,7 +166,7 @@ int main(int argc, char* argv[])
     std::filesystem::path abs_datadir{std::filesystem::absolute(argv[1])};
     std::filesystem::create_directories(abs_datadir);
 
-    kernel_LoggingOptions logging_options = {
+    btck_LoggingOptions logging_options = {
         .log_timestamps = true,
         .log_time_micros = false,
         .log_threadnames = false,
@@ -175,7 +177,7 @@ int main(int argc, char* argv[])
     Logger logger{std::make_unique<KernelLog>(KernelLog{}), logging_options};
 
     ContextOptions options{};
-    ChainParams params{kernel_ChainType::kernel_CHAIN_TYPE_MAINNET};
+    ChainParams params{btck_ChainType::btck_CHAIN_TYPE_MAINNET};
     options.SetChainParams(params);
 
     TestKernelNotifications notifications{};
@@ -184,14 +186,15 @@ int main(int argc, char* argv[])
     options.SetValidationInterface(validation_interface);
 
     Context context{options};
-    assert(context);
 
     ChainstateManagerOptions chainman_opts{context, abs_datadir.string(), (abs_datadir / "blocks").string()};
-    assert(chainman_opts);
     chainman_opts.SetWorkerThreads(4);
 
-    auto chainman{std::make_unique<ChainMan>(context, chainman_opts)};
-    if (!*chainman) {
+    std::unique_ptr<ChainMan> chainman;
+    try {
+        chainman = std::make_unique<ChainMan>(context, chainman_opts);
+    } catch (std::exception&) {
+        std::cerr << "Failed to instantiate ChainMan, exiting" << std::endl;
         return 1;
     }
 
@@ -204,14 +207,16 @@ int main(int argc, char* argv[])
         }
 
         auto raw_block{hex_string_to_char_vec(line)};
-        auto block = Block{raw_block};
-        if (!block) {
+        std::unique_ptr<Block> block;
+        try {
+            block = std::make_unique<Block>(raw_block);
+        } catch (std::exception&) {
             std::cerr << "Block decode failed, try again:" << std::endl;
             continue;
         }
 
         bool new_block = false;
-        bool accepted = chainman->ProcessBlock(block, &new_block);
+        bool accepted = chainman->ProcessBlock(*block, &new_block);
         if (accepted) {
             std::cerr << "Block has not yet been rejected" << std::endl;
         } else {

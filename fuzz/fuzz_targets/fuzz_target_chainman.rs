@@ -91,7 +91,7 @@ fuzz_target!(|data: ChainstateManagerInput| {
     .set_block_tree_db_in_memory(data.block_tree_db_in_memory)
     .set_chainstate_db_in_memory(data.chainstate_db_in_memory);
     chainman_opts.set_worker_threads(data.worker_threads);
-    let chainman = match ChainstateManager::new(chainman_opts, Arc::clone(&context)) {
+    let chainman = match ChainstateManager::new(chainman_opts) {
         Err(KernelError::Internal(_)) => {
             return;
         }

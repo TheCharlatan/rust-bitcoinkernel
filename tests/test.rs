@@ -2,10 +2,10 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use bitcoinkernel::{
-        verify, Block, BlockHash, BlockUndo, ChainParams, ChainType, ChainstateManager,
-        ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-        KernelNotificationInterfaceCallbacks, Log, Logger, ScriptPubkey, Transaction, TxOut,
-        ValidationInterfaceCallbacks, VERIFY_ALL_PRE_TAPROOT,
+        verify, Block, BlockHash, BlockSpentOutputs, ChainParams, ChainType, ChainstateManager,
+        ChainstateManagerOptions, Coin, Context, ContextBuilder, KernelError,
+        KernelNotificationInterfaceCallbacks, Log, Logger, ScriptPubkey, Transaction,
+        TransactionSpentOutputs, TxOut, ValidationInterfaceCallbacks, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -101,7 +101,6 @@ mod tests {
 
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-                Arc::clone(&context),
             )
             .unwrap();
             for raw_block in block_data.iter() {
@@ -116,7 +115,7 @@ mod tests {
             .unwrap()
             .set_wipe_db(false, true);
 
-        let chainman = ChainstateManager::new(chainman_opts, Arc::clone(&context)).unwrap();
+        let chainman = ChainstateManager::new(chainman_opts).unwrap();
         chainman.import_blocks().unwrap();
         drop(chainman);
     }
@@ -128,7 +127,6 @@ mod tests {
         for _ in 0..10 {
             let chainman = ChainstateManager::new(
                 ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-                Arc::clone(&context),
             )
             .unwrap();
 
@@ -176,7 +174,6 @@ mod tests {
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-            Arc::clone(&context),
         )
         .unwrap();
 
@@ -186,34 +183,36 @@ mod tests {
             assert!(accepted);
             assert!(new_block);
         }
-        let block_index_genesis = chainman.get_block_index_genesis();
+        let block_index_genesis = chainman.block_index_genesis();
         let height = block_index_genesis.height();
         assert_eq!(height, 0);
-        let block_index_1 = chainman.get_next_block_index(block_index_genesis).unwrap();
+        let block_index_1 = chainman.next_block_index(block_index_genesis).unwrap();
         let height = block_index_1.height();
         assert_eq!(height, 1);
 
-        let block_index_tip = chainman.get_block_index_tip();
+        let block_index_tip = chainman.block_index_tip();
         let raw_block_tip: Vec<u8> = chainman.read_block_data(&block_index_tip).unwrap().into();
-        let undo_tip = chainman.read_undo_data(&block_index_tip).unwrap();
+        let spent_outputs_tip = chainman.read_spent_outputs(&block_index_tip).unwrap();
         let block_tip: bitcoin::Block = deserialize(&raw_block_tip).unwrap();
         // Should be the same size minus the coinbase transaction
-        assert_eq!(block_tip.txdata.len() - 1, undo_tip.n_tx_undo);
+        assert_eq!(block_tip.txdata.len() - 1, spent_outputs_tip.count());
 
         let block_index_tip_prev = block_index_tip.prev().unwrap();
         let raw_block: Vec<u8> = chainman
             .read_block_data(&block_index_tip_prev)
             .unwrap()
             .into();
-        let undo = chainman.read_undo_data(&block_index_tip_prev).unwrap();
+        let spent_outputs = chainman.read_spent_outputs(&block_index_tip_prev).unwrap();
         let block: bitcoin::Block = deserialize(&raw_block).unwrap();
         // Should be the same size minus the coinbase transaction
-        assert_eq!(block.txdata.len() - 1, undo.n_tx_undo);
+        assert_eq!(block.txdata.len() - 1, spent_outputs.count());
 
         for i in 0..(block.txdata.len() - 1) {
-            let transaction_undo_size: u64 = undo.get_transaction_undo_size(i.try_into().unwrap());
-            let transaction_input_size: u64 = block.txdata[i + 1].input.len().try_into().unwrap();
-            assert_eq!(transaction_input_size, transaction_undo_size);
+            let tx_spent_outputs = spent_outputs.transaction_spent_outputs(i).unwrap();
+            let coins_spent_count = tx_spent_outputs.count();
+            let transaction_input_size = block.txdata[i + 1].input.len();
+
+            assert_eq!(transaction_input_size, coins_spent_count);
             let mut helper = ScanTxHelper {
                 ins: vec![],
                 outs: block.txdata[i + 1]
@@ -223,15 +222,12 @@ mod tests {
                     .collect(),
             };
             for j in 0..transaction_input_size {
+                let coin = tx_spent_outputs.coin(j).unwrap();
                 helper.ins.push(Input {
-                    height: undo.get_prevout_height_by_index(i as u64, j).unwrap(),
-                    prevout: undo
-                        .get_prevout_by_index(i as u64, j)
-                        .unwrap()
-                        .get_script_pubkey()
-                        .get(),
-                    script_sig: block.txdata[i + 1].input[j as usize].script_sig.to_bytes(),
-                    witness: block.txdata[i + 1].input[j as usize].witness.to_vec(),
+                    height: coin.confirmation_height(),
+                    prevout: coin.output().unwrap().script_pubkey().to_bytes(),
+                    script_sig: block.txdata[i + 1].input[j].script_sig.to_bytes(),
+                    witness: block.txdata[i + 1].input[j].witness.to_vec(),
                 });
             }
             println!("helper: {:?}", helper);
@@ -245,7 +241,6 @@ mod tests {
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-            Arc::clone(&context),
         )
         .unwrap();
 
@@ -264,7 +259,6 @@ mod tests {
         let block_data = read_block_data();
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-            Arc::clone(&context),
         )
         .unwrap();
 
@@ -334,11 +328,119 @@ mod tests {
         ).is_err());
     }
 
+    #[test]
+    fn test_reftype_deref() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let tx_out = TxOut::new(&script, 1000);
+
+        let script_ref = tx_out.script_pubkey();
+
+        let bytes = script_ref.to_bytes();
+
+        assert_eq!(bytes, script_data);
+    }
+
+    #[test]
+    fn test_reftype_as_ref() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let tx_out = TxOut::new(&script, 1000);
+
+        let script_ref = tx_out.script_pubkey();
+
+        let script_as_ref: &ScriptPubkey = script_ref.as_ref();
+
+        let bytes = script_as_ref.to_bytes();
+
+        assert_eq!(bytes, script_data);
+    }
+
+    #[test]
+    fn test_reftype_to_owned() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let tx_out = TxOut::new(&script, 1000);
+
+        let script_ref = tx_out.script_pubkey();
+        let owned_script = script_ref.to_owned();
+
+        let bytes1 = script_ref.to_bytes();
+        let bytes2 = owned_script.to_bytes();
+
+        assert_eq!(bytes1, bytes2);
+        assert_eq!(bytes1, script_data);
+    }
+
+    #[test]
+    fn test_reftype_generic_function() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let tx_out = TxOut::new(&script, 1000);
+
+        let script_ref = tx_out.script_pubkey();
+
+        fn process_script<T: AsRef<ScriptPubkey>>(script: T) -> Vec<u8> {
+            script.as_ref().to_bytes()
+        }
+
+        let bytes = process_script(script_ref);
+        assert_eq!(bytes, script_data);
+    }
+
+    #[test]
+    fn test_to_owned_survives_drop() {
+        let owned_script = {
+            let script_data = vec![0x76, 0xa9, 0x14];
+            let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+            let tx_out = TxOut::new(&script, 1000);
+            let script_ref = tx_out.script_pubkey();
+            script_ref.to_owned()
+        };
+
+        let bytes = owned_script.to_bytes();
+        assert_eq!(bytes, vec![0x76, 0xa9, 0x14]);
+    }
+
+    #[test]
+    fn test_verify_input_validation() {
+        let script_data =
+            hex::decode("76a9144bfbaf6afb76cc5771bc6404810d1cc041a6933988ac").unwrap();
+        let script_pubkey = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let tx_hex = "02000000013f7cebd65c27431a90bba7f796914fe8cc2ddfc3f2cbd6f7e5f2fc854534da95000000006b483045022100de1ac3bcdfb0332207c4a91f3832bd2c2915840165f876ab47c5f8996b971c3602201c6c053d750fadde599e6f5c4e1963df0f01fc0d97815e8157e3d59fe09ca30d012103699b464d1d8bc9e47d4fb1cdaa89a1c5783d68363c4dbc4b524ed3d857148617feffffff02836d3c01000000001976a914fc25d6d5c94003bf5b0c7b640a248e2c637fcfb088ac7ada8202000000001976a914fbed3d9b11183209a57999d54d59f67c019e756c88ac6acb0700";
+        let tx = Transaction::try_from(hex::decode(tx_hex).unwrap().as_slice()).unwrap();
+        let dummy_output = TxOut::new(&script_pubkey, 100000);
+
+        // tx_index out of bounds
+        let result = verify(
+            &script_pubkey,
+            Some(0),
+            &tx,
+            999,
+            Some(VERIFY_ALL_PRE_TAPROOT),
+            std::slice::from_ref(&dummy_output),
+        );
+        assert!(matches!(result, Err(KernelError::OutOfBounds)));
+
+        let wrong_spent_outputs = vec![dummy_output.clone(), dummy_output];
+
+        // two transaction outputs for one input
+        let result = verify(
+            &script_pubkey,
+            Some(0),
+            &tx,
+            0,
+            Some(VERIFY_ALL_PRE_TAPROOT),
+            &wrong_spent_outputs,
+        );
+        assert!(matches!(result, Err(KernelError::OutOfBounds)));
+    }
+
     fn verify_test(
         spent: &str,
         spending: &str,
         amount: i64,
-        input: u32,
+        input: usize,
     ) -> Result<(), KernelError> {
         let outputs = vec![];
         let spent_script_pubkey =
@@ -370,8 +472,12 @@ mod tests {
         is_send::<Context>();
         is_sync::<Block>();
         is_send::<Block>();
-        is_sync::<BlockUndo>();
-        is_send::<BlockUndo>();
+        is_sync::<BlockSpentOutputs>();
+        is_send::<BlockSpentOutputs>();
+        is_sync::<TransactionSpentOutputs>();
+        is_send::<TransactionSpentOutputs>();
+        is_sync::<Coin>();
+        is_send::<Coin>();
         is_sync::<ChainstateManager>();
         is_send::<ChainstateManager>();
         is_sync::<BlockHash>();
