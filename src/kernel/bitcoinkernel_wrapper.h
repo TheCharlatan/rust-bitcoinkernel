@@ -34,6 +34,7 @@ class RefWrapper
 {
 private:
     T m_ref_data;
+
 public:
     RefWrapper(T&& data) : m_ref_data{std::move(data)} {}
 
@@ -46,6 +47,36 @@ public:
         return m_ref_data;
     }
 };
+
+template <typename T>
+std::vector<std::byte> write_bytes(const T* object, int (*to_bytes)(const T*, btck_WriteBytes, void*))
+{
+    std::vector<std::byte> bytes;
+    struct UserData {
+        std::vector<std::byte>* bytes;
+        std::exception_ptr exception;
+    };
+    UserData user_data = UserData{.bytes = &bytes, .exception = nullptr};
+
+    constexpr auto const write = +[](const void* buffer, size_t len, void* user_data) {
+        auto& data = *reinterpret_cast<UserData*>(user_data);
+        auto& bytes = *data.bytes;
+        try {
+            auto const* first = static_cast<const std::byte*>(buffer);
+            auto const* last = first + len;
+            bytes.insert(bytes.end(), first, last);
+            return 0;
+        } catch (...) {
+            data.exception = std::current_exception();
+            return -1;
+        }
+    };
+
+    if (to_bytes(object, write, &user_data) != 0) {
+        std::rethrow_exception(user_data.exception);
+    }
+    return bytes;
+}
 
 class ScriptPubkey
 {
@@ -60,12 +91,12 @@ private:
 public:
     std::unique_ptr<btck_ScriptPubkey, Deleter> m_script_pubkey;
 
-    ScriptPubkey(std::span<const unsigned char> script_pubkey)
+    ScriptPubkey(std::span<const std::byte> script_pubkey)
         : m_script_pubkey{check(btck_script_pubkey_create(script_pubkey.data(), script_pubkey.size()))}
     {
     }
 
-    int Verify(int64_t amount,
+    bool Verify(int64_t amount,
                const Transaction& tx_to,
                const std::span<const TransactionOutput> spent_outputs,
                unsigned int input_index,
@@ -90,12 +121,9 @@ public:
     {
     }
 
-    std::vector<unsigned char> GetScriptPubkeyData() const
+    std::vector<std::byte> ToBytes() const
     {
-        auto serialized_data{btck_script_pubkey_copy_data(m_script_pubkey.get())};
-        std::vector<unsigned char> vec{serialized_data->data, serialized_data->data + serialized_data->size};
-        btck_byte_array_destroy(serialized_data);
-        return vec;
+        return write_bytes(m_script_pubkey.get(), btck_script_pubkey_to_bytes);
     }
 };
 
@@ -119,7 +147,7 @@ public:
 
     // Copy constructor and assignment
     TransactionOutput(const TransactionOutput& other)
-        : m_transaction_output{check(btck_transaction_output_copy(other.m_transaction_output.get()))} { }
+        : m_transaction_output{check(btck_transaction_output_copy(other.m_transaction_output.get()))} {}
     TransactionOutput& operator=(const TransactionOutput& other)
     {
         if (this != &other) {
@@ -157,14 +185,14 @@ private:
 public:
     std::unique_ptr<btck_Transaction, Deleter> m_transaction;
 
-    Transaction(std::span<const unsigned char> raw_transaction)
+    Transaction(std::span<const std::byte> raw_transaction)
         : m_transaction{check(btck_transaction_create(raw_transaction.data(), raw_transaction.size()))}
     {
     }
 
     // Copy constructor and assignment
     Transaction(const Transaction& other)
-        : m_transaction{check(btck_transaction_copy(other.m_transaction.get()))} { }
+        : m_transaction{check(btck_transaction_copy(other.m_transaction.get()))} {}
     Transaction& operator=(const Transaction& other)
     {
         if (this != &other) {
@@ -192,9 +220,14 @@ public:
     {
         return TransactionOutput{btck_transaction_get_output_at(m_transaction.get(), index)};
     }
+
+    std::vector<std::byte> ToBytes() const
+    {
+        return write_bytes(m_transaction.get(), btck_transaction_to_bytes);
+    }
 };
 
-int ScriptPubkey::Verify(int64_t amount,
+bool ScriptPubkey::Verify(int64_t amount,
                   const Transaction& tx_to,
                   const std::span<const TransactionOutput> spent_outputs,
                   unsigned int input_index,
@@ -211,7 +244,7 @@ int ScriptPubkey::Verify(int64_t amount,
         }
         spent_outputs_ptr = raw_spent_outputs.data();
     }
-    return btck_script_pubkey_verify(
+    auto result = btck_script_pubkey_verify(
         m_script_pubkey.get(),
         amount,
         tx_to.m_transaction.get(),
@@ -219,6 +252,7 @@ int ScriptPubkey::Verify(int64_t amount,
         input_index,
         flags,
         &status);
+    return result == 1;
 }
 
 template <typename T>
@@ -251,6 +285,61 @@ public:
     }
 };
 
+struct BlockHashDeleter {
+    void operator()(btck_BlockHash* ptr) const
+    {
+        btck_block_hash_destroy(ptr);
+    }
+};
+
+class BlockTreeEntry
+{
+private:
+    struct Deleter {
+        void operator()(btck_BlockTreeEntry* ptr) const noexcept
+        {
+            btck_block_tree_entry_destroy(ptr);
+        }
+    };
+
+    std::unique_ptr<btck_BlockTreeEntry, Deleter> m_block_tree_entry;
+
+public:
+    BlockTreeEntry(btck_BlockTreeEntry* entry)
+        : m_block_tree_entry{check(entry)}
+    {
+    }
+
+    std::optional<BlockTreeEntry> GetPrevious() const
+    {
+        if (!m_block_tree_entry) {
+            return std::nullopt;
+        }
+        auto entry{btck_block_tree_entry_get_previous(m_block_tree_entry.get())};
+        if (!entry) return std::nullopt;
+        return entry;
+    }
+
+    int32_t GetHeight() const
+    {
+        if (!m_block_tree_entry) {
+            return -1;
+        }
+        return btck_block_tree_entry_get_height(m_block_tree_entry.get());
+    }
+
+    std::unique_ptr<btck_BlockHash, BlockHashDeleter> GetHash() const
+    {
+        if (!m_block_tree_entry) {
+            return nullptr;
+        }
+        return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_tree_entry_get_block_hash(m_block_tree_entry.get()));
+    }
+
+    friend class ChainMan;
+    friend class Chain;
+};
+
 template <typename T>
 class KernelNotifications
 {
@@ -259,14 +348,14 @@ private:
     {
         return btck_NotificationInterfaceCallbacks{
             .user_data = this,
-            .block_tip = [](void* user_data, btck_SynchronizationState state, const btck_BlockIndex* index, double verification_progress) {
-                static_cast<T*>(user_data)->BlockTipHandler(state, index, verification_progress);
+            .block_tip = [](void* user_data, btck_SynchronizationState state, btck_BlockTreeEntry* entry, double verification_progress) {
+                static_cast<T*>(user_data)->BlockTipHandler(state, BlockTreeEntry{entry}, verification_progress);
             },
-            .header_tip = [](void* user_data, btck_SynchronizationState state, int64_t height, int64_t timestamp, bool presync) {
-                static_cast<T*>(user_data)->HeaderTipHandler(state, height, timestamp, presync);
+            .header_tip = [](void* user_data, btck_SynchronizationState state, int64_t height, int64_t timestamp, int presync) {
+                static_cast<T*>(user_data)->HeaderTipHandler(state, height, timestamp, presync == 1);
             },
-            .progress = [](void* user_data, const char* title, size_t title_len, int progress_percent, bool resume_possible) {
-                static_cast<T*>(user_data)->ProgressHandler({title, title_len}, progress_percent, resume_possible);
+            .progress = [](void* user_data, const char* title, size_t title_len, int progress_percent, int resume_possible) {
+                static_cast<T*>(user_data)->ProgressHandler({title, title_len}, progress_percent, resume_possible == 1);
             },
             .warning_set = [](void* user_data, btck_Warning warning, const char* message, size_t message_len) {
                 static_cast<T*>(user_data)->WarningSetHandler(warning, {message, message_len});
@@ -284,7 +373,7 @@ public:
 
     virtual ~KernelNotifications() = default;
 
-    virtual void BlockTipHandler(btck_SynchronizationState state, const btck_BlockIndex* index, double verification_progress) {}
+    virtual void BlockTipHandler(btck_SynchronizationState state, BlockTreeEntry entry, double verification_progress) {}
 
     virtual void HeaderTipHandler(btck_SynchronizationState state, int64_t height, int64_t timestamp, bool presync) {}
 
@@ -299,13 +388,6 @@ public:
     virtual void FatalErrorHandler(std::string_view error) {}
 
     friend class ContextOptions;
-};
-
-struct BlockHashDeleter {
-    void operator()(btck_BlockHash* ptr) const
-    {
-        btck_block_hash_destroy(ptr);
-    }
 };
 
 class UnownedBlock
@@ -326,12 +408,9 @@ public:
         return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_pointer_get_hash(m_block));
     }
 
-    std::vector<unsigned char> GetBlockData() const
+    std::vector<std::byte> ToBytes() const
     {
-        auto serialized_block{btck_block_pointer_copy_data(m_block)};
-        std::vector<unsigned char> vec{serialized_block->data, serialized_block->data + serialized_block->size};
-        btck_byte_array_destroy(serialized_block);
-        return vec;
+        return write_bytes(m_block, btck_block_pointer_to_bytes);
     }
 };
 
@@ -484,7 +563,7 @@ public:
 
     bool SetWipeDbs(bool wipe_block_tree, bool wipe_chainstate) const
     {
-        return btck_chainstate_manager_options_set_wipe_dbs(m_options.get(), wipe_block_tree, wipe_chainstate);
+        return btck_chainstate_manager_options_set_wipe_dbs(m_options.get(), wipe_block_tree, wipe_chainstate) == 0;
     }
 
     void SetBlockTreeDbInMemory(bool block_tree_db_in_memory) const
@@ -513,7 +592,7 @@ private:
 public:
     std::unique_ptr<btck_Block, Deleter> m_block;
 
-    Block(const std::span<const unsigned char> raw_block)
+    Block(const std::span<const std::byte> raw_block)
         : m_block{check(btck_block_create(raw_block.data(), raw_block.size()))}
     {
     }
@@ -522,7 +601,7 @@ public:
 
     // Copy constructor and assignment
     Block(const Block& other)
-        : m_block{check(btck_block_copy(other.m_block.get()))} { }
+        : m_block{check(btck_block_copy(other.m_block.get()))} {}
     Block& operator=(const Block& other)
     {
         if (this != &other) {
@@ -546,12 +625,9 @@ public:
         return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_get_hash(m_block.get()));
     }
 
-    std::vector<unsigned char> GetBlockData() const
+    std::vector<std::byte> ToBytes() const
     {
-        auto serialized_block{btck_block_copy_data(m_block.get())};
-        std::vector<unsigned char> vec{serialized_block->data, serialized_block->data + serialized_block->size};
-        btck_byte_array_destroy(serialized_block);
-        return vec;
+        return write_bytes(m_block.get(), btck_block_to_bytes);
     }
 
     friend class ChainMan;
@@ -574,7 +650,7 @@ public:
 
     // Copy constructor and assignment
     Coin(const Coin& other)
-        : m_coin{check(btck_coin_copy(other.m_coin.get()))} { }
+        : m_coin{check(btck_coin_copy(other.m_coin.get()))} {}
     Coin& operator=(const Coin& other)
     {
         if (this != &other) {
@@ -676,48 +752,49 @@ public:
     }
 };
 
-class BlockIndex
+class Chain
 {
 private:
     struct Deleter {
-        void operator()(btck_BlockIndex* ptr) const noexcept
+        void operator()(btck_Chain* ptr) const noexcept
         {
-            btck_block_index_destroy(ptr);
+            btck_chain_destroy(ptr);
         }
     };
 
-    std::unique_ptr<btck_BlockIndex, Deleter> m_block_index;
+    std::unique_ptr<btck_Chain, Deleter> m_chain;
 
 public:
-    BlockIndex(btck_BlockIndex* block_index) : m_block_index{check(block_index)} {}
+    Chain(btck_Chain* chain) : m_chain{check(chain)} {}
 
-    std::optional<BlockIndex> GetPreviousBlockIndex() const
+    BlockTreeEntry GetTip() const
     {
-        if (!m_block_index) {
-            return std::nullopt;
-        }
-        auto index{btck_block_index_get_previous(m_block_index.get())};
+        return btck_chain_get_tip(m_chain.get());
+    }
+
+    BlockTreeEntry GetGenesis() const
+    {
+        return btck_chain_get_genesis(m_chain.get());
+    }
+
+    std::optional<BlockTreeEntry> GetByHeight(int height) const
+    {
+        auto index{btck_chain_get_by_height(m_chain.get(), height)};
         if (!index) return std::nullopt;
         return index;
     }
 
-    int32_t GetHeight() const
+    std::optional<BlockTreeEntry> GetNextBlockTreeEntry(BlockTreeEntry& block_index) const
     {
-        if (!m_block_index) {
-            return -1;
-        }
-        return btck_block_index_get_height(m_block_index.get());
+        auto index{btck_chain_get_next_block_tree_entry(m_chain.get(), block_index.m_block_tree_entry.get())};
+        if (!index) return std::nullopt;
+        return index;
     }
 
-    std::unique_ptr<btck_BlockHash, BlockHashDeleter> GetHash() const
+    bool Contains(BlockTreeEntry& entry) const
     {
-        if (!m_block_index) {
-            return nullptr;
-        }
-        return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_index_get_block_hash(m_block_index.get()));
+        return btck_chain_contains(m_chain.get(), entry.m_block_tree_entry.get());
     }
-
-    friend class ChainMan;
 };
 
 class ChainMan
@@ -745,53 +822,37 @@ public:
             c_paths_lens.push_back(path.length());
         }
 
-        return btck_chainstate_manager_import_blocks(m_chainman, c_paths.data(), c_paths_lens.data(), c_paths.size());
+        return btck_chainstate_manager_import_blocks(m_chainman, c_paths.data(), c_paths_lens.data(), c_paths.size()) == 0;
     }
 
     bool ProcessBlock(const Block& block, bool* new_block) const
     {
-        return btck_chainstate_manager_process_block(m_chainman, block.m_block.get(), new_block);
+        int _new_block;
+        int res = btck_chainstate_manager_process_block(m_chainman, block.m_block.get(), &_new_block);
+        if (new_block) *new_block = _new_block == 1;
+        return res == 0;
     }
 
-    BlockIndex GetBlockIndexFromTip() const
+    RefWrapper<Chain> GetChain() const
     {
-        return btck_block_index_get_tip(m_chainman);
+        return Chain{btck_chainstate_manager_get_active_chain(m_chainman)};
     }
 
-    BlockIndex GetBlockIndexFromGenesis() const
+    BlockTreeEntry GetBlockTreeEntry(btck_BlockHash* block_hash) const
     {
-        return btck_block_index_get_genesis(m_chainman);
+        return btck_chainstate_manager_get_block_tree_entry_by_hash(m_chainman, block_hash);
     }
 
-    BlockIndex GetBlockIndexByHash(btck_BlockHash* block_hash) const
+    std::optional<Block> ReadBlock(BlockTreeEntry& entry) const
     {
-        return btck_block_index_get_by_hash(m_chainman, block_hash);
-    }
-
-    std::optional<BlockIndex> GetBlockIndexByHeight(int height) const
-    {
-        auto index{btck_block_index_get_by_height(m_chainman, height)};
-        if (!index) return std::nullopt;
-        return index;
-    }
-
-    std::optional<BlockIndex> GetNextBlockIndex(BlockIndex& block_index) const
-    {
-        auto index{btck_block_index_get_next(m_chainman, block_index.m_block_index.get())};
-        if (!index) return std::nullopt;
-        return index;
-    }
-
-    std::optional<Block> ReadBlock(BlockIndex& block_index) const
-    {
-        auto block{btck_block_read(m_chainman, block_index.m_block_index.get())};
+        auto block{btck_block_read(m_chainman, entry.m_block_tree_entry.get())};
         if (!block) return std::nullopt;
         return block;
     }
 
-    BlockSpentOutputs ReadBlockSpentOutputs(const BlockIndex& block_index) const
+    BlockSpentOutputs ReadBlockSpentOutputs(const BlockTreeEntry& entry) const
     {
-        return btck_block_spent_outputs_read(m_chainman, block_index.m_block_index.get());
+        return btck_block_spent_outputs_read(m_chainman, entry.m_block_tree_entry.get());
     }
 
     ~ChainMan()

@@ -14,23 +14,25 @@
 #include <windows.h>
 // clang-format on
 #include <codecvt>
-#include <shellapi.h>
 #include <locale>
+#include <shellapi.h>
 #endif
 
 using namespace btck;
 
-std::vector<unsigned char> hex_string_to_char_vec(std::string_view hex)
+std::vector<std::byte> hex_string_to_byte_vec(std::string_view hex)
 {
-    std::vector<unsigned char> bytes;
+    std::vector<std::byte> bytes;
     bytes.reserve(hex.length() / 2);
 
     for (size_t i{0}; i < hex.length(); i += 2) {
-        unsigned char byte;
-        auto [ptr, ec] = std::from_chars(hex.data() + i, hex.data() + i + 2, byte, 16);
-        if (ec == std::errc{} && ptr == hex.data() + i + 2) {
-            bytes.push_back(byte);
+        uint8_t byte_value;
+        auto [ptr, ec] = std::from_chars(hex.data() + i, hex.data() + i + 2, byte_value, 16);
+
+        if (ec != std::errc{} || ptr != hex.data() + i + 2) {
+            throw std::invalid_argument("Invalid hex character");
         }
+        bytes.push_back(static_cast<std::byte>(byte_value));
     }
     return bytes;
 }
@@ -47,7 +49,7 @@ public:
 class TestValidationInterface : public ValidationInterface<TestValidationInterface>
 {
 public:
-    TestValidationInterface() : ValidationInterface() {}
+    TestValidationInterface() = default;
 
     std::optional<std::string> m_expected_valid_block = std::nullopt;
 
@@ -104,7 +106,7 @@ public:
 class TestKernelNotifications : public KernelNotifications<TestKernelNotifications>
 {
 public:
-    void BlockTipHandler(btck_SynchronizationState, const btck_BlockIndex*, double) override
+    void BlockTipHandler(btck_SynchronizationState, const BlockTreeEntry, double) override
     {
         std::cout << "Block tip changed" << std::endl;
     }
@@ -206,7 +208,7 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        auto raw_block{hex_string_to_char_vec(line)};
+        auto raw_block{hex_string_to_byte_vec(line)};
         std::unique_ptr<Block> block;
         try {
             block = std::make_unique<Block>(raw_block);
