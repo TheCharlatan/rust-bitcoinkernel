@@ -162,13 +162,19 @@ fn scan_tx(receiver: &Receiver, secret_scan_key: &SecretKey, scan_tx_helper: Sca
 
 fn scan_txs(chainman: &ChainstateManager) {
     let (receiver, secret_scan_key) = parse_keys();
-    let mut block_index = chainman.block_index_tip();
+    let chain = chainman.active_chain();
+    let mut block_index = chain.tip();
+
     loop {
         if block_index.height() <= 1 {
             break;
         }
         let spent_outputs = chainman.read_spent_outputs(&block_index).unwrap();
-        let raw_block: Vec<u8> = chainman.read_block_data(&block_index).unwrap().into();
+        let raw_block: Vec<u8> = chainman
+            .read_block_data(&block_index)
+            .unwrap()
+            .try_into()
+            .unwrap();
         let block: bitcoin::Block = deserialize(&raw_block).unwrap();
         // Should be the same size minus the coinbase transaction
         assert_eq!(block.txdata.len() - 1, spent_outputs.count());

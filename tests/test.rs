@@ -27,7 +27,7 @@ mod tests {
 
     fn setup_logging() {
         let mut builder = env_logger::Builder::from_default_env();
-        builder.filter(None, log::LevelFilter::Info).init();
+        builder.filter(None, log::LevelFilter::Debug).init();
 
         unsafe { GLOBAL_LOG_CALLBACK_HOLDER = Some(Logger::new(TestLog {}).unwrap()) };
     }
@@ -183,15 +183,21 @@ mod tests {
             assert!(accepted);
             assert!(new_block);
         }
-        let block_index_genesis = chainman.block_index_genesis();
-        let height = block_index_genesis.height();
-        assert_eq!(height, 0);
-        let block_index_1 = chainman.next_block_index(block_index_genesis).unwrap();
-        let height = block_index_1.height();
-        assert_eq!(height, 1);
 
-        let block_index_tip = chainman.block_index_tip();
-        let raw_block_tip: Vec<u8> = chainman.read_block_data(&block_index_tip).unwrap().into();
+        let active_chain = chainman.active_chain();
+
+        for (height, block_index) in active_chain.iter().enumerate() {
+            assert_eq!(height, block_index.height().try_into().unwrap());
+        }
+
+        let block_index_tip = active_chain.tip();
+
+        let raw_block_tip: Vec<u8> = chainman
+            .read_block_data(&block_index_tip)
+            .unwrap()
+            .consensus_encode()
+            .unwrap();
+
         let spent_outputs_tip = chainman.read_spent_outputs(&block_index_tip).unwrap();
         let block_tip: bitcoin::Block = deserialize(&raw_block_tip).unwrap();
         // Should be the same size minus the coinbase transaction
@@ -201,7 +207,9 @@ mod tests {
         let raw_block: Vec<u8> = chainman
             .read_block_data(&block_index_tip_prev)
             .unwrap()
-            .into();
+            .try_into()
+            .unwrap();
+
         let spent_outputs = chainman.read_spent_outputs(&block_index_tip_prev).unwrap();
         let block: bitcoin::Block = deserialize(&raw_block).unwrap();
         // Should be the same size minus the coinbase transaction
@@ -434,6 +442,71 @@ mod tests {
             &wrong_spent_outputs,
         );
         assert!(matches!(result, Err(KernelError::OutOfBounds)));
+    }
+
+    #[test]
+    fn test_chain_operations() {
+        let (context, data_dir) = testing_setup();
+        let blocks_dir = data_dir.clone() + "/blocks";
+        let block_data = read_block_data();
+
+        let chainman = ChainstateManager::new(
+            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
+        )
+        .unwrap();
+
+        for raw_block in block_data.iter() {
+            let block = Block::try_from(raw_block.as_slice()).unwrap();
+            let (accepted, new_block) = chainman.process_block(&block);
+            assert!(accepted);
+            assert!(new_block);
+        }
+
+        let chain = chainman.active_chain();
+
+        let genesis = chain.genesis();
+        assert_eq!(genesis.height(), 0);
+        let genesis_hash = genesis.block_hash();
+
+        let tip = chain.tip();
+        let tip_height = tip.height();
+        let tip_hash = tip.block_hash();
+
+        assert!(tip_height > 0);
+        assert_ne!(genesis_hash.hash, tip_hash.hash);
+
+        let genesis_via_height = chain.at_height(0).unwrap();
+        assert_eq!(genesis_via_height.height(), 0);
+        assert_eq!(genesis_via_height.block_hash().hash, genesis_hash.hash);
+
+        let tip_via_height = chain.at_height(tip_height as usize).unwrap();
+        assert_eq!(tip_via_height.height(), tip_height);
+        assert_eq!(tip_via_height.block_hash().hash, tip_hash.hash);
+
+        let invalid_entry = chain.at_height(9999);
+        assert!(invalid_entry.is_none());
+
+        assert!(chain.contains(&genesis));
+        assert!(chain.contains(&tip));
+
+        let mut current = genesis;
+        let mut height_counter = 0;
+
+        loop {
+            assert_eq!(current.height(), height_counter);
+            assert!(chain.contains(&current));
+
+            if let Some(next_entry) = chain.next(&current) {
+                assert_eq!(next_entry.height(), height_counter + 1);
+                current = next_entry;
+                height_counter += 1;
+            } else {
+                break;
+            }
+        }
+
+        assert_eq!(height_counter, tip_height);
+        assert_eq!(current.block_hash().hash, tip_hash.hash);
     }
 
     fn verify_test(

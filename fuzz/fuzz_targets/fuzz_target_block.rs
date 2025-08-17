@@ -5,7 +5,7 @@ use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     if let Ok(block) = Block::try_from(data) {
-        let block_serialized: Vec<u8> = block.into();
+        let block_serialized: Vec<u8> = block.try_into().unwrap();
         assert!(data.len() >= block_serialized.len());
     }
 });
