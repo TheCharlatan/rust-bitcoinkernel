@@ -3,10 +3,9 @@
 #![allow(non_snake_case)]
 
 use std::borrow::Borrow;
-use std::ffi::{CString, NulError};
-use std::fmt;
+use std::ffi::{c_char, c_void, CString, NulError};
 use std::marker::PhantomData;
-use std::os::raw::{c_char, c_void};
+use std::{fmt, panic};
 
 use libbitcoinkernel_sys::*;
 
@@ -36,6 +35,53 @@ pub const VERIFY_ALL_PRE_TAPROOT: u32 = VERIFY_P2SH
     | VERIFY_CHECKLOCKTIMEVERIFY
     | VERIFY_CHECKSEQUENCEVERIFY
     | VERIFY_WITNESS;
+
+/// Helper functions for converting between Rust and C types.
+mod c_helpers {
+    /// Returns true if the C return code indicates success (0).
+    #[inline]
+    pub fn success(code: i32) -> bool {
+        code == 0
+    }
+
+    /// Returns true if the C return code indicates a present/found state (non-zero).
+    #[inline]
+    pub fn present(code: i32) -> bool {
+        code != 0
+    }
+
+    /// Returns true if the C return code indicates an enabled state (non-zero).
+    #[inline]
+    pub fn enabled(code: i32) -> bool {
+        code != 0
+    }
+
+    /// Returns true if the C return code indicates verification passed (1).
+    #[inline]
+    pub fn verification_passed(code: i32) -> bool {
+        code == 1
+    }
+
+    /// Converts a Rust bool to C bool representation (1 for true, 0 for false).
+    #[inline]
+    pub fn to_c_bool(value: bool) -> i32 {
+        if value {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// Converts success status to C result code (0 for success, 1 for failure).
+    #[inline]
+    pub fn to_c_result(success: bool) -> i32 {
+        if success {
+            0
+        } else {
+            1
+        }
+    }
+}
 
 /// Verifies a transaction input against its corresponding output script.
 ///
@@ -99,7 +145,7 @@ pub fn verify(
         )
     };
 
-    if !ret {
+    if !c_helpers::verification_passed(ret) {
         let err = match status {
             btck_ScriptVerifyStatus_btck_SCRIPT_VERIFY_ERROR_INVALID_FLAGS => {
                 ScriptVerifyError::InvalidFlags
@@ -115,6 +161,45 @@ pub fn verify(
         Err(KernelError::ScriptVerify(err))
     } else {
         Ok(())
+    }
+}
+
+/// Serializes data using a C callback function pattern.
+///
+/// Takes a C function that writes data via a callback and returns the
+/// serialized bytes as a Vec<u8>.
+fn c_serialize<F>(c_function: F) -> Result<Vec<u8>, KernelError>
+where
+    F: FnOnce(
+        unsafe extern "C" fn(*const std::ffi::c_void, usize, *mut std::ffi::c_void) -> i32,
+        *mut std::ffi::c_void,
+    ) -> i32,
+{
+    let mut buffer = Vec::new();
+
+    unsafe extern "C" fn write_callback(
+        data: *const std::ffi::c_void,
+        len: usize,
+        user_data: *mut std::ffi::c_void,
+    ) -> i32 {
+        panic::catch_unwind(|| {
+            let buffer = &mut *(user_data as *mut Vec<u8>);
+            let slice = std::slice::from_raw_parts(data as *const u8, len);
+            buffer.extend_from_slice(slice);
+            c_helpers::to_c_result(true)
+        })
+        .unwrap_or_else(|_| c_helpers::to_c_result(false))
+    }
+
+    let result = c_function(
+        write_callback,
+        &mut buffer as *mut Vec<u8> as *mut std::ffi::c_void,
+    );
+
+    if c_helpers::success(result) {
+        Ok(buffer)
+    } else {
+        Err(KernelError::SerializationFailed)
     }
 }
 
@@ -226,13 +311,14 @@ pub struct KernelNotificationInterfaceCallbacks {
 unsafe extern "C" fn kn_block_tip_wrapper(
     user_data: *mut c_void,
     state: btck_SynchronizationState,
-    block_index: *const btck_BlockIndex,
+    entry: *mut btck_BlockTreeEntry,
     verification_progress: f64,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
-    let hash = btck_block_index_get_block_hash(block_index);
+    let hash = btck_block_tree_entry_get_block_hash(entry);
     let res = BlockHash { hash: (*hash).hash };
     btck_block_hash_destroy(hash);
+    btck_block_tree_entry_destroy(entry);
     (holder.kn_block_tip)(state.into(), res, verification_progress);
 }
 
@@ -241,10 +327,10 @@ unsafe extern "C" fn kn_header_tip_wrapper(
     state: btck_SynchronizationState,
     height: i64,
     timestamp: i64,
-    presync: bool,
+    presync: i32,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
-    (holder.kn_header_tip)(state.into(), height, timestamp, presync);
+    (holder.kn_header_tip)(state.into(), height, timestamp, c_helpers::enabled(presync));
 }
 
 unsafe extern "C" fn kn_progress_wrapper(
@@ -252,13 +338,13 @@ unsafe extern "C" fn kn_progress_wrapper(
     title: *const c_char,
     title_len: usize,
     progress_percent: i32,
-    resume_possible: bool,
+    resume_possible: i32,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     (holder.kn_progress)(
         cast_string(title, title_len),
         progress_percent,
-        resume_possible,
+        c_helpers::enabled(resume_possible),
     );
 }
 
@@ -358,8 +444,15 @@ unsafe impl Send for Context {}
 unsafe impl Sync for Context {}
 
 impl Context {
-    pub fn interrupt(&self) -> bool {
-        unsafe { btck_context_interrupt(self.inner) }
+    pub fn interrupt(&self) -> Result<(), KernelError> {
+        let result = unsafe { btck_context_interrupt(self.inner) };
+        if c_helpers::success(result) {
+            return Ok(());
+        } else {
+            return Err(KernelError::Internal(
+                "Context interrupt failed.".to_string(),
+            ));
+        }
     }
 }
 
@@ -470,6 +563,7 @@ pub enum KernelError {
     InvalidOptions(String),
     OutOfBounds,
     ScriptVerify(ScriptVerifyError),
+    SerializationFailed,
 }
 
 /// A collection of errors that may occur during script verification
@@ -573,17 +667,12 @@ unsafe impl Send for ScriptPubkey {}
 unsafe impl Sync for ScriptPubkey {}
 
 impl ScriptPubkey {
-    /// Returns the raw script bytes.
-    ///
-    /// This creates a copy of the underlying script data in the format
-    /// used for script execution and storage.
+    /// Serializes the script to raw bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
-        let script_pubkey = unsafe { btck_script_pubkey_copy_data(self.inner) };
-        let res =
-            unsafe { std::slice::from_raw_parts((*script_pubkey).data, (*script_pubkey).size) }
-                .to_vec();
-        unsafe { btck_byte_array_destroy(script_pubkey) };
-        res
+        c_serialize(|callback, user_data| unsafe {
+            btck_script_pubkey_to_bytes(self.inner, Some(callback), user_data)
+        })
+        .expect("Script pubkey to_bytes should never fail")
     }
 }
 
@@ -598,7 +687,10 @@ impl TryFrom<&[u8]> for ScriptPubkey {
 
     fn try_from(raw_script_pubkey: &[u8]) -> Result<Self, Self::Error> {
         let inner = unsafe {
-            btck_script_pubkey_create(raw_script_pubkey.as_ptr(), raw_script_pubkey.len())
+            btck_script_pubkey_create(
+                raw_script_pubkey.as_ptr() as *const c_void,
+                raw_script_pubkey.len(),
+            )
         };
         if inner.is_null() {
             return Err(KernelError::Internal(
@@ -736,6 +828,9 @@ pub struct Transaction {
     inner: *mut btck_Transaction,
 }
 
+unsafe impl Send for Transaction {}
+unsafe impl Sync for Transaction {}
+
 impl Transaction {
     /// Returns the number of outputs in this transaction.
     pub fn output_count(&self) -> usize {
@@ -761,17 +856,33 @@ impl Transaction {
     pub fn input_count(&self) -> usize {
         unsafe { btck_transaction_count_inputs(self.inner) as usize }
     }
+
+    /// Consensus encodes the transaction to Bitcoin wire format.
+    pub fn consensus_encode(&self) -> Result<Vec<u8>, KernelError> {
+        c_serialize(|callback, user_data| unsafe {
+            btck_transaction_to_bytes(self.inner, Some(callback), user_data)
+        })
+    }
 }
 
-unsafe impl Send for Transaction {}
-unsafe impl Sync for Transaction {}
+impl TryFrom<Transaction> for Vec<u8> {
+    type Error = KernelError;
+
+    fn try_from(tx: Transaction) -> Result<Self, Self::Error> {
+        tx.consensus_encode()
+    }
+}
 
 impl TryFrom<&[u8]> for Transaction {
     type Error = KernelError;
 
     fn try_from(raw_transaction: &[u8]) -> Result<Self, Self::Error> {
-        let inner =
-            unsafe { btck_transaction_create(raw_transaction.as_ptr(), raw_transaction.len()) };
+        let inner = unsafe {
+            btck_transaction_create(
+                raw_transaction.as_ptr() as *const c_void,
+                raw_transaction.len(),
+            )
+        };
         if inner.is_null() {
             return Err(KernelError::Internal(
                 "Failed to decode raw transaction.".to_string(),
@@ -820,22 +931,19 @@ impl UnownedBlock {
         res
     }
 
-    /// Returns the raw block data as bytes.
-    ///
-    /// This creates a copy of the entire block (header + transactions) in the format
-    /// used for network transmission and storage.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let raw_block = unsafe { btck_block_pointer_copy_data(self.inner) };
-        let vec =
-            unsafe { std::slice::from_raw_parts((*raw_block).data, (*raw_block).size) }.to_vec();
-        unsafe { btck_byte_array_destroy(raw_block) }
-        vec
+    /// Consensus encodes the block to Bitcoin wire format.
+    pub fn consensus_encode(&self) -> Result<Vec<u8>, KernelError> {
+        c_serialize(|callback, user_data| unsafe {
+            btck_block_pointer_to_bytes(self.inner, Some(callback), user_data)
+        })
     }
 }
 
-impl From<UnownedBlock> for Vec<u8> {
-    fn from(block: UnownedBlock) -> Self {
-        block.to_bytes()
+impl TryFrom<UnownedBlock> for Vec<u8> {
+    type Error = KernelError;
+
+    fn try_from(block: UnownedBlock) -> Result<Self, KernelError> {
+        block.consensus_encode()
     }
 }
 
@@ -884,22 +992,19 @@ impl Block {
         Ok(Transaction { inner: tx })
     }
 
-    /// Returns the raw block data as bytes.
-    ///
-    /// This creates a copy of the entire block (header + transactions) in the format
-    /// used for network transmission and storage.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let raw_block = unsafe { btck_block_copy_data(self.inner) };
-        let vec =
-            unsafe { std::slice::from_raw_parts((*raw_block).data, (*raw_block).size) }.to_vec();
-        unsafe { btck_byte_array_destroy(raw_block) };
-        vec
+    /// Consensus encodes the block to Bitcoin wire format.
+    pub fn consensus_encode(&self) -> Result<Vec<u8>, KernelError> {
+        c_serialize(|callback, user_data| unsafe {
+            btck_block_to_bytes(self.inner, Some(callback), user_data)
+        })
     }
 }
 
-impl From<Block> for Vec<u8> {
-    fn from(block: Block) -> Vec<u8> {
-        block.to_bytes()
+impl TryFrom<Block> for Vec<u8> {
+    type Error = KernelError;
+
+    fn try_from(block: Block) -> Result<Self, KernelError> {
+        block.consensus_encode()
     }
 }
 
@@ -907,7 +1012,8 @@ impl TryFrom<&[u8]> for Block {
     type Error = KernelError;
 
     fn try_from(raw_block: &[u8]) -> Result<Self, Self::Error> {
-        let inner = unsafe { btck_block_create(raw_block.as_ptr(), raw_block.len()) };
+        let inner =
+            unsafe { btck_block_create(raw_block.as_ptr() as *const c_void, raw_block.len()) };
         if inner.is_null() {
             return Err(KernelError::Internal(
                 "Failed to de-serialize Block.".to_string(),
@@ -931,19 +1037,20 @@ impl Drop for Block {
     }
 }
 
-/// A block index that is tied to a specific [`ChainstateManager`].
+/// A block tree entry that is tied to a specific [`ChainstateManager`].
 ///
 /// Internally the [`ChainstateManager`] keeps an in-memory of the current block
-/// tree once it is loaded. The [`BlockIndex`] points to an entry in this tree.
+/// tree once it is loaded. The [`BlockTreeEntry`] points to an entry in this tree.
 /// It is only valid as long as the [`ChainstateManager`] it was retrieved from
 /// remains in scope.
-pub struct BlockIndex {
-    inner: *mut btck_BlockIndex,
+#[derive(Debug)]
+pub struct BlockTreeEntry {
+    inner: *mut btck_BlockTreeEntry,
     marker: PhantomData<ChainstateManager>,
 }
 
-unsafe impl Send for BlockIndex {}
-unsafe impl Sync for BlockIndex {}
+unsafe impl Send for BlockTreeEntry {}
+unsafe impl Sync for BlockTreeEntry {}
 
 /// A type for a Block hash.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -951,29 +1058,30 @@ pub struct BlockHash {
     pub hash: [u8; 32],
 }
 
-impl BlockIndex {
+impl BlockTreeEntry {
     /// Move to the previous entry in the block tree. E.g. from height n to
     /// height n-1.
-    pub fn prev(self) -> Result<BlockIndex, KernelError> {
-        let inner = unsafe { btck_block_index_get_previous(self.inner) };
+    pub fn prev(self) -> Result<BlockTreeEntry, KernelError> {
+        let inner = unsafe { btck_block_tree_entry_get_previous(self.inner) };
+
         if inner.is_null() {
             return Err(KernelError::OutOfBounds);
         }
-        unsafe { btck_block_index_destroy(self.inner) };
-        Ok(BlockIndex {
+
+        Ok(BlockTreeEntry {
             inner,
             marker: self.marker,
         })
     }
 
-    /// Returns the current height associated with this BlockIndex.
+    /// Returns the current height associated with this BlockTreeEntry.
     pub fn height(&self) -> i32 {
-        unsafe { btck_block_index_get_height(self.inner) }
+        unsafe { btck_block_tree_entry_get_height(self.inner) }
     }
 
-    /// Returns the current block hash associated with this BlockIndex.
+    /// Returns the current block hash associated with this BlockTreeEntry.
     pub fn block_hash(&self) -> BlockHash {
-        let hash = unsafe { btck_block_index_get_block_hash(self.inner) };
+        let hash = unsafe { btck_block_tree_entry_get_block_hash(self.inner) };
         let res = BlockHash {
             hash: unsafe { (&*hash).hash },
         };
@@ -982,9 +1090,9 @@ impl BlockIndex {
     }
 }
 
-impl Drop for BlockIndex {
+impl Drop for BlockTreeEntry {
     fn drop(&mut self) {
-        unsafe { btck_block_index_destroy(self.inner) };
+        unsafe { btck_block_tree_entry_destroy(self.inner) };
     }
 }
 
@@ -1119,7 +1227,8 @@ impl Coin {
 
     /// Returns true if this coin came from a coinbase transaction.
     pub fn is_coinbase(&self) -> bool {
-        unsafe { btck_coin_is_coinbase(self.inner) }
+        let result = unsafe { btck_coin_is_coinbase(self.inner) };
+        c_helpers::present(result)
     }
 
     /// Returns a reference to the transaction output data for this coin.
@@ -1197,8 +1306,8 @@ impl ChainstateManagerOptions {
         unsafe {
             btck_chainstate_manager_options_set_wipe_dbs(
                 self.inner,
-                wipe_block_tree,
-                wipe_chainstate,
+                c_helpers::to_c_bool(wipe_block_tree),
+                c_helpers::to_c_bool(wipe_chainstate),
             );
         }
         self
@@ -1209,7 +1318,7 @@ impl ChainstateManagerOptions {
         unsafe {
             btck_chainstate_manager_options_set_block_tree_db_in_memory(
                 self.inner,
-                block_tree_db_in_memory,
+                c_helpers::to_c_bool(block_tree_db_in_memory),
             );
         }
         self
@@ -1220,7 +1329,7 @@ impl ChainstateManagerOptions {
         unsafe {
             btck_chainstate_manager_options_set_chainstate_db_in_memory(
                 self.inner,
-                chainstate_db_in_memory,
+                c_helpers::to_c_bool(chainstate_db_in_memory),
             );
         }
         self
@@ -1232,6 +1341,95 @@ impl Drop for ChainstateManagerOptions {
         unsafe {
             btck_chainstate_manager_options_destroy(self.inner);
         }
+    }
+}
+
+/// Iterator for traversing blocks sequentially from genesis to tip.
+pub struct ChainIterator<'a> {
+    chain: &'a Chain,
+    current: Option<BlockTreeEntry>,
+}
+
+impl<'a> ChainIterator<'a> {
+    fn new(chain: &'a Chain, start: Option<BlockTreeEntry>) -> Self {
+        Self {
+            chain,
+            current: start,
+        }
+    }
+}
+
+impl<'a> Iterator for ChainIterator<'a> {
+    type Item = BlockTreeEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(current_entry) = self.current.take() {
+            self.current = self.chain.next(&current_entry);
+
+            Some(current_entry)
+        } else {
+            None
+        }
+    }
+}
+
+/// Represents a chain instance for querying and traversal.
+pub struct Chain {
+    inner: *mut btck_Chain,
+    marker: PhantomData<ChainstateManager>,
+}
+
+impl Chain {
+    /// Returns the tip (highest block) of the active chain.
+    pub fn tip(&self) -> BlockTreeEntry {
+        BlockTreeEntry {
+            inner: unsafe { btck_chain_get_tip(self.inner) },
+            marker: PhantomData,
+        }
+    }
+
+    /// Returns the genesis block (height 0) of the chain.
+    pub fn genesis(&self) -> BlockTreeEntry {
+        BlockTreeEntry {
+            inner: unsafe { btck_chain_get_genesis(self.inner) },
+            marker: PhantomData,
+        }
+    }
+
+    /// Returns the block at the specified height, if it exists.
+    pub fn at_height(&self, height: usize) -> Option<BlockTreeEntry> {
+        let entry = unsafe { btck_chain_get_by_height(self.inner, height as i32) };
+        if entry.is_null() {
+            return None;
+        }
+
+        Some(BlockTreeEntry {
+            inner: entry,
+            marker: PhantomData,
+        })
+    }
+
+    /// Returns the next block after the given entry.
+    pub fn next(&self, entry: &BlockTreeEntry) -> Option<BlockTreeEntry> {
+        self.at_height((entry.height() + 1) as usize)
+    }
+
+    /// Checks if the given block entry is part of the active chain.
+    pub fn contains(&self, entry: &BlockTreeEntry) -> bool {
+        let result = unsafe { btck_chain_contains(self.inner, entry.inner) };
+        c_helpers::present(result)
+    }
+
+    /// Returns an iterator over all blocks from genesis to tip.
+    pub fn iter(&self) -> ChainIterator<'_> {
+        let genesis = self.genesis();
+        ChainIterator::new(self, Some(genesis))
+    }
+}
+
+impl Drop for Chain {
+    fn drop(&mut self) {
+        unsafe { btck_chain_destroy(self.inner) }
     }
 }
 
@@ -1268,11 +1466,11 @@ impl ChainstateManager {
     /// fails to validate the `block_checked` callback's ['BlockValidationState'] will
     /// contain details.
     pub fn process_block(&self, block: &Block) -> (bool /* accepted */, bool /* duplicate */) {
-        let mut new_block = true;
+        let mut new_block: i32 = 0;
         let accepted = unsafe {
             btck_chainstate_manager_process_block(self.inner, block.inner, &mut new_block)
         };
-        (accepted, new_block)
+        (c_helpers::success(accepted), c_helpers::enabled(new_block))
     }
 
     /// May be called after load_chainstate to initialize the
@@ -1280,103 +1478,50 @@ impl ChainstateManager {
     /// previously set for the chainstate and block manager. Can also import an
     /// array of existing block files selected by the user.
     pub fn import_blocks(&self) -> Result<(), KernelError> {
-        if !unsafe {
+        let result = unsafe {
             btck_chainstate_manager_import_blocks(
                 self.inner,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 0,
             )
-        } {
-            return Err(KernelError::Internal(
+        };
+        match c_helpers::success(result) {
+            true => Ok(()),
+            false => Err(KernelError::Internal(
                 "Failed to import blocks.".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
-    /// Returns the block index entry of the current chain tip.
-    ///
-    /// Once returned, there is no guarantee that it remains in the active chain.
-    pub fn block_index_tip(&self) -> BlockIndex {
-        BlockIndex {
-            inner: unsafe { btck_block_index_get_tip(self.inner) },
-            marker: PhantomData,
+            )),
         }
     }
 
-    /// Returns the block index entry of the genesis block.
-    pub fn block_index_genesis(&self) -> BlockIndex {
-        BlockIndex {
-            inner: unsafe { btck_block_index_get_genesis(self.inner) },
-            marker: PhantomData,
-        }
-    }
-
-    /// Retrieve a block index by its height in the currently active chain.
-    ///
-    /// Once retrieved there is no guarantee that it remains in the active chain.
-    pub fn block_index_by_height(&self, block_height: i32) -> Result<BlockIndex, KernelError> {
-        let inner = unsafe { btck_block_index_get_by_height(self.inner, block_height) };
-        if inner.is_null() {
-            return Err(KernelError::OutOfBounds);
-        }
-        Ok(BlockIndex {
-            inner,
-            marker: PhantomData,
-        })
-    }
-
-    /// Returns a block index entry by its hash.
-    pub fn block_index_by_hash(&self, hash: BlockHash) -> Result<BlockIndex, KernelError> {
-        let mut block_hash = btck_BlockHash { hash: hash.hash };
-        let inner = unsafe { btck_block_index_get_by_hash(self.inner, &mut block_hash) };
-        if inner.is_null() {
-            return Err(KernelError::Internal(
-                "Block index for the given block hash not found.".to_string(),
-            ));
-        }
-        Ok(BlockIndex {
-            inner,
-            marker: PhantomData,
-        })
-    }
-
-    /// Returns the next block index entry in the chain.
-    ///
-    /// If this is the tip or otherwise a leaf in the block tree, returns an error.
-    pub fn next_block_index(&self, block_index: BlockIndex) -> Result<BlockIndex, KernelError> {
-        let inner = unsafe { btck_block_index_get_next(self.inner, block_index.inner) };
-        if inner.is_null() {
-            return Err(KernelError::OutOfBounds);
-        }
-        Ok(BlockIndex {
-            inner,
-            marker: PhantomData,
-        })
-    }
-
-    /// Read a block from disk by its block index.
-    pub fn read_block_data(&self, block_index: &BlockIndex) -> Result<Block, KernelError> {
-        let inner = unsafe { btck_block_read(self.inner, block_index.inner) };
+    /// Read a block from disk by its block tree entry.
+    pub fn read_block_data(&self, entry: &BlockTreeEntry) -> Result<Block, KernelError> {
+        let inner = unsafe { btck_block_read(self.inner, entry.inner) };
         if inner.is_null() {
             return Err(KernelError::Internal("Failed to read block.".to_string()));
         }
         Ok(Block { inner })
     }
 
-    /// Read a block's spent outputs data from disk by its block index.
+    /// Read a block's spent outputs data from disk by its block tree entry.
     pub fn read_spent_outputs(
         &self,
-        block_index: &BlockIndex,
+        entry: &BlockTreeEntry,
     ) -> Result<BlockSpentOutputs, KernelError> {
-        let inner = unsafe { btck_block_spent_outputs_read(self.inner, block_index.inner) };
+        let inner = unsafe { btck_block_spent_outputs_read(self.inner, entry.inner) };
         if inner.is_null() {
             return Err(KernelError::Internal(
                 "Failed to read undo data.".to_string(),
             ));
         }
         Ok(BlockSpentOutputs { inner })
+    }
+
+    pub fn active_chain(&self) -> Chain {
+        Chain {
+            inner: unsafe { btck_chainstate_manager_get_active_chain(self.inner) },
+            marker: PhantomData,
+        }
     }
 }
 
@@ -1430,11 +1575,11 @@ impl<T: Log + 'static> Logger<T> {
     /// Create a new Logger with the specified callback.
     pub fn new(mut log: T) -> Result<Logger<T>, KernelError> {
         let options = btck_LoggingOptions {
-            log_timestamps: true,
-            log_time_micros: false,
-            log_threadnames: false,
-            log_sourcelocations: false,
-            always_print_category_levels: false,
+            log_timestamps: c_helpers::to_c_bool(true),
+            log_time_micros: c_helpers::to_c_bool(false),
+            log_threadnames: c_helpers::to_c_bool(false),
+            log_sourcelocations: c_helpers::to_c_bool(false),
+            always_print_category_levels: c_helpers::to_c_bool(false),
         };
 
         let inner = unsafe {
