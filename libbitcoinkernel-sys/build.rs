@@ -93,8 +93,14 @@ fn main() {
         .expect("Couldn't write bindings!");
 
     let compiler = cc::Build::new().get_compiler();
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+
+    if target_os == "windows" {
+        println!("cargo:rustc-link-lib=bcrypt");
+        println!("cargo:rustc-link-lib=shell32");
+    }
+
     if compiler.is_like_clang() {
-        let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
         if target_os == "macos" {
             println!("cargo:rustc-link-lib=dylib=c++");
         } else {
