@@ -62,13 +62,11 @@ struct btck_BlockTreeEntry {
     CBlockIndex* m_block_index;
 };
 
-namespace {
+struct btck_Block {
+    std::shared_ptr<const CBlock> m_block;
+};
 
-/** Check that all specified flags are part of the libbitcoinkernel interface. */
-bool verify_flags(unsigned int flags)
-{
-    return (flags & ~(btck_SCRIPT_FLAGS_VERIFY_ALL)) == 0;
-}
+namespace {
 
 bool is_valid_flag_combination(unsigned int flags)
 {
@@ -105,59 +103,59 @@ public:
     }
 };
 
-BCLog::Level get_bclog_level(const btck_LogLevel level)
+BCLog::Level get_bclog_level(btck_LogLevel level)
 {
     switch (level) {
-    case btck_LogLevel::btck_LOG_INFO: {
+    case btck_LogLevel_INFO: {
         return BCLog::Level::Info;
     }
-    case btck_LogLevel::btck_LOG_DEBUG: {
+    case btck_LogLevel_DEBUG: {
         return BCLog::Level::Debug;
     }
-    case btck_LogLevel::btck_LOG_TRACE: {
+    case btck_LogLevel_TRACE: {
         return BCLog::Level::Trace;
     }
-    } // no default case, so the compiler can warn about missing cases
+    }
     assert(false);
 }
 
-BCLog::LogFlags get_bclog_flag(const btck_LogCategory category)
+BCLog::LogFlags get_bclog_flag(btck_LogCategory category)
 {
     switch (category) {
-    case btck_LogCategory::btck_LOG_BENCH: {
+    case btck_LogCategory_BENCH: {
         return BCLog::LogFlags::BENCH;
     }
-    case btck_LogCategory::btck_LOG_BLOCKSTORAGE: {
+    case btck_LogCategory_BLOCKSTORAGE: {
         return BCLog::LogFlags::BLOCKSTORAGE;
     }
-    case btck_LogCategory::btck_LOG_COINDB: {
+    case btck_LogCategory_COINDB: {
         return BCLog::LogFlags::COINDB;
     }
-    case btck_LogCategory::btck_LOG_LEVELDB: {
+    case btck_LogCategory_LEVELDB: {
         return BCLog::LogFlags::LEVELDB;
     }
-    case btck_LogCategory::btck_LOG_MEMPOOL: {
+    case btck_LogCategory_MEMPOOL: {
         return BCLog::LogFlags::MEMPOOL;
     }
-    case btck_LogCategory::btck_LOG_PRUNE: {
+    case btck_LogCategory_PRUNE: {
         return BCLog::LogFlags::PRUNE;
     }
-    case btck_LogCategory::btck_LOG_RAND: {
+    case btck_LogCategory_RAND: {
         return BCLog::LogFlags::RAND;
     }
-    case btck_LogCategory::btck_LOG_REINDEX: {
+    case btck_LogCategory_REINDEX: {
         return BCLog::LogFlags::REINDEX;
     }
-    case btck_LogCategory::btck_LOG_VALIDATION: {
+    case btck_LogCategory_VALIDATION: {
         return BCLog::LogFlags::VALIDATION;
     }
-    case btck_LogCategory::btck_LOG_KERNEL: {
+    case btck_LogCategory_KERNEL: {
         return BCLog::LogFlags::KERNEL;
     }
-    case btck_LogCategory::btck_LOG_ALL: {
+    case btck_LogCategory_ALL: {
         return BCLog::LogFlags::ALL;
     }
-    } // no default case, so the compiler can warn about missing cases
+    }
     assert(false);
 }
 
@@ -165,11 +163,11 @@ btck_SynchronizationState cast_state(SynchronizationState state)
 {
     switch (state) {
     case SynchronizationState::INIT_REINDEX:
-        return btck_SynchronizationState::btck_INIT_REINDEX;
+        return btck_SynchronizationState_INIT_REINDEX;
     case SynchronizationState::INIT_DOWNLOAD:
-        return btck_SynchronizationState::btck_INIT_DOWNLOAD;
+        return btck_SynchronizationState_INIT_DOWNLOAD;
     case SynchronizationState::POST_INIT:
-        return btck_SynchronizationState::btck_POST_INIT;
+        return btck_SynchronizationState_POST_INIT;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
@@ -178,9 +176,9 @@ btck_Warning cast_btck_warning(kernel::Warning warning)
 {
     switch (warning) {
     case kernel::Warning::UNKNOWN_NEW_RULES_ACTIVATED:
-        return btck_Warning::btck_UNKNOWN_NEW_RULES_ACTIVATED;
+        return btck_Warning_UNKNOWN_NEW_RULES_ACTIVATED;
     case kernel::Warning::LARGE_WORK_INVALID_CHAIN:
-        return btck_Warning::btck_LARGE_WORK_INVALID_CHAIN;
+        return btck_Warning_LARGE_WORK_INVALID_CHAIN;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
@@ -196,50 +194,68 @@ public:
     {
     }
 
+    ~KernelNotifications()
+    {
+        if (m_cbs.user_data && m_cbs.user_data_destroy) {
+            m_cbs.user_data_destroy(m_cbs.user_data);
+        }
+        m_cbs.user_data_destroy = nullptr;
+        m_cbs.user_data = nullptr;
+    }
+
     kernel::InterruptResult blockTip(SynchronizationState state, CBlockIndex& index, double verification_progress) override
     {
-        if (m_cbs.block_tip) m_cbs.block_tip((void*)m_cbs.user_data, cast_state(state), new btck_BlockTreeEntry{&index}, verification_progress);
+        if (m_cbs.block_tip) m_cbs.block_tip(m_cbs.user_data, cast_state(state), new btck_BlockTreeEntry{&index}, verification_progress);
         return {};
     }
     void headerTip(SynchronizationState state, int64_t height, int64_t timestamp, bool presync) override
     {
-        if (m_cbs.header_tip) m_cbs.header_tip((void*)m_cbs.user_data, cast_state(state), height, timestamp, presync ? 1 : 0);
+        if (m_cbs.header_tip) m_cbs.header_tip(m_cbs.user_data, cast_state(state), height, timestamp, presync ? 1 : 0);
     }
     void progress(const bilingual_str& title, int progress_percent, bool resume_possible) override
     {
-        if (m_cbs.progress) m_cbs.progress((void*)m_cbs.user_data, title.original.c_str(), title.original.length(), progress_percent, resume_possible ? 1 : 0);
+        if (m_cbs.progress) m_cbs.progress(m_cbs.user_data, title.original.c_str(), title.original.length(), progress_percent, resume_possible ? 1 : 0);
     }
     void warningSet(kernel::Warning id, const bilingual_str& message) override
     {
-        if (m_cbs.warning_set) m_cbs.warning_set((void*)m_cbs.user_data, cast_btck_warning(id), message.original.c_str(), message.original.length());
+        if (m_cbs.warning_set) m_cbs.warning_set(m_cbs.user_data, cast_btck_warning(id), message.original.c_str(), message.original.length());
     }
     void warningUnset(kernel::Warning id) override
     {
-        if (m_cbs.warning_unset) m_cbs.warning_unset((void*)m_cbs.user_data, cast_btck_warning(id));
+        if (m_cbs.warning_unset) m_cbs.warning_unset(m_cbs.user_data, cast_btck_warning(id));
     }
     void flushError(const bilingual_str& message) override
     {
-        if (m_cbs.flush_error) m_cbs.flush_error((void*)m_cbs.user_data, message.original.c_str(), message.original.length());
+        if (m_cbs.flush_error) m_cbs.flush_error(m_cbs.user_data, message.original.c_str(), message.original.length());
     }
     void fatalError(const bilingual_str& message) override
     {
-        if (m_cbs.fatal_error) m_cbs.fatal_error((void*)m_cbs.user_data, message.original.c_str(), message.original.length());
+        if (m_cbs.fatal_error) m_cbs.fatal_error(m_cbs.user_data, message.original.c_str(), message.original.length());
     }
 };
 
 class KernelValidationInterface final : public CValidationInterface
 {
 public:
-    const btck_ValidationInterfaceCallbacks m_cbs;
+    btck_ValidationInterfaceCallbacks m_cbs;
 
     explicit KernelValidationInterface(const btck_ValidationInterfaceCallbacks vi_cbs) : m_cbs{vi_cbs} {}
 
+    ~KernelValidationInterface()
+    {
+        if (m_cbs.user_data && m_cbs.user_data_destroy) {
+            m_cbs.user_data_destroy(m_cbs.user_data);
+        }
+        m_cbs.user_data = nullptr;
+        m_cbs.user_data_destroy = nullptr;
+    }
+
 protected:
-    void BlockChecked(const CBlock& block, const BlockValidationState& stateIn) override
+    void BlockChecked(const std::shared_ptr<const CBlock>& block, const BlockValidationState& stateIn) override
     {
         if (m_cbs.block_checked) {
             m_cbs.block_checked((void*)m_cbs.user_data,
-                                reinterpret_cast<const btck_BlockPointer*>(&block),
+                                new btck_Block{block},
                                 reinterpret_cast<const btck_BlockValidationState*>(&stateIn));
         }
     }
@@ -248,8 +264,8 @@ protected:
 struct ContextOptions {
     mutable Mutex m_mutex;
     std::unique_ptr<const CChainParams> m_chainparams GUARDED_BY(m_mutex);
-    std::unique_ptr<const KernelNotifications> m_notifications GUARDED_BY(m_mutex);
-    std::unique_ptr<const KernelValidationInterface> m_validation_interface GUARDED_BY(m_mutex);
+    std::shared_ptr<KernelNotifications> m_notifications GUARDED_BY(m_mutex);
+    std::shared_ptr<KernelValidationInterface> m_validation_interface GUARDED_BY(m_mutex);
 };
 
 class Context
@@ -257,7 +273,7 @@ class Context
 public:
     std::unique_ptr<kernel::Context> m_context;
 
-    std::unique_ptr<KernelNotifications> m_notifications;
+    std::shared_ptr<KernelNotifications> m_notifications;
 
     std::unique_ptr<util::SignalInterrupt> m_interrupt;
 
@@ -265,7 +281,7 @@ public:
 
     std::unique_ptr<const CChainParams> m_chainparams;
 
-    std::unique_ptr<KernelValidationInterface> m_validation_interface;
+    std::shared_ptr<KernelValidationInterface> m_validation_interface;
 
     Context(const ContextOptions* options, bool& sane)
         : m_context{std::make_unique<kernel::Context>()},
@@ -278,11 +294,11 @@ public:
                 m_chainparams = std::make_unique<const CChainParams>(*options->m_chainparams);
             }
             if (options->m_notifications) {
-                m_notifications = std::make_unique<KernelNotifications>(*options->m_notifications);
+                m_notifications = options->m_notifications;
             }
             if (options->m_validation_interface) {
-                m_validation_interface = std::make_unique<KernelValidationInterface>(*options->m_validation_interface);
-                m_signals->RegisterValidationInterface(m_validation_interface.get());
+                m_validation_interface = options->m_validation_interface;
+                m_signals->RegisterSharedValidationInterface(m_validation_interface);
             }
         }
 
@@ -290,8 +306,8 @@ public:
             m_chainparams = CChainParams::Main();
         }
         if (!m_notifications) {
-            m_notifications = std::make_unique<KernelNotifications>(btck_NotificationInterfaceCallbacks{
-                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr});
+            m_notifications = std::make_shared<KernelNotifications>(btck_NotificationInterfaceCallbacks{
+                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr});
         }
 
         if (!kernel::SanityChecks(*m_context)) {
@@ -301,7 +317,7 @@ public:
 
     ~Context()
     {
-        m_signals->UnregisterValidationInterface(m_validation_interface.get());
+        m_signals->UnregisterSharedValidationInterface(m_validation_interface);
     }
 };
 
@@ -339,12 +355,6 @@ const BlockValidationState* cast_block_validation_state(const btck_BlockValidati
     return reinterpret_cast<const BlockValidationState*>(block_validation_state);
 }
 
-const CBlock* cast_const_cblock(const btck_BlockPointer* block)
-{
-    assert(block);
-    return reinterpret_cast<const CBlock*>(block);
-}
-
 } // namespace
 
 struct btck_Transaction {
@@ -363,6 +373,15 @@ struct btck_ScriptPubkey {
 
 struct btck_LoggingConnection {
     std::unique_ptr<std::list<std::function<void(const std::string&)>>::iterator> m_connection;
+    void* user_data;
+    std::function<void(void* user_data)> m_deleter;
+
+    ~btck_LoggingConnection()
+    {
+        if (user_data && m_deleter) {
+            m_deleter(user_data);
+        }
+    }
 };
 
 struct btck_ContextOptions {
@@ -384,10 +403,6 @@ struct btck_ChainstateManagerOptions {
 struct btck_ChainstateManager {
     std::unique_ptr<ChainstateManager> m_chainman;
     std::shared_ptr<Context> m_context;
-};
-
-struct btck_Block {
-    std::shared_ptr<CBlock> m_block;
 };
 
 struct btck_Chain {
@@ -419,18 +434,18 @@ btck_Transaction* btck_transaction_create(const void* raw_transaction, size_t ra
     }
 }
 
-uint64_t btck_transaction_count_outputs(const btck_Transaction* transaction)
+size_t btck_transaction_count_outputs(const btck_Transaction* transaction)
 {
     return transaction->m_tx->vout.size();
 }
 
-btck_TransactionOutput* btck_transaction_get_output_at(const btck_Transaction* transaction, uint64_t output_index)
+btck_TransactionOutput* btck_transaction_get_output_at(const btck_Transaction* transaction, size_t output_index)
 {
     assert(output_index < transaction->m_tx->vout.size());
     return new btck_TransactionOutput{&transaction->m_tx->vout[output_index], false};
 }
 
-uint64_t btck_transaction_count_inputs(const btck_Transaction* transaction)
+size_t btck_transaction_count_inputs(const btck_Transaction* transaction)
 {
     return transaction->m_tx->vin.size();
 }
@@ -521,23 +536,21 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
                           const btck_Transaction* tx_to,
                           const btck_TransactionOutput** spent_outputs_, size_t spent_outputs_len,
                           const unsigned int input_index,
-                          const unsigned int flags,
+                          const btck_ScriptVerificationFlags flags,
                           btck_ScriptVerifyStatus* status)
 {
     const CAmount amount{amount_};
 
-    if (!verify_flags(flags)) {
-        if (status) *status = btck_SCRIPT_VERIFY_ERROR_INVALID_FLAGS;
-        return 0;
-    }
+    // Assert that all specified flags are part of the interface before continuing
+    assert((flags & ~btck_ScriptVerificationFlags_ALL) == 0);
 
     if (!is_valid_flag_combination(flags)) {
-        if (status) *status = btck_SCRIPT_VERIFY_ERROR_INVALID_FLAGS_COMBINATION;
+        if (status) *status = btck_ScriptVerifyStatus_ERROR_INVALID_FLAGS_COMBINATION;
         return 0;
     }
 
-    if (flags & btck_SCRIPT_FLAGS_VERIFY_TAPROOT && spent_outputs_ == nullptr) {
-        if (status) *status = btck_SCRIPT_VERIFY_ERROR_SPENT_OUTPUTS_REQUIRED;
+    if (flags & btck_ScriptVerificationFlags_TAPROOT  && spent_outputs_ == nullptr) {
+        if (status) *status = btck_ScriptVerifyStatus_ERROR_SPENT_OUTPUTS_REQUIRED;
         return 0;
     }
 
@@ -555,7 +568,7 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
     assert(input_index < tx.vin.size());
     PrecomputedTransactionData txdata{tx};
 
-    if (spent_outputs_ != nullptr && flags & btck_SCRIPT_FLAGS_VERIFY_TAPROOT) {
+    if (spent_outputs_ != nullptr && flags & btck_ScriptVerificationFlags_TAPROOT) {
         txdata.Init(tx, std::move(spent_outputs));
     }
 
@@ -568,21 +581,21 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
     return result ? 1 : 0;
 }
 
-void btck_logging_set_level_category(const btck_LogCategory category, const btck_LogLevel level)
+void btck_logging_set_level_category(btck_LogCategory category, btck_LogLevel level)
 {
-    if (category == btck_LogCategory::btck_LOG_ALL) {
+    if (category == btck_LogCategory_ALL) {
         LogInstance().SetLogLevel(get_bclog_level(level));
     }
 
     LogInstance().AddCategoryLogLevel(get_bclog_flag(category), get_bclog_level(level));
 }
 
-void btck_logging_enable_category(const btck_LogCategory category)
+void btck_logging_enable_category(btck_LogCategory category)
 {
     LogInstance().EnableCategory(get_bclog_flag(category));
 }
 
-void btck_logging_disable_category(const btck_LogCategory category)
+void btck_logging_disable_category(btck_LogCategory category)
 {
     LogInstance().DisableCategory(get_bclog_flag(category));
 }
@@ -593,7 +606,8 @@ void btck_logging_disable()
 }
 
 btck_LoggingConnection* btck_logging_connection_create(btck_LogCallback callback,
-                                                           const void* user_data,
+                                                           void* user_data,
+                                                           btck_DestroyCallback user_data_destroy_callback,
                                                            const btck_LoggingOptions options)
 {
     LogInstance().m_log_timestamps = options.log_timestamps;
@@ -609,17 +623,19 @@ btck_LoggingConnection* btck_logging_connection_create(btck_LogCallback callback
         if (LogInstance().NumConnections() == 1 && !LogInstance().StartLogging()) {
             LogError("Logger start failed.");
             LogInstance().DeleteCallback(connection);
+            user_data_destroy_callback(user_data);
             return nullptr;
         }
     } catch (std::exception& e) {
         LogError("Logger start failed: %s", e.what());
         LogInstance().DeleteCallback(connection);
+        user_data_destroy_callback(user_data);
         return nullptr;
     }
 
     LogDebug(BCLog::KERNEL, "Logger connected.");
 
-    return new btck_LoggingConnection{std::make_unique<std::list<std::function<void(const std::string&)>>::iterator>(connection)};
+    return new btck_LoggingConnection{std::make_unique<std::list<std::function<void(const std::string&)>>::iterator>(connection), user_data, user_data_destroy_callback};
 }
 
 void btck_logging_connection_destroy(btck_LoggingConnection* connection)
@@ -643,22 +659,22 @@ void btck_logging_connection_destroy(btck_LoggingConnection* connection)
 btck_ChainParameters* btck_chain_parameters_create(const btck_ChainType chain_type)
 {
     switch (chain_type) {
-    case btck_ChainType::btck_CHAIN_TYPE_MAINNET: {
+    case btck_ChainType_MAINNET: {
         return new btck_ChainParameters{CChainParams::Main()};
     }
-    case btck_ChainType::btck_CHAIN_TYPE_TESTNET: {
+    case btck_ChainType_TESTNET: {
         return new btck_ChainParameters{CChainParams::TestNet()};
     }
-    case btck_ChainType::btck_CHAIN_TYPE_TESTNET_4: {
+    case btck_ChainType_TESTNET_4: {
         return new btck_ChainParameters{CChainParams::TestNet4()};
     }
-    case btck_ChainType::btck_CHAIN_TYPE_SIGNET: {
+    case btck_ChainType_SIGNET: {
         return new btck_ChainParameters{CChainParams::SigNet({})};
     }
-    case btck_ChainType::btck_CHAIN_TYPE_REGTEST: {
+    case btck_ChainType_REGTEST: {
         return new btck_ChainParameters{CChainParams::RegTest({})};
     }
-    } // no default case, so the compiler can warn about missing cases
+    }
     assert(false);
 }
 
@@ -685,13 +701,13 @@ void btck_context_options_set_notifications(btck_ContextOptions* options, btck_N
 {
     // The KernelNotifications are copy-initialized, so the caller can free them again.
     LOCK(options->m_opts->m_mutex);
-    options->m_opts->m_notifications = std::make_unique<const KernelNotifications>(notifications);
+    options->m_opts->m_notifications = std::make_shared<KernelNotifications>(notifications);
 }
 
 void btck_context_options_set_validation_interface(btck_ContextOptions* options, btck_ValidationInterfaceCallbacks vi_cbs)
 {
     LOCK(options->m_opts->m_mutex);
-    options->m_opts->m_validation_interface = std::make_unique<KernelValidationInterface>(KernelValidationInterface(vi_cbs));
+    options->m_opts->m_validation_interface = std::make_shared<KernelValidationInterface>(vi_cbs);
 }
 
 void btck_context_options_destroy(btck_ContextOptions* options)
@@ -744,9 +760,9 @@ void btck_block_tree_entry_destroy(btck_BlockTreeEntry* block_tree_entry)
 btck_ValidationMode btck_block_validation_state_get_validation_mode(const btck_BlockValidationState* block_validation_state_)
 {
     auto& block_validation_state = *cast_block_validation_state(block_validation_state_);
-    if (block_validation_state.IsValid()) return btck_ValidationMode::btck_VALIDATION_STATE_VALID;
-    if (block_validation_state.IsInvalid()) return btck_ValidationMode::btck_VALIDATION_STATE_INVALID;
-    return btck_ValidationMode::btck_VALIDATION_STATE_ERROR;
+    if (block_validation_state.IsValid()) return btck_ValidationMode_VALID;
+    if (block_validation_state.IsInvalid()) return btck_ValidationMode_INVALID;
+    return btck_ValidationMode_INTERNAL_ERROR;
 }
 
 btck_BlockValidationResult btck_block_validation_state_get_block_validation_result(const btck_BlockValidationState* block_validation_state_)
@@ -754,23 +770,23 @@ btck_BlockValidationResult btck_block_validation_state_get_block_validation_resu
     auto& block_validation_state = *cast_block_validation_state(block_validation_state_);
     switch (block_validation_state.GetResult()) {
     case BlockValidationResult::BLOCK_RESULT_UNSET:
-        return btck_BlockValidationResult::btck_BLOCK_RESULT_UNSET;
+        return btck_BlockValidationResult_UNSET;
     case BlockValidationResult::BLOCK_CONSENSUS:
-        return btck_BlockValidationResult::btck_BLOCK_CONSENSUS;
+        return btck_BlockValidationResult_CONSENSUS;
     case BlockValidationResult::BLOCK_CACHED_INVALID:
-        return btck_BlockValidationResult::btck_BLOCK_CACHED_INVALID;
+        return btck_BlockValidationResult_CACHED_INVALID;
     case BlockValidationResult::BLOCK_INVALID_HEADER:
-        return btck_BlockValidationResult::btck_BLOCK_INVALID_HEADER;
+        return btck_BlockValidationResult_INVALID_HEADER;
     case BlockValidationResult::BLOCK_MUTATED:
-        return btck_BlockValidationResult::btck_BLOCK_MUTATED;
+        return btck_BlockValidationResult_MUTATED;
     case BlockValidationResult::BLOCK_MISSING_PREV:
-        return btck_BlockValidationResult::btck_BLOCK_MISSING_PREV;
+        return btck_BlockValidationResult_MISSING_PREV;
     case BlockValidationResult::BLOCK_INVALID_PREV:
-        return btck_BlockValidationResult::btck_BLOCK_INVALID_PREV;
+        return btck_BlockValidationResult_INVALID_PREV;
     case BlockValidationResult::BLOCK_TIME_FUTURE:
-        return btck_BlockValidationResult::btck_BLOCK_TIME_FUTURE;
+        return btck_BlockValidationResult_TIME_FUTURE;
     case BlockValidationResult::BLOCK_HEADER_LOW_WORK:
-        return btck_BlockValidationResult::btck_BLOCK_HEADER_LOW_WORK;
+        return btck_BlockValidationResult_HEADER_LOW_WORK;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
@@ -943,12 +959,12 @@ btck_Block* btck_block_copy(const btck_Block* block)
     return new btck_Block{block->m_block};
 }
 
-uint64_t btck_block_count_transactions(const btck_Block* block)
+size_t btck_block_count_transactions(const btck_Block* block)
 {
     return block->m_block->vtx.size();
 }
 
-btck_Transaction* btck_block_get_transaction_at(const btck_Block* block, uint64_t index)
+btck_Transaction* btck_block_get_transaction_at(const btck_Block* block, size_t index)
 {
     assert(index < block->m_block->vtx.size());
     return new btck_Transaction{block->m_block->vtx[index]};
@@ -965,30 +981,9 @@ int btck_block_to_bytes(const btck_Block* block, btck_WriteBytes writer, void* u
     }
 }
 
-int btck_block_pointer_to_bytes(const btck_BlockPointer* block_, btck_WriteBytes writer, void* user_data)
-{
-    auto block{cast_const_cblock(block_)};
-    try {
-        WriterStream ws{writer, user_data};
-        ws << TX_WITH_WITNESS(*block);
-        return 0;
-    } catch (...) {
-        return -1;
-    }
-}
-
 btck_BlockHash* btck_block_get_hash(const btck_Block* block)
 {
     auto hash{block->m_block->GetHash()};
-    auto block_hash = new btck_BlockHash{};
-    std::memcpy(block_hash->hash, hash.begin(), sizeof(hash));
-    return block_hash;
-}
-
-btck_BlockHash* btck_block_pointer_get_hash(const btck_BlockPointer* block_)
-{
-    auto block{cast_const_cblock(block_)};
-    auto hash{block->GetHash()};
     auto block_hash = new btck_BlockHash{};
     std::memcpy(block_hash->hash, hash.begin(), sizeof(hash));
     return block_hash;
@@ -1051,12 +1046,12 @@ btck_BlockSpentOutputs* btck_block_spent_outputs_copy(const btck_BlockSpentOutpu
     return new btck_BlockSpentOutputs{block_spent_outputs->m_block_undo};
 }
 
-uint64_t btck_block_spent_outputs_size(const btck_BlockSpentOutputs* block_spent_outputs)
+size_t btck_block_spent_outputs_count(const btck_BlockSpentOutputs* block_spent_outputs)
 {
     return block_spent_outputs->m_block_undo->vtxundo.size();
 }
 
-btck_TransactionSpentOutputs* btck_block_spent_outputs_get_transaction_spent_outputs_at(const btck_BlockSpentOutputs* block_spent_outputs, uint64_t transaction_index)
+btck_TransactionSpentOutputs* btck_block_spent_outputs_get_transaction_spent_outputs_at(const btck_BlockSpentOutputs* block_spent_outputs, size_t transaction_index)
 {
     assert(transaction_index < block_spent_outputs->m_block_undo->vtxundo.size());
     const auto* tx_undo{&block_spent_outputs->m_block_undo->vtxundo.at(transaction_index)};
@@ -1075,7 +1070,7 @@ btck_TransactionSpentOutputs* btck_transaction_spent_outputs_copy(const btck_Tra
     return new btck_TransactionSpentOutputs{new CTxUndo{*transaction_spent_outputs->m_tx_undo}, true};
 }
 
-uint64_t btck_transaction_spent_outputs_size(const btck_TransactionSpentOutputs* transaction_spent_outputs)
+size_t btck_transaction_spent_outputs_count(const btck_TransactionSpentOutputs* transaction_spent_outputs)
 {
     return transaction_spent_outputs->m_tx_undo->vprevout.size();
 }
@@ -1090,7 +1085,7 @@ void btck_transaction_spent_outputs_destroy(btck_TransactionSpentOutputs* transa
     transaction_spent_outputs = nullptr;
 }
 
-btck_Coin* btck_transaction_spent_outputs_get_coin_at(const btck_TransactionSpentOutputs* transaction_spent_outputs, uint64_t coin_index)
+btck_Coin* btck_transaction_spent_outputs_get_coin_at(const btck_TransactionSpentOutputs* transaction_spent_outputs, size_t coin_index)
 {
     assert(coin_index < transaction_spent_outputs->m_tx_undo->vprevout.size());
     const Coin* coin{&transaction_spent_outputs->m_tx_undo->vprevout.at(coin_index)};
@@ -1159,22 +1154,8 @@ btck_BlockTreeEntry* btck_chain_get_genesis(const btck_Chain* chain)
 btck_BlockTreeEntry* btck_chain_get_by_height(const btck_Chain* chain, int height)
 {
     LOCK(::cs_main);
-    if (height < 0 || height > chain->m_chain->Height()) {
-        LogDebug(BCLog::KERNEL, "Block height is out of range.");
-        return nullptr;
-    }
+    assert(height >= 0 && height <= chain->m_chain->Height());
     return new btck_BlockTreeEntry{(*chain->m_chain)[height]};
-}
-
-btck_BlockTreeEntry* btck_chain_get_next_block_tree_entry(const btck_Chain* chain, const btck_BlockTreeEntry* entry)
-{
-    auto next_block_index{chain->m_chain->Next(entry->m_block_index)};
-
-    if (!next_block_index) {
-        LogTrace(BCLog::KERNEL, "The block index is the tip of the current chain, it does not have a next.");
-    }
-
-    return new btck_BlockTreeEntry{next_block_index};
 }
 
 int btck_chain_contains(const btck_Chain* chain, const btck_BlockTreeEntry* entry)

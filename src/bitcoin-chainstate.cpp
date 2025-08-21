@@ -53,49 +53,49 @@ public:
 
     std::optional<std::string> m_expected_valid_block = std::nullopt;
 
-    void BlockChecked(const UnownedBlock block, const BlockValidationState state) override
+    void BlockChecked(const Block block, const BlockValidationState state) override
     {
-        auto mode{state.ValidationMode()};
+        auto mode{state.GetValidationMode()};
         switch (mode) {
-        case btck_ValidationMode::btck_VALIDATION_STATE_VALID: {
+        case ValidationMode::VALID: {
             std::cout << "Valid block" << std::endl;
             return;
         }
-        case btck_ValidationMode::btck_VALIDATION_STATE_INVALID: {
+        case ValidationMode::INVALID: {
             std::cout << "Invalid block: ";
-            auto result{state.BlockValidationResult()};
+            auto result{state.GetBlockValidationResult()};
             switch (result) {
-            case btck_BlockValidationResult::btck_BLOCK_RESULT_UNSET:
+            case BlockValidationResult::UNSET:
                 std::cout << "initial value. Block has not yet been rejected" << std::endl;
                 break;
-            case btck_BlockValidationResult::btck_BLOCK_HEADER_LOW_WORK:
+            case BlockValidationResult::HEADER_LOW_WORK:
                 std::cout << "the block header may be on a too-little-work chain" << std::endl;
                 break;
-            case btck_BlockValidationResult::btck_BLOCK_CONSENSUS:
+            case BlockValidationResult::CONSENSUS:
                 std::cout << "invalid by consensus rules (excluding any below reasons)" << std::endl;
                 break;
-            case btck_BlockValidationResult::btck_BLOCK_CACHED_INVALID:
+            case BlockValidationResult::CACHED_INVALID:
                 std::cout << "this block was cached as being invalid and we didn't store the reason why" << std::endl;
                 break;
-            case btck_BlockValidationResult::btck_BLOCK_INVALID_HEADER:
+            case BlockValidationResult::INVALID_HEADER:
                 std::cout << "invalid proof of work or time too old" << std::endl;
                 break;
-            case btck_BlockValidationResult::btck_BLOCK_MUTATED:
+            case BlockValidationResult::MUTATED:
                 std::cout << "the block's data didn't match the data committed to by the PoW" << std::endl;
                 break;
-            case btck_BlockValidationResult::btck_BLOCK_MISSING_PREV:
+            case BlockValidationResult::MISSING_PREV:
                 std::cout << "We don't have the previous block the checked one is built on" << std::endl;
                 break;
-            case btck_BlockValidationResult::btck_BLOCK_INVALID_PREV:
+            case BlockValidationResult::INVALID_PREV:
                 std::cout << "A block this one builds on is invalid" << std::endl;
                 break;
-            case btck_BlockValidationResult::btck_BLOCK_TIME_FUTURE:
+            case BlockValidationResult::TIME_FUTURE:
                 std::cout << "block timestamp was > 2 hours in the future (or our clock is bad)" << std::endl;
                 break;
             }
             return;
         }
-        case btck_ValidationMode::btck_VALIDATION_STATE_ERROR: {
+        case ValidationMode::INTERNAL_ERROR: {
             std::cout << "Internal error" << std::endl;
             return;
         }
@@ -106,7 +106,7 @@ public:
 class TestKernelNotifications : public KernelNotifications<TestKernelNotifications>
 {
 public:
-    void BlockTipHandler(btck_SynchronizationState, const BlockTreeEntry, double) override
+    void BlockTipHandler(SynchronizationState, const BlockTreeEntry, double) override
     {
         std::cout << "Block tip changed" << std::endl;
     }
@@ -116,14 +116,14 @@ public:
         std::cout << "Made progress: " << title << " " << progress_percent << "%" << std::endl;
     }
 
-    void WarningSetHandler(btck_Warning warning, std::string_view message) override
+    void WarningSetHandler(Warning warning, std::string_view message) override
     {
         std::cout << message << std::endl;
     }
 
-    void WarningUnsetHandler(btck_Warning warning) override
+    void WarningUnsetHandler(Warning warning) override
     {
-        std::cout << "Warning unset: " << warning << std::endl;
+        std::cout << "Warning unset: " << static_cast<std::underlying_type_t<Warning>>(warning) << std::endl;
     }
 
     void FlushErrorHandler(std::string_view error) override
@@ -179,13 +179,11 @@ int main(int argc, char* argv[])
     Logger logger{std::make_unique<KernelLog>(KernelLog{}), logging_options};
 
     ContextOptions options{};
-    ChainParams params{btck_ChainType::btck_CHAIN_TYPE_MAINNET};
+    ChainParams params{ChainType::MAINNET};
     options.SetChainParams(params);
 
-    TestKernelNotifications notifications{};
-    options.SetNotifications(notifications);
-    TestValidationInterface validation_interface{};
-    options.SetValidationInterface(validation_interface);
+    options.SetNotifications(std::make_shared<TestKernelNotifications>());
+    options.SetValidationInterface(std::make_shared<TestValidationInterface>());
 
     Context context{options};
 
