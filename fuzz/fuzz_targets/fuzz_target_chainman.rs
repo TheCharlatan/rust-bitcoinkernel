@@ -44,10 +44,10 @@ pub enum FuzzChainType {
 impl Into<ChainType> for FuzzChainType {
     fn into(self) -> ChainType {
         match self {
-            FuzzChainType::MAINNET => ChainType::MAINNET,
-            FuzzChainType::TESTNET => ChainType::TESTNET,
-            FuzzChainType::REGTEST => ChainType::REGTEST,
-            FuzzChainType::SIGNET => ChainType::SIGNET,
+            FuzzChainType::MAINNET => ChainType::Mainnet,
+            FuzzChainType::TESTNET => ChainType::Testnet,
+            FuzzChainType::REGTEST => ChainType::Regtest,
+            FuzzChainType::SIGNET => ChainType::Signet,
         }
     }
 }
