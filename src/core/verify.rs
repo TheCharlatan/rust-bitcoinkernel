@@ -1,6 +1,26 @@
-use crate::constants::*;
-use crate::{c_helpers, KernelError, ScriptPubkey, ScriptVerifyStatus, Transaction, TxOut};
-use libbitcoinkernel_sys::*;
+use libbitcoinkernel_sys::{
+    btck_ScriptVerificationFlags, btck_ScriptVerifyStatus, btck_TransactionOutput,
+    btck_script_pubkey_verify,
+};
+
+use crate::{
+    c_helpers,
+    ffi::{
+        BTCK_SCRIPT_VERIFICATION_FLAGS_ALL, BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKLOCKTIMEVERIFY,
+        BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKSEQUENCEVERIFY, BTCK_SCRIPT_VERIFICATION_FLAGS_DERSIG,
+        BTCK_SCRIPT_VERIFICATION_FLAGS_NONE, BTCK_SCRIPT_VERIFICATION_FLAGS_NULLDUMMY,
+        BTCK_SCRIPT_VERIFICATION_FLAGS_P2SH, BTCK_SCRIPT_VERIFICATION_FLAGS_TAPROOT,
+        BTCK_SCRIPT_VERIFICATION_FLAGS_WITNESS,
+        BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION,
+        BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED, BTCK_SCRIPT_VERIFY_STATUS_OK,
+    },
+    KernelError,
+};
+
+use super::{
+    script::ScriptPubkey,
+    transaction::{Transaction, TxOut},
+};
 
 pub const VERIFY_NONE: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_NONE;
 
@@ -40,6 +60,42 @@ pub enum ScriptVerifyError {
     SpentOutputsMismatch,
     SpentOutputsRequired,
     Invalid,
+}
+
+/// Status of script verification operations.
+///
+/// Indicates the result of verifying a transaction script, including any
+/// configuration errors that prevented verification from proceeding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum ScriptVerifyStatus {
+    /// Script verification completed successfully
+    Ok = BTCK_SCRIPT_VERIFY_STATUS_OK,
+    /// Invalid combination of verification flags was provided
+    ErrorInvalidFlagsCombination = BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION,
+    /// Spent outputs are required for this type of verification but were not provided
+    ErrorSpentOutputsRequired = BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED,
+}
+
+impl From<ScriptVerifyStatus> for btck_ScriptVerifyStatus {
+    fn from(status: ScriptVerifyStatus) -> Self {
+        status as btck_ScriptVerifyStatus
+    }
+}
+
+impl From<btck_ScriptVerifyStatus> for ScriptVerifyStatus {
+    fn from(value: btck_ScriptVerifyStatus) -> Self {
+        match value {
+            BTCK_SCRIPT_VERIFY_STATUS_OK => ScriptVerifyStatus::Ok,
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION => {
+                ScriptVerifyStatus::ErrorInvalidFlagsCombination
+            }
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED => {
+                ScriptVerifyStatus::ErrorSpentOutputsRequired
+            }
+            _ => panic!("Unknown script verify status: {}", value),
+        }
+    }
 }
 
 /// Verifies a transaction input against its corresponding output script.
@@ -88,7 +144,7 @@ pub fn verify(
     let kernel_amount = amount.unwrap_or_default();
     let kernel_spent_outputs: Vec<*const btck_TransactionOutput> = spent_outputs
         .iter()
-        .map(|utxo| utxo.inner as *const btck_TransactionOutput)
+        .map(|utxo| utxo.as_ptr() as *const btck_TransactionOutput)
         .collect();
 
     let spent_outputs_ptr = if kernel_spent_outputs.is_empty() {
@@ -99,9 +155,9 @@ pub fn verify(
 
     let ret = unsafe {
         btck_script_pubkey_verify(
-            script_pubkey.inner,
+            script_pubkey.as_ptr(),
             kernel_amount,
-            tx_to.inner,
+            tx_to.as_ptr(),
             spent_outputs_ptr,
             spent_outputs.len(),
             input_index as u32,
@@ -134,6 +190,53 @@ pub fn verify(
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn test_script_verify_status_from() {
+        assert_eq!(
+            btck_ScriptVerifyStatus::from(ScriptVerifyStatus::Ok),
+            BTCK_SCRIPT_VERIFY_STATUS_OK
+        );
+        assert_eq!(
+            btck_ScriptVerifyStatus::from(ScriptVerifyStatus::ErrorInvalidFlagsCombination),
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION
+        );
+        assert_eq!(
+            btck_ScriptVerifyStatus::from(ScriptVerifyStatus::ErrorSpentOutputsRequired),
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED
+        );
+    }
+
+    #[test]
+    fn test_script_verify_status_from_reverse() {
+        assert_eq!(
+            ScriptVerifyStatus::from(BTCK_SCRIPT_VERIFY_STATUS_OK),
+            ScriptVerifyStatus::Ok
+        );
+        assert_eq!(
+            ScriptVerifyStatus::from(BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION),
+            ScriptVerifyStatus::ErrorInvalidFlagsCombination
+        );
+        assert_eq!(
+            ScriptVerifyStatus::from(BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED),
+            ScriptVerifyStatus::ErrorSpentOutputsRequired
+        );
+    }
+
+    #[test]
+    fn test_script_verify_status_round_trip_conversion() {
+        let statuses = vec![
+            ScriptVerifyStatus::Ok,
+            ScriptVerifyStatus::ErrorInvalidFlagsCombination,
+            ScriptVerifyStatus::ErrorSpentOutputsRequired,
+        ];
+
+        for status in statuses {
+            let raw: btck_ScriptVerifyStatus = status.into();
+            let back = ScriptVerifyStatus::from(raw);
+            assert_eq!(status, back);
+        }
+    }
 
     #[test]
     fn test_script_verification_bit_positions() {

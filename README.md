@@ -36,6 +36,14 @@ Examples for the usage of the library can be found in the `examples/` directory
 and the `tests`. For now, the example binary implements a bare-bones silent
 payments scanner.
 
+## Testing
+
+Due to the underlying Bitcoin Core logging system using global state, tests must be run sequentially:
+
+```bash
+cargo test -- --test-threads=1
+```
+
 ## Fuzzing
 
 Fuzzing is done with [cargo fuzz](https://github.com/rust-fuzz/cargo-fuzz).

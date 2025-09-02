@@ -36,7 +36,7 @@ jobs:
         cargo build --all-features
  
     - name: Run tests with MSRV
-      run: cargo test --all-features
+      run: cargo test --all-features -- --test-threads=1
 
   build:
     name: Build and Test
@@ -73,7 +73,7 @@ jobs:
       run: cargo fmt -- --check
 
     - name: Run tests
-      run: cargo test -vv
+      run: cargo test -vv -- --test-threads=1
 
     - name: Install Valgrind
       run: |
@@ -118,7 +118,7 @@ jobs:
         echo "BOOST_LIBRARYDIR=$env:GITHUB_WORKSPACE\vcpkg\installed\x64-windows-static\lib" | Out-File -FilePath $env:GITHUB_ENV -Append
 
     - name: Run tests
-      run: cargo test -vv
+      run: cargo test -vv -- --test-threads=1
 
   linux-aarch64:
     name: Build and Test on Linux ARM64
@@ -144,7 +144,7 @@ jobs:
         sudo apt-get install -y libboost-all-dev
 
     - name: Build and test
-      run: cargo test -vv
+      run: cargo test -vv -- --test-threads=1
 
   macos-build:
     name: Build and Test on macOS
@@ -169,7 +169,7 @@ jobs:
         brew install boost
 
     - name: Build and test
-      run: cargo test -vv
+      run: cargo test -vv -- --test-threads=1
 
   fuzzing:
     name: Check Fuzzing Setup
