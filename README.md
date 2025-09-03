@@ -90,3 +90,10 @@ rustup component add llvm-tools-preview
 cargo install rustfilt
 ```
 
+## Copyright
+
+This project is copyright "The Bitcoin Kernel developers" which includes:
+- TheCharlatan (2023-present) - Original author and maintainer  
+- All contributors to this repository
+
+For a complete list of contributors, see: `git log --format='%an' | sort -u`

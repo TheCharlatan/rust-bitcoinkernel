@@ -1,3 +1,6 @@
+// Copyright (c) 2023-present The Bitcoin Kernel developers
+// Licensed under the MIT License. See LICENSE file in the project root.
+
 use libbitcoinkernel_sys::{
     btck_BlockValidationResult, btck_SynchronizationState, btck_ValidationMode, btck_Warning,
 };

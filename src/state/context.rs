@@ -1,3 +1,6 @@
+// Copyright (c) 2023-present The Bitcoin Kernel developers
+// Licensed under the MIT License. See LICENSE file in the project root.
+
 use std::ffi::c_void;
 
 use libbitcoinkernel_sys::{

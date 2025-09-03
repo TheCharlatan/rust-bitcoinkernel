@@ -1,3 +1,6 @@
+// Copyright (c) 2023-present The Bitcoin Kernel developers
+// Licensed under the MIT License. See LICENSE file in the project root.
+
 use libbitcoinkernel_sys::{
     btck_ScriptVerificationFlags, btck_ScriptVerifyStatus, btck_TransactionOutput,
     btck_script_pubkey_verify,

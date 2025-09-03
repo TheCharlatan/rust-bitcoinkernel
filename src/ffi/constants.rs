@@ -1,3 +1,6 @@
+// Copyright (c) 2023-present The Bitcoin Kernel developers
+// Licensed under the MIT License. See LICENSE file in the project root.
+
 use crate::{
     btck_BlockValidationResult, btck_ChainType, btck_LogCategory, btck_LogLevel,
     btck_ScriptVerificationFlags, btck_ScriptVerifyStatus, btck_SynchronizationState,
