@@ -6,30 +6,32 @@ use std::borrow::Borrow;
 use std::ffi::{c_char, c_void, CString, NulError};
 use std::marker::PhantomData;
 use std::{fmt, panic};
+pub mod constants;
 
+use crate::constants::*;
 use libbitcoinkernel_sys::*;
 
-#[allow(clippy::unnecessary_cast)]
-pub const VERIFY_NONE: u32 = btck_ScriptFlags_btck_SCRIPT_FLAGS_VERIFY_NONE as u32;
-#[allow(clippy::unnecessary_cast)]
-pub const VERIFY_P2SH: u32 = btck_ScriptFlags_btck_SCRIPT_FLAGS_VERIFY_P2SH as u32;
-#[allow(clippy::unnecessary_cast)]
-pub const VERIFY_DERSIG: u32 = btck_ScriptFlags_btck_SCRIPT_FLAGS_VERIFY_DERSIG as u32;
-#[allow(clippy::unnecessary_cast)]
-pub const VERIFY_NULLDUMMY: u32 = btck_ScriptFlags_btck_SCRIPT_FLAGS_VERIFY_NULLDUMMY as u32;
-#[allow(clippy::unnecessary_cast)]
-pub const VERIFY_CHECKLOCKTIMEVERIFY: u32 =
-    btck_ScriptFlags_btck_SCRIPT_FLAGS_VERIFY_CHECKLOCKTIMEVERIFY as u32;
-#[allow(clippy::unnecessary_cast)]
-pub const VERIFY_CHECKSEQUENCEVERIFY: u32 =
-    btck_ScriptFlags_btck_SCRIPT_FLAGS_VERIFY_CHECKSEQUENCEVERIFY as u32;
-#[allow(clippy::unnecessary_cast)]
-pub const VERIFY_WITNESS: u32 = btck_ScriptFlags_btck_SCRIPT_FLAGS_VERIFY_WITNESS as u32;
-#[allow(clippy::unnecessary_cast)]
-pub const VERIFY_TAPROOT: u32 = btck_ScriptFlags_btck_SCRIPT_FLAGS_VERIFY_TAPROOT as u32;
-#[allow(clippy::unnecessary_cast)]
-pub const VERIFY_ALL: u32 = btck_ScriptFlags_btck_SCRIPT_FLAGS_VERIFY_ALL as u32;
-pub const VERIFY_ALL_PRE_TAPROOT: u32 = VERIFY_P2SH
+pub const VERIFY_NONE: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_NONE;
+
+pub const VERIFY_P2SH: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_P2SH;
+
+pub const VERIFY_DERSIG: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_DERSIG;
+
+pub const VERIFY_NULLDUMMY: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_NULLDUMMY;
+
+pub const VERIFY_CHECKLOCKTIMEVERIFY: btck_ScriptVerificationFlags =
+    BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKLOCKTIMEVERIFY;
+
+pub const VERIFY_CHECKSEQUENCEVERIFY: btck_ScriptVerificationFlags =
+    BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKSEQUENCEVERIFY;
+
+pub const VERIFY_WITNESS: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_WITNESS;
+
+pub const VERIFY_TAPROOT: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_TAPROOT;
+
+pub const VERIFY_ALL: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_ALL;
+
+pub const VERIFY_ALL_PRE_TAPROOT: btck_ScriptVerificationFlags = VERIFY_P2SH
     | VERIFY_DERSIG
     | VERIFY_NULLDUMMY
     | VERIFY_CHECKLOCKTIMEVERIFY
@@ -107,19 +109,25 @@ pub fn verify(
     let input_count = tx_to.input_count();
 
     if input_index >= input_count {
-        return Err(KernelError::OutOfBounds);
+        return Err(KernelError::ScriptVerify(ScriptVerifyError::TxInputIndex));
     }
 
     if !spent_outputs.is_empty() && spent_outputs.len() != input_count {
-        return Err(KernelError::OutOfBounds);
+        return Err(KernelError::ScriptVerify(
+            ScriptVerifyError::SpentOutputsMismatch,
+        ));
     }
 
     let kernel_flags = if let Some(flag) = flags {
+        if (flag & !VERIFY_ALL) != 0 {
+            return Err(KernelError::ScriptVerify(ScriptVerifyError::InvalidFlags));
+        }
         flag
     } else {
         VERIFY_ALL
     };
-    let mut status = btck_ScriptVerifyStatus_btck_SCRIPT_VERIFY_OK;
+
+    let status = ScriptVerifyStatus::Ok;
     let kernel_amount = amount.unwrap_or_default();
     let kernel_spent_outputs: Vec<*const btck_TransactionOutput> = spent_outputs
         .iter()
@@ -141,19 +149,20 @@ pub fn verify(
             spent_outputs.len(),
             input_index as u32,
             kernel_flags,
-            &mut status,
+            &mut status.into(),
         )
     };
 
+    let script_status = ScriptVerifyStatus::try_from(status).map_err(|_| {
+        KernelError::Internal(format!("Invalid script verify status: {:?}", status))
+    })?;
+
     if !c_helpers::verification_passed(ret) {
-        let err = match status {
-            btck_ScriptVerifyStatus_btck_SCRIPT_VERIFY_ERROR_INVALID_FLAGS => {
-                ScriptVerifyError::InvalidFlags
-            }
-            btck_ScriptVerifyStatus_btck_SCRIPT_VERIFY_ERROR_INVALID_FLAGS_COMBINATION => {
+        let err = match script_status {
+            ScriptVerifyStatus::ErrorInvalidFlagsCombination => {
                 ScriptVerifyError::InvalidFlagsCombination
             }
-            btck_ScriptVerifyStatus_btck_SCRIPT_VERIFY_ERROR_SPENT_OUTPUTS_REQUIRED => {
+            ScriptVerifyStatus::ErrorSpentOutputsRequired => {
                 ScriptVerifyError::SpentOutputsRequired
             }
             _ => ScriptVerifyError::Invalid,
@@ -161,6 +170,42 @@ pub fn verify(
         Err(KernelError::ScriptVerify(err))
     } else {
         Ok(())
+    }
+}
+
+/// Status of script verification operations.
+///
+/// Indicates the result of verifying a transaction script, including any
+/// configuration errors that prevented verification from proceeding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum ScriptVerifyStatus {
+    /// Script verification completed successfully
+    Ok = BTCK_SCRIPT_VERIFY_STATUS_OK,
+    /// Invalid combination of verification flags was provided
+    ErrorInvalidFlagsCombination = BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION,
+    /// Spent outputs are required for this type of verification but were not provided
+    ErrorSpentOutputsRequired = BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED,
+}
+
+impl From<ScriptVerifyStatus> for btck_ScriptVerifyStatus {
+    fn from(status: ScriptVerifyStatus) -> Self {
+        status as btck_ScriptVerifyStatus
+    }
+}
+
+impl From<btck_ScriptVerifyStatus> for ScriptVerifyStatus {
+    fn from(value: btck_ScriptVerifyStatus) -> Self {
+        match value {
+            BTCK_SCRIPT_VERIFY_STATUS_OK => ScriptVerifyStatus::Ok,
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION => {
+                ScriptVerifyStatus::ErrorInvalidFlagsCombination
+            }
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED => {
+                ScriptVerifyStatus::ErrorSpentOutputsRequired
+            }
+            _ => panic!("Unknown script verify status: {}", value),
+        }
     }
 }
 
@@ -212,59 +257,108 @@ unsafe fn cast_string(c_str: *const c_char, len: usize) -> String {
     }
 }
 
-/// The current synch state, i.e. whether in reindex, ibd, or complete.
-/// Emitted by the block tip notification.
-#[derive(Debug)]
+/// Current synchronization state of the blockchain.
+///
+/// Indicates what phase of blockchain synchronization is currently active.
+/// Emitted by block tip notifications to track sync progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum SynchronizationState {
-    INIT_REINDEX,
-    INIT_DOWNLOAD,
-    POST_INIT,
+    /// Currently reindexing the blockchain from disk
+    InitReindex = BTCK_SYNCHRONIZATION_STATE_INIT_REINDEX,
+    /// Initial block download - syncing from network peers
+    InitDownload = BTCK_SYNCHRONIZATION_STATE_INIT_DOWNLOAD,
+    /// Synchronization complete - processing new blocks
+    PostInit = BTCK_SYNCHRONIZATION_STATE_POST_INIT,
+}
+
+impl From<SynchronizationState> for btck_SynchronizationState {
+    fn from(state: SynchronizationState) -> Self {
+        state as btck_SynchronizationState
+    }
 }
 
 impl From<btck_SynchronizationState> for SynchronizationState {
-    fn from(state: btck_SynchronizationState) -> SynchronizationState {
-        match state {
-            btck_SynchronizationState_btck_INIT_DOWNLOAD => SynchronizationState::INIT_DOWNLOAD,
-            btck_SynchronizationState_btck_INIT_REINDEX => SynchronizationState::INIT_REINDEX,
-            btck_SynchronizationState_btck_POST_INIT => SynchronizationState::POST_INIT,
-            _ => panic!("Unexpected Synchronization state"),
+    fn from(value: btck_SynchronizationState) -> Self {
+        match value {
+            BTCK_SYNCHRONIZATION_STATE_INIT_REINDEX => SynchronizationState::InitReindex,
+            BTCK_SYNCHRONIZATION_STATE_INIT_DOWNLOAD => SynchronizationState::InitDownload,
+            BTCK_SYNCHRONIZATION_STATE_POST_INIT => SynchronizationState::PostInit,
+            _ => panic!("Unknown synchronization state: {}", value),
         }
     }
 }
 
-/// Warning state emitted by the kernel warning notification.
-pub enum KernelWarning {
-    UNKNOWN_NEW_RULES_ACTIVATED,
-    LARGE_WORK_INVALID_CHAIN,
+/// Warning conditions detected by the kernel during validation.
+///
+/// These warnings indicate potentially problematic conditions that may
+/// require user attention or represent network-wide issues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum Warning {
+    /// Unknown new consensus rules have been activated
+    ///
+    /// This typically means the software is out of date and doesn't
+    /// recognize new consensus rules that have activated on the network.
+    UnknownNewRulesActivated = BTCK_WARNING_UNKNOWN_NEW_RULES_ACTIVATED,
+
+    /// A chain with significant work contains invalid blocks
+    ///
+    /// This warning indicates that a substantial amount of computational
+    /// work has been expended on a chain that contains invalid blocks.
+    LargeWorkInvalidChain = BTCK_WARNING_LARGE_WORK_INVALID_CHAIN,
 }
 
-impl From<btck_Warning> for KernelWarning {
-    fn from(warning: btck_Warning) -> KernelWarning {
-        match warning {
-            btck_Warning_btck_UNKNOWN_NEW_RULES_ACTIVATED => {
-                KernelWarning::UNKNOWN_NEW_RULES_ACTIVATED
-            }
-            btck_Warning_btck_LARGE_WORK_INVALID_CHAIN => KernelWarning::LARGE_WORK_INVALID_CHAIN,
-            _ => panic!("Unexpected kernel warning"),
+impl From<Warning> for btck_Warning {
+    fn from(warning: Warning) -> Self {
+        warning as btck_Warning
+    }
+}
+
+impl From<btck_Warning> for Warning {
+    fn from(value: btck_Warning) -> Self {
+        match value {
+            BTCK_WARNING_UNKNOWN_NEW_RULES_ACTIVATED => Warning::UnknownNewRulesActivated,
+            BTCK_WARNING_LARGE_WORK_INVALID_CHAIN => Warning::LargeWorkInvalidChain,
+            _ => panic!("Unknown warning: {}", value),
         }
     }
 }
 
-/// The ChainType used to configure the kernel [`Context`].
+/// Bitcoin network chain types.
+///
+/// Specifies which Bitcoin network the kernel should operate on.
+/// Each chain type has different consensus rules and network parameters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum ChainType {
-    MAINNET,
-    TESTNET,
-    SIGNET,
-    REGTEST,
+    /// Bitcoin mainnet - the production network
+    Mainnet = BTCK_CHAIN_TYPE_MAINNET,
+    /// Bitcoin testnet - the original test network
+    Testnet = BTCK_CHAIN_TYPE_TESTNET,
+    /// Bitcoin testnet4 - the newer test network
+    Testnet4 = BTCK_CHAIN_TYPE_TESTNET_4,
+    /// Bitcoin signet - signed test network
+    Signet = BTCK_CHAIN_TYPE_SIGNET,
+    /// Regression test network for local development
+    Regtest = BTCK_CHAIN_TYPE_REGTEST,
 }
 
 impl From<ChainType> for btck_ChainType {
-    fn from(chain: ChainType) -> btck_ChainType {
-        match chain {
-            ChainType::MAINNET => btck_ChainType_btck_CHAIN_TYPE_MAINNET,
-            ChainType::TESTNET => btck_ChainType_btck_CHAIN_TYPE_TESTNET,
-            ChainType::SIGNET => btck_ChainType_btck_CHAIN_TYPE_SIGNET,
-            ChainType::REGTEST => btck_ChainType_btck_CHAIN_TYPE_REGTEST,
+    fn from(chain_type: ChainType) -> Self {
+        chain_type as btck_ChainType
+    }
+}
+
+impl From<btck_ChainType> for ChainType {
+    fn from(value: btck_ChainType) -> Self {
+        match value {
+            BTCK_CHAIN_TYPE_MAINNET => ChainType::Mainnet,
+            BTCK_CHAIN_TYPE_TESTNET => ChainType::Testnet,
+            BTCK_CHAIN_TYPE_TESTNET_4 => ChainType::Testnet4,
+            BTCK_CHAIN_TYPE_SIGNET => ChainType::Signet,
+            BTCK_CHAIN_TYPE_REGTEST => ChainType::Regtest,
+            _ => panic!("Unknown chain type: {}", value),
         }
     }
 }
@@ -282,12 +376,12 @@ pub trait Progress: Fn(String, i32, bool) {}
 impl<F: Fn(String, i32, bool)> Progress for F {}
 
 /// A warning state issued by the kernel during validation.
-pub trait WarningSet: Fn(KernelWarning, String) {}
-impl<F: Fn(KernelWarning, String)> WarningSet for F {}
+pub trait WarningSet: Fn(Warning, String) {}
+impl<F: Fn(Warning, String)> WarningSet for F {}
 
 /// A previous condition leading to the issuance of a warning is no longer given.
-pub trait WarningUnset: Fn(KernelWarning) {}
-impl<F: Fn(KernelWarning)> WarningUnset for F {}
+pub trait WarningUnset: Fn(Warning) {}
+impl<F: Fn(Warning)> WarningUnset for F {}
 
 /// An error was encountered when flushing data to disk.
 pub trait FlushError: Fn(String) {}
@@ -306,6 +400,12 @@ pub struct KernelNotificationInterfaceCallbacks {
     pub kn_warning_unset: Box<dyn WarningUnset>,
     pub kn_flush_error: Box<dyn FlushError>,
     pub kn_fatal_error: Box<dyn FatalError>,
+}
+
+unsafe extern "C" fn kn_user_data_destroy_wrapper(user_data: *mut c_void) {
+    if !user_data.is_null() {
+        let _ = Box::from_raw(user_data as *mut KernelNotificationInterfaceCallbacks);
+    }
 }
 
 unsafe extern "C" fn kn_block_tip_wrapper(
@@ -407,8 +507,8 @@ impl Drop for ChainParams {
 }
 
 /// Exposes the result after validating a block.
-pub trait BlockChecked: Fn(UnownedBlock, ValidationMode, BlockValidationResult) {}
-impl<F: Fn(UnownedBlock, ValidationMode, BlockValidationResult)> BlockChecked for F {}
+pub trait BlockChecked: Fn(Block, ValidationMode, BlockValidationResult) {}
+impl<F: Fn(Block, ValidationMode, BlockValidationResult)> BlockChecked for F {}
 
 /// A holder struct for validation interface callbacks
 pub struct ValidationInterfaceCallbacks {
@@ -416,15 +516,21 @@ pub struct ValidationInterfaceCallbacks {
     pub block_checked: Box<dyn BlockChecked>,
 }
 
+unsafe extern "C" fn vi_user_data_destroy_wrapper(user_data: *mut c_void) {
+    if !user_data.is_null() {
+        let _ = Box::from_raw(user_data as *mut ValidationInterfaceCallbacks);
+    }
+}
+
 unsafe extern "C" fn vi_block_checked_wrapper(
     user_data: *mut c_void,
-    block: *const btck_BlockPointer,
+    block: *mut btck_Block,
     stateIn: *const btck_BlockValidationState,
 ) {
     let holder = &*(user_data as *mut ValidationInterfaceCallbacks);
     let result = btck_block_validation_state_get_block_validation_result(stateIn);
     let mode = btck_block_validation_state_get_validation_mode(stateIn);
-    (holder.block_checked)(UnownedBlock::new(block), mode.into(), result.into());
+    (holder.block_checked)(Block { inner: block }, mode.into(), result.into());
 }
 
 /// The main context struct. This should be setup through the [`ContextBuilder`] and
@@ -433,11 +539,6 @@ unsafe extern "C" fn vi_block_checked_wrapper(
 ///
 pub struct Context {
     inner: *mut btck_Context,
-    // We need something to hold this in memory.
-    #[allow(dead_code)]
-    kn_callbacks: Option<Box<KernelNotificationInterfaceCallbacks>>,
-    #[allow(dead_code)]
-    vi_callbacks: Option<Box<ValidationInterfaceCallbacks>>,
 }
 
 unsafe impl Send for Context {}
@@ -470,8 +571,6 @@ impl Drop for Context {
 /// notifications.
 pub struct ContextBuilder {
     inner: *mut btck_ContextOptions,
-    kn_callbacks: Option<Box<KernelNotificationInterfaceCallbacks>>,
-    vi_callbacks: Option<Box<ValidationInterfaceCallbacks>>,
 }
 
 impl Default for ContextBuilder {
@@ -484,8 +583,6 @@ impl ContextBuilder {
     pub fn new() -> ContextBuilder {
         ContextBuilder {
             inner: unsafe { btck_context_options_create() },
-            kn_callbacks: None,
-            vi_callbacks: None,
         }
     }
 
@@ -500,22 +597,19 @@ impl ContextBuilder {
             return Err(KernelError::Internal("Invalid context.".to_string()));
         }
         unsafe { btck_context_options_destroy(self.inner) };
-        Ok(Context {
-            inner,
-            kn_callbacks: self.kn_callbacks,
-            vi_callbacks: self.vi_callbacks,
-        })
+        Ok(Context { inner })
     }
 
     /// Sets the notifications callbacks to the passed in holder struct
     pub fn kn_callbacks(
-        mut self,
+        self,
         kn_callbacks: Box<KernelNotificationInterfaceCallbacks>,
     ) -> ContextBuilder {
         let kn_pointer = Box::into_raw(kn_callbacks);
         unsafe {
             let holder = btck_NotificationInterfaceCallbacks {
                 user_data: kn_pointer as *mut c_void,
+                user_data_destroy: Some(kn_user_data_destroy_wrapper),
                 block_tip: Some(kn_block_tip_wrapper),
                 header_tip: Some(kn_header_tip_wrapper),
                 progress: Some(kn_progress_wrapper),
@@ -526,7 +620,6 @@ impl ContextBuilder {
             };
             btck_context_options_set_notifications(self.inner, holder);
         };
-        self.kn_callbacks = unsafe { Some(Box::from_raw(kn_pointer)) };
         self
     }
 
@@ -539,18 +632,18 @@ impl ContextBuilder {
 
     /// Sets the validation interface callbacks
     pub fn validation_interface(
-        mut self,
+        self,
         vi_callbacks: Box<ValidationInterfaceCallbacks>,
     ) -> ContextBuilder {
         let vi_pointer = Box::into_raw(vi_callbacks);
         unsafe {
             let holder = btck_ValidationInterfaceCallbacks {
                 user_data: vi_pointer as *mut c_void,
+                user_data_destroy: Some(vi_user_data_destroy_wrapper),
                 block_checked: Some(vi_block_checked_wrapper),
             };
             btck_context_options_set_validation_interface(self.inner, holder);
         }
-        self.vi_callbacks = unsafe { Some(Box::from_raw(vi_pointer)) };
         self
     }
 }
@@ -578,7 +671,6 @@ pub enum ScriptVerifyError {
     SpentOutputsRequired,
     Invalid,
 }
-
 impl From<NulError> for KernelError {
     fn from(err: NulError) -> Self {
         KernelError::CStringCreationFailed(err.to_string())
@@ -596,60 +688,84 @@ impl fmt::Display for KernelError {
     }
 }
 
-/// Whether a validated data structure is valid, invalid, or an error was
-/// encountered during processing.
+/// Result of data structure validation.
+///
+/// Indicates whether a validated data structure (block, transaction, etc.)
+/// is valid, invalid, or encountered an error during processing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum ValidationMode {
-    VALID,
-    INVALID,
-    ERROR,
+    /// The data structure is valid according to consensus rules
+    Valid = BTCK_VALIDATION_MODE_VALID,
+    /// The data structure is invalid according to consensus rules
+    Invalid = BTCK_VALIDATION_MODE_INVALID,
+    /// An internal error occurred during validation
+    InternalError = BTCK_VALIDATION_MODE_INTERNAL_ERROR,
+}
+
+impl From<ValidationMode> for btck_ValidationMode {
+    fn from(mode: ValidationMode) -> Self {
+        mode as btck_ValidationMode
+    }
 }
 
 impl From<btck_ValidationMode> for ValidationMode {
-    fn from(mode: btck_ValidationMode) -> Self {
-        match mode {
-            btck_ValidationMode_btck_VALIDATION_STATE_VALID => Self::VALID,
-            btck_ValidationMode_btck_VALIDATION_STATE_INVALID => Self::INVALID,
-            btck_ValidationMode_btck_VALIDATION_STATE_ERROR => Self::ERROR,
-            _ => ValidationMode::ERROR, // This should never happen
+    fn from(value: btck_ValidationMode) -> Self {
+        match value {
+            BTCK_VALIDATION_MODE_VALID => ValidationMode::Valid,
+            BTCK_VALIDATION_MODE_INVALID => ValidationMode::Invalid,
+            BTCK_VALIDATION_MODE_INTERNAL_ERROR => ValidationMode::InternalError,
+            _ => panic!("Unknown validation mode: {}", value),
         }
     }
 }
 
-/// A granular reason why a block was invalid.
+/// Result of block validation.
+///
+/// Provides information about why a block was accepted or rejected
+/// during validation. This gives more specific reasons than just valid/invalid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u32)]
 pub enum BlockValidationResult {
-    /// initial value. Block has not yet been rejected
-    RESULT_UNSET = 0,
-    /// invalid by consensus rules (excluding any below reasons)
-    CONSENSUS,
-    /// this block was cached as being invalid and we didn't store the reason why
-    CACHED_INVALID,
-    /// invalid proof of work or time too old
-    INVALID_HEADER,
-    /// the block's data didn't match the data committed to by the PoW
-    MUTATED,
-    /// We don't have the previous block the checked one is built on
-    MISSING_PREV,
-    /// A block this one builds on is invalid
-    INVALID_PREV,
-    /// block timestamp was > 2 hours in the future (or our clock is bad)
-    TIME_FUTURE,
-    /// the block header may be on a too-little-work chain
-    HEADER_LOW_WORK,
+    /// Initial value - block has not yet been validated
+    Unset = BTCK_BLOCK_VALIDATION_RESULT_UNSET,
+    /// Block is valid according to consensus rules
+    Consensus = BTCK_BLOCK_VALIDATION_RESULT_CONSENSUS,
+    /// Block was cached as invalid (reason not stored)
+    CachedInvalid = BTCK_BLOCK_VALIDATION_RESULT_CACHED_INVALID,
+    /// Block header is invalid (proof of work or timestamp)
+    InvalidHeader = BTCK_BLOCK_VALIDATION_RESULT_INVALID_HEADER,
+    /// Block data doesn't match the proof of work commitment
+    Mutated = BTCK_BLOCK_VALIDATION_RESULT_MUTATED,
+    /// Previous block is not available
+    MissingPrev = BTCK_BLOCK_VALIDATION_RESULT_MISSING_PREV,
+    /// Previous block is invalid
+    InvalidPrev = BTCK_BLOCK_VALIDATION_RESULT_INVALID_PREV,
+    /// Block timestamp is too far in the future
+    TimeFuture = BTCK_BLOCK_VALIDATION_RESULT_TIME_FUTURE,
+    /// Block header indicates insufficient work
+    HeaderLowWork = BTCK_BLOCK_VALIDATION_RESULT_HEADER_LOW_WORK,
+}
+
+impl From<BlockValidationResult> for btck_BlockValidationResult {
+    fn from(result: BlockValidationResult) -> Self {
+        result as btck_BlockValidationResult
+    }
 }
 
 impl From<btck_BlockValidationResult> for BlockValidationResult {
-    fn from(res: btck_BlockValidationResult) -> Self {
-        match res {
-            btck_BlockValidationResult_btck_BLOCK_RESULT_UNSET => Self::RESULT_UNSET,
-            btck_BlockValidationResult_btck_BLOCK_CONSENSUS => Self::CONSENSUS,
-            btck_BlockValidationResult_btck_BLOCK_CACHED_INVALID => Self::CACHED_INVALID,
-            btck_BlockValidationResult_btck_BLOCK_INVALID_HEADER => Self::INVALID_HEADER,
-            btck_BlockValidationResult_btck_BLOCK_MUTATED => Self::MUTATED,
-            btck_BlockValidationResult_btck_BLOCK_MISSING_PREV => Self::MISSING_PREV,
-            btck_BlockValidationResult_btck_BLOCK_INVALID_PREV => Self::INVALID_PREV,
-            btck_BlockValidationResult_btck_BLOCK_TIME_FUTURE => Self::TIME_FUTURE,
-            btck_BlockValidationResult_btck_BLOCK_HEADER_LOW_WORK => Self::HEADER_LOW_WORK,
-            _ => Self::CONSENSUS,
+    fn from(value: btck_BlockValidationResult) -> Self {
+        match value {
+            BTCK_BLOCK_VALIDATION_RESULT_UNSET => BlockValidationResult::Unset,
+            BTCK_BLOCK_VALIDATION_RESULT_CONSENSUS => BlockValidationResult::Consensus,
+            BTCK_BLOCK_VALIDATION_RESULT_CACHED_INVALID => BlockValidationResult::CachedInvalid,
+            BTCK_BLOCK_VALIDATION_RESULT_INVALID_HEADER => BlockValidationResult::InvalidHeader,
+            BTCK_BLOCK_VALIDATION_RESULT_MUTATED => BlockValidationResult::Mutated,
+            BTCK_BLOCK_VALIDATION_RESULT_MISSING_PREV => BlockValidationResult::MissingPrev,
+            BTCK_BLOCK_VALIDATION_RESULT_INVALID_PREV => BlockValidationResult::InvalidPrev,
+            BTCK_BLOCK_VALIDATION_RESULT_TIME_FUTURE => BlockValidationResult::TimeFuture,
+            BTCK_BLOCK_VALIDATION_RESULT_HEADER_LOW_WORK => BlockValidationResult::HeaderLowWork,
+            _ => panic!("Unknown block validation result: {}", value),
         }
     }
 }
@@ -849,7 +965,7 @@ impl Transaction {
         if index >= self.output_count() {
             return Err(KernelError::OutOfBounds);
         }
-        let output_ptr = unsafe { btck_transaction_get_output_at(self.inner, index as u64) };
+        let output_ptr = unsafe { btck_transaction_get_output_at(self.inner, index) };
         Ok(RefType::new(TxOut { inner: output_ptr }))
     }
 
@@ -906,47 +1022,6 @@ impl Drop for Transaction {
     }
 }
 
-/// A reference to block data owned by the Bitcoin Kernel infrastructure.
-///
-/// UnownedBlocks provide read-only access without taking ownership of the underlying memory.
-/// They are typically received through validation callbacks and should be used immediately.
-pub struct UnownedBlock {
-    inner: *const btck_BlockPointer,
-}
-
-impl UnownedBlock {
-    fn new(block: *const btck_BlockPointer) -> UnownedBlock {
-        UnownedBlock { inner: block }
-    }
-
-    /// Returns the hash of this block.
-    ///
-    /// This is the double SHA256 hash of the block header.
-    pub fn hash(&self) -> BlockHash {
-        let hash = unsafe { btck_block_pointer_get_hash(self.inner) };
-        let res = BlockHash {
-            hash: unsafe { (&*hash).hash },
-        };
-        unsafe { btck_block_hash_destroy(hash) };
-        res
-    }
-
-    /// Consensus encodes the block to Bitcoin wire format.
-    pub fn consensus_encode(&self) -> Result<Vec<u8>, KernelError> {
-        c_serialize(|callback, user_data| unsafe {
-            btck_block_pointer_to_bytes(self.inner, Some(callback), user_data)
-        })
-    }
-}
-
-impl TryFrom<UnownedBlock> for Vec<u8> {
-    type Error = KernelError;
-
-    fn try_from(block: UnownedBlock) -> Result<Self, KernelError> {
-        block.consensus_encode()
-    }
-}
-
 /// A Bitcoin block containing a header and transactions.
 ///
 /// Blocks can be created from raw serialized data or retrieved from the blockchain.
@@ -988,7 +1063,7 @@ impl Block {
         if index >= self.transaction_count() {
             return Err(KernelError::OutOfBounds);
         }
-        let tx = unsafe { btck_block_get_transaction_at(self.inner, index as u64) };
+        let tx = unsafe { btck_block_get_transaction_at(self.inner, index) };
         Ok(Transaction { inner: tx })
     }
 
@@ -1112,7 +1187,7 @@ impl BlockSpentOutputs {
     ///
     /// Note: This excludes the coinbase transaction, which has no inputs.
     pub fn count(&self) -> usize {
-        unsafe { btck_block_spent_outputs_size(self.inner) as usize }
+        unsafe { btck_block_spent_outputs_count(self.inner) }
     }
 
     /// Returns a reference to the spent outputs for a specific transaction in the block.
@@ -1128,10 +1203,7 @@ impl BlockSpentOutputs {
         transaction_index: usize,
     ) -> Result<RefType<'_, TransactionSpentOutputs, BlockSpentOutputs>, KernelError> {
         let tx_out_ptr = unsafe {
-            btck_block_spent_outputs_get_transaction_spent_outputs_at(
-                self.inner,
-                transaction_index as u64,
-            )
+            btck_block_spent_outputs_get_transaction_spent_outputs_at(self.inner, transaction_index)
         };
         if tx_out_ptr.is_null() {
             return Err(KernelError::OutOfBounds);
@@ -1168,7 +1240,7 @@ unsafe impl Sync for TransactionSpentOutputs {}
 impl TransactionSpentOutputs {
     /// Returns the number of coins spent by this transaction.
     pub fn count(&self) -> usize {
-        unsafe { btck_transaction_spent_outputs_size(self.inner) as usize }
+        unsafe { btck_transaction_spent_outputs_count(self.inner) }
     }
 
     /// Returns a reference to the coin at the specified input index.
@@ -1184,7 +1256,7 @@ impl TransactionSpentOutputs {
         coin_index: usize,
     ) -> Result<RefType<'_, Coin, TransactionSpentOutputs>, KernelError> {
         let coin_ptr = unsafe {
-            btck_transaction_spent_outputs_get_coin_at(self.inner as *const _, coin_index as u64)
+            btck_transaction_spent_outputs_get_coin_at(self.inner as *const _, coin_index)
         };
         if coin_ptr.is_null() {
             return Err(KernelError::OutOfBounds);
@@ -1398,6 +1470,11 @@ impl Chain {
 
     /// Returns the block at the specified height, if it exists.
     pub fn at_height(&self, height: usize) -> Option<BlockTreeEntry> {
+        let tip_height = self.tip().height();
+        if height > tip_height as usize {
+            return None;
+        }
+
         let entry = unsafe { btck_chain_get_by_height(self.inner, height as i32) };
         if entry.is_null() {
             return None;
@@ -1548,15 +1625,20 @@ unsafe extern "C" fn log_callback<T: Log + 'static>(
     (*log).log(&message);
 }
 
+unsafe extern "C" fn destroy_log_callback<T>(user_data: *mut c_void) {
+    if !user_data.is_null() {
+        let _ = Box::from_raw(user_data as *mut T);
+    }
+}
+
 /// The logger object logs kernel log messages into a user-defined log function.
 /// Messages logged by the kernel before this object is created are buffered in
 /// a 1MB buffer. The kernel library internally uses a global logging instance.
-pub struct Logger<T> {
-    log: T,
+pub struct Logger {
     inner: *mut btck_LoggingConnection,
 }
 
-impl<T> Drop for Logger<T> {
+impl Drop for Logger {
     fn drop(&mut self) {
         unsafe {
             btck_logging_connection_destroy(self.inner);
@@ -1571,9 +1653,9 @@ pub fn disable_logging() {
     }
 }
 
-impl<T: Log + 'static> Logger<T> {
+impl Logger {
     /// Create a new Logger with the specified callback.
-    pub fn new(mut log: T) -> Result<Logger<T>, KernelError> {
+    pub fn new<T: Log + 'static>(log: T) -> Result<Logger, KernelError> {
         let options = btck_LoggingOptions {
             log_timestamps: c_helpers::to_c_bool(true),
             log_time_micros: c_helpers::to_c_bool(false),
@@ -1582,25 +1664,135 @@ impl<T: Log + 'static> Logger<T> {
             always_print_category_levels: c_helpers::to_c_bool(false),
         };
 
+        let log_ptr = Box::into_raw(Box::new(log));
+
         let inner = unsafe {
             btck_logging_connection_create(
                 Some(log_callback::<T>),
-                &mut log as *mut T as *mut c_void,
+                log_ptr as *mut c_void,
+                Some(destroy_log_callback::<T>),
                 options,
             )
         };
 
         if inner.is_null() {
+            unsafe {
+                let _ = Box::from_raw(log_ptr);
+            }
             return Err(KernelError::Internal(
                 "Failed to create new logging connection.".to_string(),
             ));
         }
 
-        Ok(Logger { log, inner })
+        Ok(Logger { inner })
     }
 
-    /// Manually log something through the user-specified callback.
-    pub fn log(&self, message: &str) {
-        self.log.log(message);
+    /// Sets the logging level for a specific category.
+    pub fn set_level_category(&self, category: LogCategory, level: LogLevel) {
+        unsafe {
+            btck_logging_set_level_category(category.into(), level.into());
+        }
+    }
+
+    /// Enables logging for a specific category.
+    pub fn enable_category(&self, category: LogCategory) {
+        unsafe {
+            btck_logging_enable_category(category.into());
+        }
+    }
+
+    /// Disables logging for a specific category.
+    pub fn disable_category(&self, category: LogCategory) {
+        unsafe {
+            btck_logging_disable_category(category.into());
+        }
+    }
+}
+
+/// Logging categories for Bitcoin Kernel messages.
+///
+/// Controls which types of log messages are emitted by the kernel library.
+/// Categories can be combined to enable multiple types of logging simultaneously.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum LogCategory {
+    /// All logging categories enabled
+    All = BTCK_LOG_CATEGORY_ALL,
+    /// Benchmark and performance logging
+    Bench = BTCK_LOG_CATEGORY_BENCH,
+    /// Block storage operations
+    BlockStorage = BTCK_LOG_CATEGORY_BLOCKSTORAGE,
+    /// Coin database operations
+    CoinDb = BTCK_LOG_CATEGORY_COINDB,
+    /// LevelDB operations
+    LevelDb = BTCK_LOG_CATEGORY_LEVELDB,
+    /// Memory pool operations
+    Mempool = BTCK_LOG_CATEGORY_MEMPOOL,
+    /// Block pruning operations
+    Prune = BTCK_LOG_CATEGORY_PRUNE,
+    /// Random number generation
+    Rand = BTCK_LOG_CATEGORY_RAND,
+    /// Block reindexing operations
+    Reindex = BTCK_LOG_CATEGORY_REINDEX,
+    /// Block and transaction validation
+    Validation = BTCK_LOG_CATEGORY_VALIDATION,
+    /// Kernel-specific operations
+    Kernel = BTCK_LOG_CATEGORY_KERNEL,
+}
+
+impl From<LogCategory> for btck_LogCategory {
+    fn from(category: LogCategory) -> Self {
+        category as btck_LogCategory
+    }
+}
+
+impl From<btck_LogCategory> for LogCategory {
+    fn from(value: btck_LogCategory) -> Self {
+        match value {
+            BTCK_LOG_CATEGORY_ALL => LogCategory::All,
+            BTCK_LOG_CATEGORY_BENCH => LogCategory::Bench,
+            BTCK_LOG_CATEGORY_BLOCKSTORAGE => LogCategory::BlockStorage,
+            BTCK_LOG_CATEGORY_COINDB => LogCategory::CoinDb,
+            BTCK_LOG_CATEGORY_LEVELDB => LogCategory::LevelDb,
+            BTCK_LOG_CATEGORY_MEMPOOL => LogCategory::Mempool,
+            BTCK_LOG_CATEGORY_PRUNE => LogCategory::Prune,
+            BTCK_LOG_CATEGORY_RAND => LogCategory::Rand,
+            BTCK_LOG_CATEGORY_REINDEX => LogCategory::Reindex,
+            BTCK_LOG_CATEGORY_VALIDATION => LogCategory::Validation,
+            BTCK_LOG_CATEGORY_KERNEL => LogCategory::Kernel,
+            _ => panic!("Unknown log category: {}", value),
+        }
+    }
+}
+
+/// Logging levels for controlling message verbosity.
+///
+/// Determines the minimum severity level of messages that will be logged.
+/// Higher levels include all messages from lower levels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum LogLevel {
+    /// Detailed trace information for debugging
+    Trace = BTCK_LOG_LEVEL_TRACE,
+    /// Debug information for development
+    Debug = BTCK_LOG_LEVEL_DEBUG,
+    /// General informational messages
+    Info = BTCK_LOG_LEVEL_INFO,
+}
+
+impl From<LogLevel> for btck_LogLevel {
+    fn from(level: LogLevel) -> Self {
+        level as btck_LogLevel
+    }
+}
+
+impl From<btck_LogLevel> for LogLevel {
+    fn from(value: btck_LogLevel) -> Self {
+        match value {
+            BTCK_LOG_LEVEL_TRACE => LogLevel::Trace,
+            BTCK_LOG_LEVEL_DEBUG => LogLevel::Debug,
+            BTCK_LOG_LEVEL_INFO => LogLevel::Info,
+            _ => panic!("Unknown log level: {}", value),
+        }
     }
 }
