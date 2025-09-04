@@ -4,8 +4,9 @@ mod tests {
     use bitcoinkernel::{
         verify, Block, BlockHash, BlockSpentOutputs, ChainParams, ChainType, ChainstateManager,
         ChainstateManagerOptions, Coin, Context, ContextBuilder, KernelError,
-        KernelNotificationInterfaceCallbacks, Log, Logger, ScriptPubkey, Transaction,
-        TransactionSpentOutputs, TxOut, ValidationInterfaceCallbacks, VERIFY_ALL_PRE_TAPROOT,
+        KernelNotificationInterfaceCallbacks, Log, Logger, ScriptPubkey, ScriptVerifyError,
+        Transaction, TransactionSpentOutputs, TxOut, ValidationInterfaceCallbacks,
+        VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -23,7 +24,7 @@ mod tests {
     }
 
     static START: Once = Once::new();
-    static mut GLOBAL_LOG_CALLBACK_HOLDER: Option<Logger<TestLog>> = None;
+    static mut GLOBAL_LOG_CALLBACK_HOLDER: Option<Logger> = None;
 
     fn setup_logging() {
         let mut builder = env_logger::Builder::from_default_env();
@@ -34,7 +35,7 @@ mod tests {
 
     fn create_context() -> Context {
         let builder = ContextBuilder::new()
-            .chain_type(ChainType::REGTEST)
+            .chain_type(ChainType::Regtest)
             .kn_callbacks(Box::new(KernelNotificationInterfaceCallbacks {
                 kn_block_tip: Box::new(|_state, _block_tip, _verification_progress| {
                     log::info!("Received block tip.");
@@ -428,9 +429,12 @@ mod tests {
             Some(VERIFY_ALL_PRE_TAPROOT),
             std::slice::from_ref(&dummy_output),
         );
-        assert!(matches!(result, Err(KernelError::OutOfBounds)));
+        assert!(matches!(
+            result,
+            Err(KernelError::ScriptVerify(ScriptVerifyError::TxInputIndex))
+        ));
 
-        let wrong_spent_outputs = vec![dummy_output.clone(), dummy_output];
+        let wrong_spent_outputs = vec![dummy_output.clone(), dummy_output.clone()];
 
         // two transaction outputs for one input
         let result = verify(
@@ -441,7 +445,26 @@ mod tests {
             Some(VERIFY_ALL_PRE_TAPROOT),
             &wrong_spent_outputs,
         );
-        assert!(matches!(result, Err(KernelError::OutOfBounds)));
+        assert!(matches!(
+            result,
+            Err(KernelError::ScriptVerify(
+                ScriptVerifyError::SpentOutputsMismatch
+            ))
+        ));
+
+        // Test Invalid flags
+        let result = verify(
+            &script_pubkey,
+            Some(0),
+            &tx,
+            0,
+            Some(0xFFFFFFFF),
+            std::slice::from_ref(&dummy_output),
+        );
+        assert!(matches!(
+            result,
+            Err(KernelError::ScriptVerify(ScriptVerifyError::InvalidFlags))
+        ));
     }
 
     #[test]
