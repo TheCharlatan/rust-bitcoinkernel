@@ -71,7 +71,7 @@ std::span<const std::byte> as_bytes(std::vector<unsigned char> data)
     return std::span{reinterpret_cast<const std::byte*>(data.data()), data.size()};
 }
 
-void check_equal(std::span<const std::byte> _actual, std::span<const std::byte> _expected)
+void check_equal(std::span<const std::byte> _actual, std::span<const std::byte> _expected, bool equal = true)
 {
     std::span<const uint8_t> actual{reinterpret_cast<const unsigned char*>(_actual.data()), _actual.size()};
     std::span<const uint8_t> expected{reinterpret_cast<const unsigned char*>(_expected.data()), _expected.size()};
@@ -255,40 +255,94 @@ BOOST_AUTO_TEST_CASE(btck_transaction_tests)
     auto broken_tx_data{std::span<std::byte>{tx_data.begin(), tx_data.begin() + 10}};
     BOOST_CHECK_THROW(Transaction{broken_tx_data}, std::runtime_error);
     auto output{tx.GetOutput(tx.CountOutputs() - 1)};
-    BOOST_CHECK_EQUAL(output.Get().GetAmount(), 42130042);
-    auto script_pubkey{output.Get().GetScriptPubkey()};
+    BOOST_CHECK_EQUAL(output.Amount(), 42130042);
+    auto script_pubkey{output.GetScriptPubkey()};
     {
         auto tx_new{Transaction{tx_data}};
         // This is safe, because we now use copy assignment
-        TransactionOutput output = tx_new.GetOutput(tx_new.CountOutputs() - 1).Get();
+        TransactionOutput output = tx_new.GetOutput(tx_new.CountOutputs() - 1);
+        ScriptPubkey script = output.GetScriptPubkey();
+
+        TransactionOutputView output2 = tx_new.GetOutput(tx_new.CountOutputs() - 1);
+        BOOST_CHECK_NE(output.get(), output2.get());
+        BOOST_CHECK_EQUAL(output.Amount(), output2.Amount());
+        TransactionOutput output3 = output2;
+        BOOST_CHECK_NE(output3.get(), output2.get());
+        BOOST_CHECK_EQUAL(output3.Amount(), output2.Amount());
+
+        // Non-owned view
+        ScriptPubkeyView script2 = output.GetScriptPubkey();
+        BOOST_CHECK_NE(script.get(), script2.get());
+        check_equal(script.ToBytes(), script2.ToBytes());
+
+        // Non-owned to owned
+        ScriptPubkey script3 = script2;
+        BOOST_CHECK_NE(script3.get(), script2.get());
+        check_equal(script3.ToBytes(), script2.ToBytes());
     }
-    BOOST_CHECK_EQUAL(output.Get().GetAmount(), 42130042);
+    BOOST_CHECK_EQUAL(output.Amount(), 42130042);
 
     auto tx_roundtrip{Transaction{tx.ToBytes()}};
     check_equal(tx_roundtrip.ToBytes(), tx_data);
 
     // The following code is unsafe, but left here to show limitations of the
-    // API, because we RVO-move the output beyond the lifetime of the
-    // transaction. The reference wrapper should make this clear to the user.
-    // auto get_output = [&]() -> RefWrapper<TransactionOutput> {
+    // API, because we preserve the output view beyond the lifetime of the
+    // transaction. The view type wrapper should make this clear to the user.
+    // auto get_output = [&]() -> TransactionOutputView {
     //     auto tx{Transaction{tx_data}};
     //     return tx.GetOutput(0);
     // };
     // auto output_new = get_output();
-    // BOOST_CHECK_EQUAL(output_new.Get().GetAmount(), 20737411);
+    // BOOST_CHECK_EQUAL(output_new.Amount(), 20737411);
 
-    auto amount = *(tx.Outputs()
-        | std::ranges::views::filter([](const auto& output) {
-            return output.Get().GetAmount() == 42130042;
-        })
-        | std::views::transform([](const auto& output) {
-            return output.Get().GetAmount();
-        })
-    ).begin();
+    auto amount = *(tx.Outputs() | std::ranges::views::filter([](const auto& output) {
+                        return output.Amount() == 42130042;
+                    }) |
+                    std::views::transform([](const auto& output) {
+                        return output.Amount();
+                    })).begin();
+    BOOST_REQUIRE(amount);
     BOOST_CHECK_EQUAL(amount, 42130042);
 
-    ScriptPubkey script_pubkey_roundtrip{script_pubkey.Get().ToBytes()};
-    check_equal(script_pubkey_roundtrip.ToBytes(), script_pubkey.Get().ToBytes());
+    ScriptPubkey script_pubkey_roundtrip{script_pubkey.ToBytes()};
+    check_equal(script_pubkey_roundtrip.ToBytes(), script_pubkey.ToBytes());
+}
+
+BOOST_AUTO_TEST_CASE(btck_script_pubkey)
+{
+    auto script_data{hex_string_to_byte_vec("76a9144bfbaf6afb76cc5771bc6404810d1cc041a6933988ac")};
+    std::vector<std::byte> script_data_2 = script_data;
+    script_data_2.push_back(std::byte{0x51});
+    ScriptPubkey script(script_data);
+    BOOST_CHECK(script.get() != nullptr);
+
+    check_equal(script.ToBytes(), script_data);
+
+    // Copy constructor
+    ScriptPubkey script2(script);
+    BOOST_CHECK_NE(script.get(), script2.get());
+    check_equal(script.ToBytes(), script2.ToBytes());
+
+    // Copy assignment
+    ScriptPubkey script3{script_data_2};
+    script2 = script3;
+    BOOST_CHECK_NE(script3.get(), script2.get());
+    BOOST_CHECK_NE(script.ToBytes().size(), script2.ToBytes().size());
+    check_equal(script3.ToBytes(), script2.ToBytes());
+
+    // Move constructor
+    auto* original_ptr = script2.get();
+    ScriptPubkey script4{std::move(script2)};
+    BOOST_CHECK_EQUAL(script4.get(), original_ptr);
+    BOOST_CHECK_EQUAL(script2.get(), nullptr);
+    check_equal(script4.ToBytes(), script3.ToBytes());
+
+    // Move assignment
+    original_ptr = script4.get();
+    script2 = std::move(script4);
+    BOOST_CHECK_EQUAL(script2.get(), original_ptr);
+    BOOST_CHECK_EQUAL(script4.get(), nullptr);
+    check_equal(script2.ToBytes(), script3.ToBytes());
 }
 
 BOOST_AUTO_TEST_CASE(btck_script_verify_tests)
@@ -467,20 +521,20 @@ void chainman_reindex_test(TestDirectory& test_directory)
 
     // Sanity check some block retrievals
     auto chain{chainman->GetChain()};
-    auto genesis_index{chain.Get().GetGenesis()};
+    auto genesis_index{chain.GetGenesis()};
     auto genesis_block_raw{chainman->ReadBlock(genesis_index).value().ToBytes()};
-    auto first_index{chain.Get().GetByHeight(0)};
+    auto first_index{chain.GetByHeight(0)};
     auto first_block_raw{chainman->ReadBlock(genesis_index).value().ToBytes()};
     check_equal(genesis_block_raw, first_block_raw);
     auto height{first_index.GetHeight()};
     BOOST_CHECK_EQUAL(height, 0);
 
-    auto next_index{chain.Get().GetByHeight(first_index.GetHeight() + 1)};
-    BOOST_CHECK(chain.Get().Contains(next_index));
+    auto next_index{chain.GetByHeight(first_index.GetHeight() + 1)};
+    BOOST_CHECK(chain.Contains(next_index));
     auto next_block_data{chainman->ReadBlock(next_index).value().ToBytes()};
-    auto tip_index{chain.Get().GetTip()};
+    auto tip_index{chain.GetTip()};
     auto tip_block_data{chainman->ReadBlock(tip_index).value().ToBytes()};
-    auto second_index{chain.Get().GetByHeight(1)};
+    auto second_index{chain.GetByHeight(1)};
     auto second_block{chainman->ReadBlock(second_index).value()};
     auto second_block_data{second_block.ToBytes()};
     auto second_height{second_index.GetHeight()};
@@ -528,12 +582,13 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
     // mainnet block 1
     auto raw_block = hex_string_to_byte_vec("010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e362990101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec11600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf621e73a82cbf2342c858eeac00000000");
     Block block{raw_block};
-    Transaction tx{block.GetTransaction(block.CountTransactions() - 1)};
-    auto output_counts = *(block.Transactions()
-        | std::views::transform([](const auto& tx) {
-            return tx.CountOutputs();
-        })
-    ).begin();
+    TransactionView tx{block.GetTransaction(block.CountTransactions() - 1)};
+    BOOST_CHECK_EQUAL(tx.CountInputs(), 1);
+    Transaction tx2 = tx;
+    BOOST_CHECK_EQUAL(tx2.CountInputs(), 1);
+    auto output_counts = *(block.Transactions() | std::views::transform([](const auto& tx) {
+                               return tx.CountOutputs();
+                           })).begin();
     BOOST_CHECK_EQUAL(output_counts, 1);
 
     validation_interface->m_expected_valid_block.emplace(raw_block);
@@ -544,7 +599,7 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
     BOOST_CHECK(new_block);
 
     auto chain{chainman->GetChain()};
-    auto tip{chain.Get().GetTip()};
+    auto tip{chain.GetTip()};
     auto read_block{chainman->ReadBlock(tip)};
     BOOST_REQUIRE(read_block);
     check_equal(read_block.value().ToBytes(), raw_block);
@@ -629,7 +684,7 @@ BOOST_AUTO_TEST_CASE(btck_chainman_regtest_tests)
     }
 
     auto chain = chainman->GetChain();
-    auto tip = chain.Get().GetTip();
+    auto tip = chain.GetTip();
     auto read_block = chainman->ReadBlock(tip).value();
     check_equal(read_block.ToBytes(), as_bytes(REGTEST_BLOCK_DATA[REGTEST_BLOCK_DATA.size() - 1]));
 
@@ -639,30 +694,30 @@ BOOST_AUTO_TEST_CASE(btck_chainman_regtest_tests)
 
     BlockSpentOutputs block_spent_outputs{chainman->ReadBlockSpentOutputs(tip)};
     BOOST_CHECK_EQUAL(block_spent_outputs.Count(), 1);
-    RefWrapper<TransactionSpentOutputs> transaction_spent_outputs{block_spent_outputs.GetTxSpentOutputs(block_spent_outputs.Count()- 1)};
-    RefWrapper<Coin> coin{transaction_spent_outputs.Get().GetCoin(transaction_spent_outputs.Get().Count()- 1)};
-    RefWrapper<TransactionOutput> output = coin.Get().GetOutput();
-    uint32_t coin_height = coin.Get().GetConfirmationHeight();
+    TransactionSpentOutputsView transaction_spent_outputs{block_spent_outputs.GetTxSpentOutputs(block_spent_outputs.Count() - 1)};
+    CoinView coin{transaction_spent_outputs.GetCoin(transaction_spent_outputs.Count() - 1)};
+    TransactionOutputView output = coin.GetOutput();
+    uint32_t coin_height = coin.GetConfirmationHeight();
     BOOST_CHECK_EQUAL(coin_height, 205);
-    BOOST_CHECK_EQUAL(output.Get().GetAmount(), 100000000);
-    auto script_pubkey = output.Get().GetScriptPubkey();
-    auto script_pubkey_bytes{script_pubkey.Get().ToBytes()};
+    BOOST_CHECK_EQUAL(output.Amount(), 100000000);
+    auto script_pubkey = output.GetScriptPubkey();
+    auto script_pubkey_bytes{script_pubkey.ToBytes()};
     BOOST_CHECK_EQUAL(script_pubkey_bytes.size(), 22);
     auto round_trip_script_pubkey{ScriptPubkey(script_pubkey_bytes)};
     BOOST_CHECK_EQUAL(round_trip_script_pubkey.ToBytes().size(), 22);
 
-    for (const auto& tx_spent_outputs : block_spent_outputs.TxsSpentOutputs()) {
-        for (const auto& coins : tx_spent_outputs.Get().Coins()) {
-            BOOST_CHECK_GT(coins.Get().GetOutput().Get().GetAmount(), 1);
+    for (const auto tx_spent_outputs : block_spent_outputs.TxsSpentOutputs()) {
+        for (const auto coins : tx_spent_outputs.Coins()) {
+            BOOST_CHECK_GT(coins.GetOutput().Amount(), 1);
         }
     }
 
     int32_t count{0};
-    for (const auto& entry : chain.Get().Entries()) {
+    for (const auto entry : chain.Entries()) {
         BOOST_CHECK_EQUAL(entry.GetHeight(), count);
         ++count;
     }
-    BOOST_CHECK_EQUAL(count, chain.Get().CurrentHeight());
+    BOOST_CHECK_EQUAL(count, chain.CurrentHeight());
 
     // Test that reading past the size returns null data
     // BOOST_CHECK_THROW(block_spent_outputs.GetTxSpentOutputs(block_spent_outputs.m_size), std::runtime_error);
