@@ -7,8 +7,8 @@ use bitcoin::consensus::deserialize;
 use bitcoin::hashes::Hash;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
 use bitcoinkernel::{
-    ChainType, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder, KernelError,
-    Log, Logger,
+    prelude::*, ChainType, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder,
+    KernelError, Log, Logger,
 };
 use env_logger::Builder;
 use log::LevelFilter;
@@ -195,7 +195,7 @@ fn scan_txs(chainman: &ChainstateManager) {
             for j in 0..transaction_input_size {
                 let coin = tx_spent_outputs.coin(j).unwrap();
                 scan_tx_helper.ins.push(Input {
-                    prevout: coin.output().unwrap().script_pubkey().to_bytes(),
+                    prevout: coin.output().script_pubkey().to_bytes(),
                     script_sig: block.txdata[i + 1].input[j].script_sig.to_bytes(),
                     witness: block.txdata[i + 1].input[j].witness.to_vec(),
                     prevout_data: (
@@ -212,8 +212,8 @@ fn scan_txs(chainman: &ChainstateManager) {
             println!("helper: {:?}", scan_tx_helper);
         }
         block_index = match block_index.prev() {
-            Ok(block_index_prev) => block_index_prev,
-            Err(_) => break,
+            Some(block_index_prev) => block_index_prev,
+            None => break,
         };
     }
     log::info!("scanned txs!");
