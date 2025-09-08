@@ -2,7 +2,6 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use std::borrow::Borrow;
 use std::ffi::{c_char, c_void, CString, NulError};
 use std::marker::PhantomData;
 use std::{fmt, panic};
@@ -99,12 +98,12 @@ mod c_helpers {
 /// * `Ok(())` if verification succeeds
 /// * [`KernelError::ScriptVerify`] an error describing the failure
 pub fn verify(
-    script_pubkey: &ScriptPubkey,
+    script_pubkey: &impl ScriptPubkeyExt,
     amount: Option<i64>,
-    tx_to: &Transaction,
+    tx_to: &impl TransactionExt,
     input_index: usize,
     flags: Option<u32>,
-    spent_outputs: &[TxOut],
+    spent_outputs: &[impl TxOutExt],
 ) -> Result<(), KernelError> {
     let input_count = tx_to.input_count();
 
@@ -129,10 +128,8 @@ pub fn verify(
 
     let status = ScriptVerifyStatus::Ok;
     let kernel_amount = amount.unwrap_or_default();
-    let kernel_spent_outputs: Vec<*const btck_TransactionOutput> = spent_outputs
-        .iter()
-        .map(|utxo| utxo.inner as *const btck_TransactionOutput)
-        .collect();
+    let kernel_spent_outputs: Vec<*const btck_TransactionOutput> =
+        spent_outputs.iter().map(|utxo| utxo.as_ptr()).collect();
 
     let spent_outputs_ptr = if kernel_spent_outputs.is_empty() {
         std::ptr::null_mut()
@@ -142,9 +139,9 @@ pub fn verify(
 
     let ret = unsafe {
         btck_script_pubkey_verify(
-            script_pubkey.inner,
+            script_pubkey.as_ptr(),
             kernel_amount,
-            tx_to.inner,
+            tx_to.as_ptr(),
             spent_outputs_ptr,
             spent_outputs.len(),
             input_index as u32,
@@ -411,14 +408,13 @@ unsafe extern "C" fn kn_user_data_destroy_wrapper(user_data: *mut c_void) {
 unsafe extern "C" fn kn_block_tip_wrapper(
     user_data: *mut c_void,
     state: btck_SynchronizationState,
-    entry: *mut btck_BlockTreeEntry,
+    entry: *const btck_BlockTreeEntry,
     verification_progress: f64,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     let hash = btck_block_tree_entry_get_block_hash(entry);
     let res = BlockHash { hash: (*hash).hash };
     btck_block_hash_destroy(hash);
-    btck_block_tree_entry_destroy(entry);
     (holder.kn_block_tip)(state.into(), res, verification_progress);
 }
 
@@ -770,6 +766,20 @@ impl From<btck_BlockValidationResult> for BlockValidationResult {
     }
 }
 
+/// Common operations for script pubkeys, implemented by both owned and borrowed types.
+pub trait ScriptPubkeyExt {
+    /// Returns a raw pointer to the underlying C object.
+    fn as_ptr(&self) -> *const btck_ScriptPubkey;
+
+    /// Serializes the script to raw bytes.
+    fn to_bytes(&self) -> Vec<u8> {
+        c_serialize(|callback, user_data| unsafe {
+            btck_script_pubkey_to_bytes(self.as_ptr(), Some(callback), user_data)
+        })
+        .expect("Script pubkey to_bytes should never fail")
+    }
+}
+
 /// A single script pubkey containing spending conditions for a transaction output.
 ///
 /// Script pubkeys can be created from raw script bytes or retrieved from existing
@@ -783,37 +793,28 @@ unsafe impl Send for ScriptPubkey {}
 unsafe impl Sync for ScriptPubkey {}
 
 impl ScriptPubkey {
-    /// Serializes the script to raw bytes.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        c_serialize(|callback, user_data| unsafe {
-            btck_script_pubkey_to_bytes(self.inner, Some(callback), user_data)
-        })
-        .expect("Script pubkey to_bytes should never fail")
-    }
-}
-
-impl From<ScriptPubkey> for Vec<u8> {
-    fn from(pubkey: ScriptPubkey) -> Self {
-        pubkey.to_bytes()
-    }
-}
-
-impl TryFrom<&[u8]> for ScriptPubkey {
-    type Error = KernelError;
-
-    fn try_from(raw_script_pubkey: &[u8]) -> Result<Self, Self::Error> {
+    pub fn new(script_bytes: &[u8]) -> Result<Self, KernelError> {
         let inner = unsafe {
-            btck_script_pubkey_create(
-                raw_script_pubkey.as_ptr() as *const c_void,
-                raw_script_pubkey.len(),
-            )
+            btck_script_pubkey_create(script_bytes.as_ptr() as *const c_void, script_bytes.len())
         };
+
         if inner.is_null() {
-            return Err(KernelError::Internal(
-                "Failed to decode raw script pubkey".to_string(),
-            ));
+            Err(KernelError::Internal(
+                "Failed to create ScriptPubkey from bytes".to_string(),
+            ))
+        } else {
+            Ok(ScriptPubkey { inner })
         }
-        Ok(ScriptPubkey { inner })
+    }
+
+    pub fn as_ref(&self) -> ScriptPubkeyRef<'_> {
+        unsafe { ScriptPubkeyRef::from_ptr(self.inner as *const _) }
+    }
+}
+
+impl ScriptPubkeyExt for ScriptPubkey {
+    fn as_ptr(&self) -> *const btck_ScriptPubkey {
+        self.inner as *const _
     }
 }
 
@@ -831,57 +832,89 @@ impl Drop for ScriptPubkey {
     }
 }
 
-/// A reference type that enforces lifetime relationships.
-///
-/// `RefType<'a, T, L>` represents a borrowed `T` that cannot outlive the owner `L`.
-///
-/// # Type Parameters
-/// - `'a` - The lifetime of the borrow, tied to the owner's lifetime
-/// - `T` - The borrowed type (e.g., `TxOut`, `ScriptPubkey`)
-/// - `L` - The owner type (e.g., `Transaction`, `TxOut`)
-pub struct RefType<'a, T, L> {
-    inner: T,
-    marker: PhantomData<&'a L>,
+impl TryFrom<&[u8]> for ScriptPubkey {
+    type Error = KernelError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        ScriptPubkey::new(bytes)
+    }
 }
 
-impl<'a, T, L> RefType<'a, T, L> {
-    /// Creates a new RefType wrapping referenced data.
-    pub(crate) fn new(inner: T) -> Self {
-        RefType {
-            inner,
+impl From<ScriptPubkey> for Vec<u8> {
+    fn from(script: ScriptPubkey) -> Self {
+        script.to_bytes()
+    }
+}
+
+impl From<&ScriptPubkey> for Vec<u8> {
+    fn from(script: &ScriptPubkey) -> Self {
+        script.to_bytes()
+    }
+}
+
+pub struct ScriptPubkeyRef<'a> {
+    inner: *const btck_ScriptPubkey,
+    marker: PhantomData<&'a ()>,
+}
+
+impl<'a> ScriptPubkeyRef<'a> {
+    pub unsafe fn from_ptr(ptr: *const btck_ScriptPubkey) -> Self {
+        ScriptPubkeyRef {
+            inner: ptr,
             marker: PhantomData,
         }
     }
 
-    /// Creates an owned copy of the borrowed data.
+    pub fn to_owned(&self) -> ScriptPubkey {
+        ScriptPubkey {
+            inner: unsafe { btck_script_pubkey_copy(self.inner) },
+        }
+    }
+}
+
+impl<'a> ScriptPubkeyExt for ScriptPubkeyRef<'a> {
+    fn as_ptr(&self) -> *const btck_ScriptPubkey {
+        self.inner
+    }
+}
+
+impl<'a> From<ScriptPubkeyRef<'a>> for Vec<u8> {
+    fn from(script_ref: ScriptPubkeyRef<'a>) -> Self {
+        script_ref.to_bytes()
+    }
+}
+
+impl<'a> From<&ScriptPubkeyRef<'a>> for Vec<u8> {
+    fn from(script_ref: &ScriptPubkeyRef<'a>) -> Self {
+        script_ref.to_bytes()
+    }
+}
+
+impl<'a> Clone for ScriptPubkeyRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a> Copy for ScriptPubkeyRef<'a> {}
+
+/// Common operations for transaction outputs, implemented by both owned and borrowed types.
+pub trait TxOutExt {
+    /// Returns a raw pointer to the underlying C object.
+    fn as_ptr(&self) -> *const btck_TransactionOutput;
+
+    /// Returns the amount of this output in satoshis.
+    fn value(&self) -> i64 {
+        unsafe { btck_transaction_output_get_amount(self.as_ptr()) }
+    }
+
+    /// Returns a reference to the script pubkey that defines how this output can be spent.
     ///
-    /// This calls the underlying type's `Clone` implementation to create
-    /// an independent copy that can outlive the original reference.
-    pub fn to_owned(&self) -> T
-    where
-        T: Clone,
-    {
-        self.inner.clone()
-    }
-}
-
-impl<'a, T, L> std::ops::Deref for RefType<'a, T, L> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<'a, T, L> AsRef<T> for RefType<'a, T, L> {
-    fn as_ref(&self) -> &T {
-        &self.inner
-    }
-}
-
-impl<'a, T, L> Borrow<T> for RefType<'a, T, L> {
-    fn borrow(&self) -> &T {
-        &self.inner
+    /// # Returns
+    /// * `RefType<ScriptPubkey, TxOut>` - A reference to the script pubkey
+    fn script_pubkey(&self) -> ScriptPubkeyRef<'_> {
+        let ptr = unsafe { btck_transaction_output_get_script_pubkey(self.as_ptr()) };
+        unsafe { ScriptPubkeyRef::from_ptr(ptr) }
     }
 }
 
@@ -903,25 +936,20 @@ impl TxOut {
     /// # Arguments
     /// * `script_pubkey` - The script defining how this output can be spent
     /// * `amount` - The amount in satoshis
-    pub fn new(script_pubkey: &ScriptPubkey, amount: i64) -> TxOut {
+    pub fn new(script_pubkey: &impl ScriptPubkeyExt, amount: i64) -> Self {
         TxOut {
-            inner: unsafe { btck_transaction_output_create(script_pubkey.inner, amount) },
+            inner: unsafe { btck_transaction_output_create(script_pubkey.as_ptr(), amount) },
         }
     }
 
-    /// Returns the amount of this output in satoshis.
-    pub fn value(&self) -> i64 {
-        unsafe { btck_transaction_output_get_amount(self.inner) }
+    pub fn as_ref(&self) -> TxOutRef<'_> {
+        unsafe { TxOutRef::from_ptr(self.inner as *const _) }
     }
+}
 
-    /// Returns a reference to the script pubkey that defines how this output can be spent.
-    ///
-    /// # Returns
-    /// * `RefType<ScriptPubkey, TxOut>` - A reference to the script pubkey
-    pub fn script_pubkey(&self) -> RefType<'_, ScriptPubkey, TxOut> {
-        RefType::new(ScriptPubkey {
-            inner: unsafe { btck_transaction_output_get_script_pubkey(self.inner) },
-        })
+impl TxOutExt for TxOut {
+    fn as_ptr(&self) -> *const btck_TransactionOutput {
+        self.inner as *const _
     }
 }
 
@@ -939,18 +967,48 @@ impl Drop for TxOut {
     }
 }
 
-/// A Bitcoin transaction.
-pub struct Transaction {
-    inner: *mut btck_Transaction,
+pub struct TxOutRef<'a> {
+    inner: *const btck_TransactionOutput,
+    marker: PhantomData<&'a ()>,
 }
 
-unsafe impl Send for Transaction {}
-unsafe impl Sync for Transaction {}
+impl<'a> TxOutRef<'a> {
+    pub unsafe fn from_ptr(ptr: *const btck_TransactionOutput) -> Self {
+        TxOutRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
 
-impl Transaction {
+    pub fn to_owned(&self) -> TxOut {
+        TxOut {
+            inner: unsafe { btck_transaction_output_copy(self.inner) },
+        }
+    }
+}
+
+impl<'a> TxOutExt for TxOutRef<'a> {
+    fn as_ptr(&self) -> *const btck_TransactionOutput {
+        self.inner
+    }
+}
+
+impl<'a> Clone for TxOutRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a> Copy for TxOutRef<'a> {}
+
+/// Common operations for transactions, implemented by both owned and borrowed types.
+pub trait TransactionExt {
+    /// Returns a raw pointer to the underlying C object.
+    fn as_ptr(&self) -> *const btck_Transaction;
+
     /// Returns the number of outputs in this transaction.
-    pub fn output_count(&self) -> usize {
-        unsafe { btck_transaction_count_outputs(self.inner) as usize }
+    fn output_count(&self) -> usize {
+        unsafe { btck_transaction_count_outputs(self.as_ptr()) as usize }
     }
 
     /// Returns a reference to the output at the specified index.
@@ -961,50 +1019,60 @@ impl Transaction {
     /// # Returns
     /// * `Ok(RefType<TxOut, Transaction>)` - A reference to the output
     /// * `Err(KernelError::OutOfBounds)` - If the index is invalid
-    pub fn output(&self, index: usize) -> Result<RefType<'_, TxOut, Transaction>, KernelError> {
+    unsafe fn output(&self, index: usize) -> Result<TxOutRef<'_>, KernelError> {
         if index >= self.output_count() {
             return Err(KernelError::OutOfBounds);
         }
-        let output_ptr = unsafe { btck_transaction_get_output_at(self.inner, index) };
-        Ok(RefType::new(TxOut { inner: output_ptr }))
+        let ptr = unsafe { btck_transaction_get_output_at(self.as_ptr(), index) };
+        Ok(TxOutRef::from_ptr(ptr))
     }
 
-    pub fn input_count(&self) -> usize {
-        unsafe { btck_transaction_count_inputs(self.inner) as usize }
+    fn input_count(&self) -> usize {
+        unsafe { btck_transaction_count_inputs(self.as_ptr()) as usize }
     }
 
     /// Consensus encodes the transaction to Bitcoin wire format.
-    pub fn consensus_encode(&self) -> Result<Vec<u8>, KernelError> {
+    fn consensus_encode(&self) -> Result<Vec<u8>, KernelError> {
         c_serialize(|callback, user_data| unsafe {
-            btck_transaction_to_bytes(self.inner, Some(callback), user_data)
+            btck_transaction_to_bytes(self.as_ptr(), Some(callback), user_data)
         })
     }
 }
 
-impl TryFrom<Transaction> for Vec<u8> {
-    type Error = KernelError;
+/// A Bitcoin transaction.
+pub struct Transaction {
+    inner: *mut btck_Transaction,
+}
 
-    fn try_from(tx: Transaction) -> Result<Self, Self::Error> {
-        tx.consensus_encode()
+unsafe impl Send for Transaction {}
+unsafe impl Sync for Transaction {}
+
+impl Transaction {
+    pub fn new(transaction_bytes: &[u8]) -> Result<Self, KernelError> {
+        let inner = unsafe {
+            btck_transaction_create(
+                transaction_bytes.as_ptr() as *const c_void,
+                transaction_bytes.len(),
+            )
+        };
+
+        if inner.is_null() {
+            Err(KernelError::Internal(
+                "Failed to create transaction from bytes".to_string(),
+            ))
+        } else {
+            Ok(Transaction { inner })
+        }
+    }
+
+    pub fn as_ref(&self) -> TransactionRef<'_> {
+        unsafe { TransactionRef::from_ptr(self.inner as *const _) }
     }
 }
 
-impl TryFrom<&[u8]> for Transaction {
-    type Error = KernelError;
-
-    fn try_from(raw_transaction: &[u8]) -> Result<Self, Self::Error> {
-        let inner = unsafe {
-            btck_transaction_create(
-                raw_transaction.as_ptr() as *const c_void,
-                raw_transaction.len(),
-            )
-        };
-        if inner.is_null() {
-            return Err(KernelError::Internal(
-                "Failed to decode raw transaction.".to_string(),
-            ));
-        }
-        Ok(Transaction { inner })
+impl TransactionExt for Transaction {
+    fn as_ptr(&self) -> *const btck_Transaction {
+        self.inner as *const _
     }
 }
 
@@ -1022,6 +1090,64 @@ impl Drop for Transaction {
     }
 }
 
+impl TryFrom<&[u8]> for Transaction {
+    type Error = KernelError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        Transaction::new(bytes)
+    }
+}
+
+impl TryFrom<Transaction> for Vec<u8> {
+    type Error = KernelError;
+
+    fn try_from(transaction: Transaction) -> Result<Self, Self::Error> {
+        transaction.consensus_encode()
+    }
+}
+
+impl TryFrom<&Transaction> for Vec<u8> {
+    type Error = KernelError;
+
+    fn try_from(transaction: &Transaction) -> Result<Self, Self::Error> {
+        transaction.consensus_encode()
+    }
+}
+
+pub struct TransactionRef<'a> {
+    inner: *const btck_Transaction,
+    marker: PhantomData<&'a ()>,
+}
+
+impl<'a> TransactionRef<'a> {
+    pub unsafe fn from_ptr(ptr: *const btck_Transaction) -> Self {
+        TransactionRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn to_owned(&self) -> Transaction {
+        Transaction {
+            inner: unsafe { btck_transaction_copy(self.inner) },
+        }
+    }
+}
+
+impl<'a> TransactionExt for TransactionRef<'a> {
+    fn as_ptr(&self) -> *const btck_Transaction {
+        self.inner
+    }
+}
+
+impl<'a> Clone for TransactionRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a> Copy for TransactionRef<'a> {}
+
 /// A Bitcoin block containing a header and transactions.
 ///
 /// Blocks can be created from raw serialized data or retrieved from the blockchain.
@@ -1034,6 +1160,19 @@ unsafe impl Send for Block {}
 unsafe impl Sync for Block {}
 
 impl Block {
+    pub fn new(raw_block: &[u8]) -> Result<Self, KernelError> {
+        let inner =
+            unsafe { btck_block_create(raw_block.as_ptr() as *const c_void, raw_block.len()) };
+
+        if inner.is_null() {
+            Err(KernelError::Internal(
+                "Failed to create Block from bytes".to_string(),
+            ))
+        } else {
+            Ok(Block { inner })
+        }
+    }
+
     /// Returns the hash of this block.
     ///
     /// This is the double SHA256 hash of the block header, which serves as
@@ -1049,7 +1188,7 @@ impl Block {
 
     /// Returns the number of transactions in this block.
     pub fn transaction_count(&self) -> usize {
-        unsafe { btck_block_count_transactions(self.inner) as usize }
+        unsafe { btck_block_count_transactions(self.inner) }
     }
 
     /// Returns the transaction at the specified index.
@@ -1059,12 +1198,12 @@ impl Block {
     ///
     /// # Errors
     /// Returns [`KernelError::OutOfBounds`] if the index is invalid.
-    pub fn transaction(&self, index: usize) -> Result<Transaction, KernelError> {
+    pub fn transaction(&self, index: usize) -> Result<TransactionRef<'_>, KernelError> {
         if index >= self.transaction_count() {
             return Err(KernelError::OutOfBounds);
         }
-        let tx = unsafe { btck_block_get_transaction_at(self.inner, index) };
-        Ok(Transaction { inner: tx })
+        let tx_ptr = unsafe { btck_block_get_transaction_at(self.inner, index) };
+        Ok(unsafe { TransactionRef::from_ptr(tx_ptr) })
     }
 
     /// Consensus encodes the block to Bitcoin wire format.
@@ -1073,28 +1212,9 @@ impl Block {
             btck_block_to_bytes(self.inner, Some(callback), user_data)
         })
     }
-}
 
-impl TryFrom<Block> for Vec<u8> {
-    type Error = KernelError;
-
-    fn try_from(block: Block) -> Result<Self, KernelError> {
-        block.consensus_encode()
-    }
-}
-
-impl TryFrom<&[u8]> for Block {
-    type Error = KernelError;
-
-    fn try_from(raw_block: &[u8]) -> Result<Self, Self::Error> {
-        let inner =
-            unsafe { btck_block_create(raw_block.as_ptr() as *const c_void, raw_block.len()) };
-        if inner.is_null() {
-            return Err(KernelError::Internal(
-                "Failed to de-serialize Block.".to_string(),
-            ));
-        }
-        Ok(Block { inner })
+    pub fn as_ptr(&self) -> *const btck_Block {
+        self.inner as *const _
     }
 }
 
@@ -1112,6 +1232,30 @@ impl Drop for Block {
     }
 }
 
+impl TryFrom<&[u8]> for Block {
+    type Error = KernelError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        Block::new(bytes)
+    }
+}
+
+impl TryFrom<Block> for Vec<u8> {
+    type Error = KernelError;
+
+    fn try_from(block: Block) -> Result<Self, Self::Error> {
+        block.consensus_encode()
+    }
+}
+
+impl TryFrom<&Block> for Vec<u8> {
+    type Error = KernelError;
+
+    fn try_from(block: &Block) -> Result<Self, Self::Error> {
+        block.consensus_encode()
+    }
+}
+
 /// A block tree entry that is tied to a specific [`ChainstateManager`].
 ///
 /// Internally the [`ChainstateManager`] keeps an in-memory of the current block
@@ -1119,13 +1263,13 @@ impl Drop for Block {
 /// It is only valid as long as the [`ChainstateManager`] it was retrieved from
 /// remains in scope.
 #[derive(Debug)]
-pub struct BlockTreeEntry {
-    inner: *mut btck_BlockTreeEntry,
-    marker: PhantomData<ChainstateManager>,
+pub struct BlockTreeEntry<'a> {
+    inner: *const btck_BlockTreeEntry,
+    marker: PhantomData<&'a ChainstateManager>,
 }
 
-unsafe impl Send for BlockTreeEntry {}
-unsafe impl Sync for BlockTreeEntry {}
+unsafe impl Send for BlockTreeEntry<'_> {}
+unsafe impl Sync for BlockTreeEntry<'_> {}
 
 /// A type for a Block hash.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -1133,20 +1277,24 @@ pub struct BlockHash {
     pub hash: [u8; 32],
 }
 
-impl BlockTreeEntry {
+impl<'a> BlockTreeEntry<'a> {
+    pub unsafe fn from_ptr(ptr: *const btck_BlockTreeEntry) -> Self {
+        BlockTreeEntry {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+
     /// Move to the previous entry in the block tree. E.g. from height n to
     /// height n-1.
-    pub fn prev(self) -> Result<BlockTreeEntry, KernelError> {
+    pub fn prev(self) -> Option<BlockTreeEntry<'a>> {
         let inner = unsafe { btck_block_tree_entry_get_previous(self.inner) };
 
         if inner.is_null() {
-            return Err(KernelError::OutOfBounds);
+            return None;
         }
 
-        Ok(BlockTreeEntry {
-            inner,
-            marker: self.marker,
-        })
+        Some(unsafe { BlockTreeEntry::from_ptr(inner) })
     }
 
     /// Returns the current height associated with this BlockTreeEntry.
@@ -1163,31 +1311,30 @@ impl BlockTreeEntry {
         unsafe { btck_block_hash_destroy(hash) };
         res
     }
-}
 
-impl Drop for BlockTreeEntry {
-    fn drop(&mut self) {
-        unsafe { btck_block_tree_entry_destroy(self.inner) };
+    pub fn as_ptr(&self) -> *const btck_BlockTreeEntry {
+        self.inner
     }
 }
 
-/// Spent output data for all transactions in a block.
-///
-/// This contains the previous outputs that were consumed by all transactions
-/// in a specific block.
-pub struct BlockSpentOutputs {
-    inner: *mut btck_BlockSpentOutputs,
+impl<'a> Clone for BlockTreeEntry<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
-unsafe impl Send for BlockSpentOutputs {}
-unsafe impl Sync for BlockSpentOutputs {}
+impl<'a> Copy for BlockTreeEntry<'a> {}
 
-impl BlockSpentOutputs {
+/// Common operations for block spent outputs, implemented by both owned and borrowed types.
+pub trait BlockSpentOutputsExt {
+    /// Returns a raw pointer to the underlying C object.
+    fn as_ptr(&self) -> *const btck_BlockSpentOutputs;
+
     /// Returns the number of transactions that have spent output data.
     ///
     /// Note: This excludes the coinbase transaction, which has no inputs.
-    pub fn count(&self) -> usize {
-        unsafe { btck_block_spent_outputs_count(self.inner) }
+    fn count(&self) -> usize {
+        unsafe { btck_block_spent_outputs_count(self.as_ptr()) }
     }
 
     /// Returns a reference to the spent outputs for a specific transaction in the block.
@@ -1198,17 +1345,47 @@ impl BlockSpentOutputs {
     /// # Returns
     /// * `Ok(RefType<TransactionSpentOutputs, BlockSpentOutputs>)` - A reference to the transaction's spent outputs
     /// * `Err(KernelError::OutOfBounds)` - If the index is invalid
-    pub fn transaction_spent_outputs(
+    fn transaction_spent_outputs(
         &self,
         transaction_index: usize,
-    ) -> Result<RefType<'_, TransactionSpentOutputs, BlockSpentOutputs>, KernelError> {
+    ) -> Result<TransactionSpentOutputsRef<'_>, KernelError> {
+        if transaction_index >= self.count() {
+            return Err(KernelError::OutOfBounds);
+        }
         let tx_out_ptr = unsafe {
-            btck_block_spent_outputs_get_transaction_spent_outputs_at(self.inner, transaction_index)
+            btck_block_spent_outputs_get_transaction_spent_outputs_at(
+                self.as_ptr(),
+                transaction_index,
+            )
         };
         if tx_out_ptr.is_null() {
             return Err(KernelError::OutOfBounds);
         }
-        Ok(RefType::new(TransactionSpentOutputs { inner: tx_out_ptr }))
+        Ok(unsafe { TransactionSpentOutputsRef::from_ptr(tx_out_ptr) })
+    }
+}
+
+/// Spent output data for all transactions in a block.
+///
+/// This contains the previous outputs that were consumed by all transactions
+/// in a specific block.
+#[derive(Debug)]
+pub struct BlockSpentOutputs {
+    inner: *mut btck_BlockSpentOutputs,
+}
+
+unsafe impl Send for BlockSpentOutputs {}
+unsafe impl Sync for BlockSpentOutputs {}
+
+impl BlockSpentOutputs {
+    pub fn as_ref(&self) -> BlockSpentOutputsRef<'_> {
+        unsafe { BlockSpentOutputsRef::from_ptr(self.inner as *const _) }
+    }
+}
+
+impl BlockSpentOutputsExt for BlockSpentOutputs {
+    fn as_ptr(&self) -> *const btck_BlockSpentOutputs {
+        self.inner as *const _
     }
 }
 
@@ -1226,21 +1403,48 @@ impl Drop for BlockSpentOutputs {
     }
 }
 
-/// Spent output data for a single transaction.
-///
-/// Contains all the coins (UTXOs) that were consumed by a specific transaction's
-/// inputs, in the same order as the transaction's inputs.
-pub struct TransactionSpentOutputs {
-    inner: *mut btck_TransactionSpentOutputs,
+pub struct BlockSpentOutputsRef<'a> {
+    inner: *const btck_BlockSpentOutputs,
+    marker: PhantomData<&'a ()>,
 }
 
-unsafe impl Send for TransactionSpentOutputs {}
-unsafe impl Sync for TransactionSpentOutputs {}
+impl<'a> BlockSpentOutputsRef<'a> {
+    pub unsafe fn from_ptr(ptr: *const btck_BlockSpentOutputs) -> Self {
+        BlockSpentOutputsRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
 
-impl TransactionSpentOutputs {
-    /// Returns the number of coins spent by this transaction.
-    pub fn count(&self) -> usize {
-        unsafe { btck_transaction_spent_outputs_count(self.inner) }
+    pub fn to_owned(&self) -> BlockSpentOutputs {
+        BlockSpentOutputs {
+            inner: unsafe { btck_block_spent_outputs_copy(self.inner) },
+        }
+    }
+}
+
+impl<'a> BlockSpentOutputsExt for BlockSpentOutputsRef<'a> {
+    fn as_ptr(&self) -> *const btck_BlockSpentOutputs {
+        self.inner
+    }
+}
+
+impl<'a> Clone for BlockSpentOutputsRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a> Copy for BlockSpentOutputsRef<'a> {}
+
+/// Common operations for transaction spent outputs, implemented by both owned and borrowed types.
+pub trait TransactionSpentOutputsExt {
+    /// Returns a raw pointer to the underlying C object.
+    fn as_ptr(&self) -> *const btck_TransactionSpentOutputs;
+
+    /// Returns the number of coins spent by this transaction
+    fn count(&self) -> usize {
+        unsafe { btck_transaction_spent_outputs_count(self.as_ptr()) }
     }
 
     /// Returns a reference to the coin at the specified input index.
@@ -1251,18 +1455,37 @@ impl TransactionSpentOutputs {
     /// # Returns
     /// * `Ok(RefType<Coin, TransactionSpentOutputs>)` - A reference to the coin
     /// * `Err(KernelError::OutOfBounds)` - If the index is invalid
-    pub fn coin(
-        &self,
-        coin_index: usize,
-    ) -> Result<RefType<'_, Coin, TransactionSpentOutputs>, KernelError> {
-        let coin_ptr = unsafe {
-            btck_transaction_spent_outputs_get_coin_at(self.inner as *const _, coin_index)
-        };
-        if coin_ptr.is_null() {
+    fn coin(&self, coin_index: usize) -> Result<CoinRef<'_>, KernelError> {
+        if coin_index >= self.count() {
             return Err(KernelError::OutOfBounds);
         }
+        let coin_ptr =
+            unsafe { btck_transaction_spent_outputs_get_coin_at(self.as_ptr(), coin_index) };
+        Ok(unsafe { CoinRef::from_ptr(coin_ptr) })
+    }
+}
 
-        Ok(RefType::new(Coin { inner: coin_ptr }))
+/// Spent output data for a single transaction.
+///
+/// Contains all the coins (UTXOs) that were consumed by a specific transaction's
+/// inputs, in the same order as the transaction's inputs.
+#[derive(Debug)]
+pub struct TransactionSpentOutputs {
+    inner: *mut btck_TransactionSpentOutputs,
+}
+
+unsafe impl Send for TransactionSpentOutputs {}
+unsafe impl Sync for TransactionSpentOutputs {}
+
+impl TransactionSpentOutputs {
+    pub fn as_ref(&self) -> TransactionSpentOutputsRef<'_> {
+        unsafe { TransactionSpentOutputsRef::from_ptr(self.inner as *const _) }
+    }
+}
+
+impl TransactionSpentOutputsExt for TransactionSpentOutputs {
+    fn as_ptr(&self) -> *const btck_TransactionSpentOutputs {
+        self.inner as *const _
     }
 }
 
@@ -1280,26 +1503,53 @@ impl Drop for TransactionSpentOutputs {
     }
 }
 
-/// A coin (UTXO) representing a transaction output.
-///
-/// Contains the transaction output data along with metadata about when
-/// it was created and whether it came from a coinbase transaction.
-pub struct Coin {
-    inner: *mut btck_Coin,
+pub struct TransactionSpentOutputsRef<'a> {
+    inner: *const btck_TransactionSpentOutputs,
+    marker: PhantomData<&'a ()>,
 }
 
-unsafe impl Send for Coin {}
-unsafe impl Sync for Coin {}
+impl<'a> TransactionSpentOutputsRef<'a> {
+    pub unsafe fn from_ptr(ptr: *const btck_TransactionSpentOutputs) -> Self {
+        TransactionSpentOutputsRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
 
-impl Coin {
+    pub fn to_owned(&self) -> TransactionSpentOutputs {
+        TransactionSpentOutputs {
+            inner: unsafe { btck_transaction_spent_outputs_copy(self.inner) },
+        }
+    }
+}
+
+impl<'a> TransactionSpentOutputsExt for TransactionSpentOutputsRef<'a> {
+    fn as_ptr(&self) -> *const btck_TransactionSpentOutputs {
+        self.inner
+    }
+}
+
+impl<'a> Clone for TransactionSpentOutputsRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a> Copy for TransactionSpentOutputsRef<'a> {}
+
+/// Common operations for coins, implemented by both owned and borrowed types.
+pub trait CoinExt {
+    /// Returns a raw pointer to the underlying C object.
+    fn as_ptr(&self) -> *const btck_Coin;
+
     /// Returns the height of the block where this coin was created.
-    pub fn confirmation_height(&self) -> u32 {
-        unsafe { btck_coin_confirmation_height(self.inner) }
+    fn confirmation_height(&self) -> u32 {
+        unsafe { btck_coin_confirmation_height(self.as_ptr()) }
     }
 
     /// Returns true if this coin came from a coinbase transaction.
-    pub fn is_coinbase(&self) -> bool {
-        let result = unsafe { btck_coin_is_coinbase(self.inner) };
+    fn is_coinbase(&self) -> bool {
+        let result = unsafe { btck_coin_is_coinbase(self.as_ptr()) };
         c_helpers::present(result)
     }
 
@@ -1308,14 +1558,33 @@ impl Coin {
     /// # Returns
     /// * `Ok(RefType<TxOut, Coin>)` - A reference to the transaction output
     /// * `Err(KernelError::Internal)` - If the coin data is corrupted
-    pub fn output(&self) -> Result<RefType<'_, TxOut, Coin>, KernelError> {
-        let output_ptr = unsafe { btck_coin_get_output(self.inner) };
-        if output_ptr.is_null() {
-            return Err(KernelError::Internal(
-                "Unexpected null pointer from btck_coin_get_output".to_string(),
-            ));
-        }
-        Ok(RefType::new(TxOut { inner: output_ptr }))
+    fn output(&self) -> TxOutRef<'_> {
+        let output_ptr = unsafe { btck_coin_get_output(self.as_ptr()) };
+        unsafe { TxOutRef::from_ptr(output_ptr) }
+    }
+}
+
+/// A coin (UTXO) representing a transaction output.
+///
+/// Contains the transaction output data along with metadata about when
+/// it was created and whether it came from a coinbase transaction.
+#[derive(Debug)]
+pub struct Coin {
+    inner: *mut btck_Coin,
+}
+
+unsafe impl Send for Coin {}
+unsafe impl Sync for Coin {}
+
+impl Coin {
+    pub fn as_ref(&self) -> CoinRef<'_> {
+        unsafe { CoinRef::from_ptr(self.inner as *const _) }
+    }
+}
+
+impl CoinExt for Coin {
+    fn as_ptr(&self) -> *const btck_Coin {
+        self.inner as *const _
     }
 }
 
@@ -1332,6 +1601,40 @@ impl Drop for Coin {
         unsafe { btck_coin_destroy(self.inner) };
     }
 }
+
+pub struct CoinRef<'a> {
+    inner: *const btck_Coin,
+    marker: PhantomData<&'a ()>,
+}
+
+impl<'a> CoinRef<'a> {
+    pub unsafe fn from_ptr(ptr: *const btck_Coin) -> Self {
+        CoinRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn to_owned(&self) -> Coin {
+        Coin {
+            inner: unsafe { btck_coin_copy(self.inner) },
+        }
+    }
+}
+
+impl<'a> CoinExt for CoinRef<'a> {
+    fn as_ptr(&self) -> *const btck_Coin {
+        self.inner
+    }
+}
+
+impl<'a> Clone for CoinRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a> Copy for CoinRef<'a> {}
 
 /// Holds the configuration options for creating a new [`ChainstateManager`]
 pub struct ChainstateManagerOptions {
@@ -1418,97 +1721,93 @@ impl Drop for ChainstateManagerOptions {
 
 /// Iterator for traversing blocks sequentially from genesis to tip.
 pub struct ChainIterator<'a> {
-    chain: &'a Chain,
-    current: Option<BlockTreeEntry>,
+    chain: Chain<'a>,
+    current_height: usize,
 }
 
 impl<'a> ChainIterator<'a> {
-    fn new(chain: &'a Chain, start: Option<BlockTreeEntry>) -> Self {
+    fn new(chain: Chain<'a>) -> Self {
         Self {
             chain,
-            current: start,
+            current_height: 0,
         }
     }
 }
 
 impl<'a> Iterator for ChainIterator<'a> {
-    type Item = BlockTreeEntry;
+    type Item = BlockTreeEntry<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current_entry) = self.current.take() {
-            self.current = self.chain.next(&current_entry);
-
-            Some(current_entry)
-        } else {
-            None
-        }
+        let height = self.current_height;
+        self.current_height += 1;
+        self.chain.at_height(height)
     }
 }
 
 /// Represents a chain instance for querying and traversal.
-pub struct Chain {
-    inner: *mut btck_Chain,
-    marker: PhantomData<ChainstateManager>,
+pub struct Chain<'a> {
+    inner: *const btck_Chain,
+    marker: PhantomData<&'a ChainstateManager>,
 }
 
-impl Chain {
-    /// Returns the tip (highest block) of the active chain.
-    pub fn tip(&self) -> BlockTreeEntry {
-        BlockTreeEntry {
-            inner: unsafe { btck_chain_get_tip(self.inner) },
+impl<'a> Chain<'a> {
+    pub unsafe fn from_ptr(ptr: *const btck_Chain) -> Self {
+        Chain {
+            inner: ptr,
             marker: PhantomData,
         }
+    }
+
+    /// Returns the tip (highest block) of the active chain.
+    pub fn tip(&self) -> BlockTreeEntry<'a> {
+        let ptr = unsafe { btck_chain_get_tip(self.inner) };
+        unsafe { BlockTreeEntry::from_ptr(ptr) }
     }
 
     /// Returns the genesis block (height 0) of the chain.
-    pub fn genesis(&self) -> BlockTreeEntry {
-        BlockTreeEntry {
-            inner: unsafe { btck_chain_get_genesis(self.inner) },
-            marker: PhantomData,
-        }
+    pub fn genesis(&self) -> BlockTreeEntry<'a> {
+        let ptr = unsafe { btck_chain_get_genesis(self.inner) };
+        unsafe { BlockTreeEntry::from_ptr(ptr) }
     }
 
     /// Returns the block at the specified height, if it exists.
-    pub fn at_height(&self, height: usize) -> Option<BlockTreeEntry> {
-        let tip_height = self.tip().height();
+    pub fn at_height(&self, height: usize) -> Option<BlockTreeEntry<'a>> {
+        let tip_height = self.height();
         if height > tip_height as usize {
             return None;
         }
 
-        let entry = unsafe { btck_chain_get_by_height(self.inner, height as i32) };
-        if entry.is_null() {
+        let ptr = unsafe { btck_chain_get_by_height(self.inner, height as i32) };
+        if ptr.is_null() {
             return None;
         }
 
-        Some(BlockTreeEntry {
-            inner: entry,
-            marker: PhantomData,
-        })
-    }
-
-    /// Returns the next block after the given entry.
-    pub fn next(&self, entry: &BlockTreeEntry) -> Option<BlockTreeEntry> {
-        self.at_height((entry.height() + 1) as usize)
+        Some(unsafe { BlockTreeEntry::from_ptr(ptr) })
     }
 
     /// Checks if the given block entry is part of the active chain.
-    pub fn contains(&self, entry: &BlockTreeEntry) -> bool {
-        let result = unsafe { btck_chain_contains(self.inner, entry.inner) };
+    pub fn contains(&self, entry: &BlockTreeEntry<'a>) -> bool {
+        let result = unsafe { btck_chain_contains(self.inner, entry.as_ptr()) };
         c_helpers::present(result)
     }
 
     /// Returns an iterator over all blocks from genesis to tip.
-    pub fn iter(&self) -> ChainIterator<'_> {
-        let genesis = self.genesis();
-        ChainIterator::new(self, Some(genesis))
+    pub fn iter(&self) -> ChainIterator<'a> {
+        ChainIterator::new(*self)
+    }
+
+    pub fn height(&self) -> i32 {
+        self.tip().height()
     }
 }
 
-impl Drop for Chain {
-    fn drop(&mut self) {
-        unsafe { btck_chain_destroy(self.inner) }
+impl<'a> Clone for Chain<'a> {
+    fn clone(&self) -> Self {
+        *self
     }
 }
+
+impl<'a> Copy for Chain<'a> {}
 
 /// The chainstate manager is the central object for doing validation tasks as
 /// well as retrieving data from the chain. Internally it is a complex data
@@ -1545,7 +1844,7 @@ impl ChainstateManager {
     pub fn process_block(&self, block: &Block) -> (bool /* accepted */, bool /* duplicate */) {
         let mut new_block: i32 = 0;
         let accepted = unsafe {
-            btck_chainstate_manager_process_block(self.inner, block.inner, &mut new_block)
+            btck_chainstate_manager_process_block(self.inner, block.as_ptr(), &mut new_block)
         };
         (c_helpers::success(accepted), c_helpers::enabled(new_block))
     }
@@ -1594,10 +1893,22 @@ impl ChainstateManager {
         Ok(BlockSpentOutputs { inner })
     }
 
-    pub fn active_chain(&self) -> Chain {
-        Chain {
-            inner: unsafe { btck_chainstate_manager_get_active_chain(self.inner) },
-            marker: PhantomData,
+    pub fn active_chain(&self) -> Chain<'_> {
+        let ptr = unsafe { btck_chainstate_manager_get_active_chain(self.inner) };
+        unsafe { Chain::from_ptr(ptr) }
+    }
+
+    pub fn get_block_tree_entry(&self, block_hash: &BlockHash) -> Option<BlockTreeEntry<'_>> {
+        let ptr = unsafe {
+            btck_chainstate_manager_get_block_tree_entry_by_hash(
+                self.inner,
+                block_hash as *const _ as *const btck_BlockHash,
+            )
+        };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { BlockTreeEntry::from_ptr(ptr) })
         }
     }
 }
@@ -1795,4 +2106,11 @@ impl From<btck_LogLevel> for LogLevel {
             _ => panic!("Unknown log level: {}", value),
         }
     }
+}
+
+pub mod prelude {
+    pub use crate::{
+        BlockSpentOutputsExt, CoinExt, ScriptPubkeyExt, TransactionExt, TransactionSpentOutputsExt,
+        TxOutExt,
+    };
 }
