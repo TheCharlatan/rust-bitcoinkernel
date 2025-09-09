@@ -2,11 +2,11 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use bitcoinkernel::{
-        verify, Block, BlockHash, BlockSpentOutputs, ChainParams, ChainType, ChainstateManager,
-        ChainstateManagerOptions, Coin, Context, ContextBuilder, KernelError,
-        KernelNotificationInterfaceCallbacks, Log, Logger, ScriptPubkey, ScriptVerifyError,
-        Transaction, TransactionSpentOutputs, TxOut, ValidationInterfaceCallbacks,
-        VERIFY_ALL_PRE_TAPROOT,
+        prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
+        ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder,
+        KernelError, KernelNotificationInterfaceCallbacks, Log, Logger, ScriptPubkey,
+        ScriptVerifyError, Transaction, TransactionSpentOutputs, TxOut, TxOutRef,
+        ValidationInterfaceCallbacks, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -137,7 +137,7 @@ mod tests {
             drop(block);
 
             // Invalid block
-            let block_1 = Block::try_from(hex::decode(
+            let block_1 = Block::new(hex::decode(
                 "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd\
                 1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299\
                 0101000000010000000000000000000000000000000000000000000000000000000000000000ffff\
@@ -234,7 +234,7 @@ mod tests {
                 let coin = tx_spent_outputs.coin(j).unwrap();
                 helper.ins.push(Input {
                     height: coin.confirmation_height(),
-                    prevout: coin.output().unwrap().script_pubkey().to_bytes(),
+                    prevout: coin.output().script_pubkey().to_bytes(),
                     script_sig: block.txdata[i + 1].input[j].script_sig.to_bytes(),
                     witness: block.txdata[i + 1].input[j].witness.to_vec(),
                 });
@@ -338,7 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reftype_deref() {
+    fn test_reftype_to_bytes() {
         let script_data = vec![0x76, 0xa9, 0x14];
         let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
         let tx_out = TxOut::new(&script, 1000);
@@ -351,18 +351,19 @@ mod tests {
     }
 
     #[test]
-    fn test_reftype_as_ref() {
+    fn test_as_ref_method_on_owned_types() {
         let script_data = vec![0x76, 0xa9, 0x14];
-        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
-        let tx_out = TxOut::new(&script, 1000);
+        let owned_script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let tx_out = TxOut::new(&owned_script, 1000);
 
-        let script_ref = tx_out.script_pubkey();
+        let script_ref = owned_script.as_ref();
+        let tx_out_ref = tx_out.as_ref();
 
-        let script_as_ref: &ScriptPubkey = script_ref.as_ref();
+        assert_eq!(script_ref.to_bytes(), script_data);
+        assert_eq!(tx_out_ref.value(), 1000);
 
-        let bytes = script_as_ref.to_bytes();
-
-        assert_eq!(bytes, script_data);
+        assert_eq!(owned_script.to_bytes(), script_data);
+        assert_eq!(tx_out.value(), 1000);
     }
 
     #[test]
@@ -382,19 +383,22 @@ mod tests {
     }
 
     #[test]
-    fn test_reftype_generic_function() {
+    fn test_owned_and_ref_polymorphism() {
         let script_data = vec![0x76, 0xa9, 0x14];
-        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
-        let tx_out = TxOut::new(&script, 1000);
-
+        let owned_script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let tx_out = TxOut::new(&owned_script, 1000);
         let script_ref = tx_out.script_pubkey();
 
-        fn process_script<T: AsRef<ScriptPubkey>>(script: T) -> Vec<u8> {
-            script.as_ref().to_bytes()
+        fn get_bytes_generic(script: &impl ScriptPubkeyExt) -> Vec<u8> {
+            script.to_bytes()
         }
 
-        let bytes = process_script(script_ref);
-        assert_eq!(bytes, script_data);
+        let bytes_from_owned = get_bytes_generic(&owned_script);
+        let bytes_from_ref = get_bytes_generic(&script_ref);
+
+        assert_eq!(bytes_from_owned, script_data);
+        assert_eq!(bytes_from_ref, script_data);
+        assert_eq!(bytes_from_owned, bytes_from_ref);
     }
 
     #[test]
@@ -417,7 +421,7 @@ mod tests {
             hex::decode("76a9144bfbaf6afb76cc5771bc6404810d1cc041a6933988ac").unwrap();
         let script_pubkey = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
         let tx_hex = "02000000013f7cebd65c27431a90bba7f796914fe8cc2ddfc3f2cbd6f7e5f2fc854534da95000000006b483045022100de1ac3bcdfb0332207c4a91f3832bd2c2915840165f876ab47c5f8996b971c3602201c6c053d750fadde599e6f5c4e1963df0f01fc0d97815e8157e3d59fe09ca30d012103699b464d1d8bc9e47d4fb1cdaa89a1c5783d68363c4dbc4b524ed3d857148617feffffff02836d3c01000000001976a914fc25d6d5c94003bf5b0c7b640a248e2c637fcfb088ac7ada8202000000001976a914fbed3d9b11183209a57999d54d59f67c019e756c88ac6acb0700";
-        let tx = Transaction::try_from(hex::decode(tx_hex).unwrap().as_slice()).unwrap();
+        let tx = Transaction::new(hex::decode(tx_hex).unwrap().as_slice()).unwrap();
         let dummy_output = TxOut::new(&script_pubkey, 100000);
 
         // tx_index out of bounds
@@ -479,7 +483,7 @@ mod tests {
         .unwrap();
 
         for raw_block in block_data.iter() {
-            let block = Block::try_from(raw_block.as_slice()).unwrap();
+            let block = Block::new(raw_block.as_slice()).unwrap();
             let (accepted, new_block) = chainman.process_block(&block);
             assert!(accepted);
             assert!(new_block);
@@ -512,24 +516,18 @@ mod tests {
         assert!(chain.contains(&genesis));
         assert!(chain.contains(&tip));
 
-        let mut current = genesis;
-        let mut height_counter = 0;
+        let mut last_height = 0;
+        let mut last_block_index: Option<BlockTreeEntry> = None;
 
-        loop {
-            assert_eq!(current.height(), height_counter);
-            assert!(chain.contains(&current));
-
-            if let Some(next_entry) = chain.next(&current) {
-                assert_eq!(next_entry.height(), height_counter + 1);
-                current = next_entry;
-                height_counter += 1;
-            } else {
-                break;
-            }
+        for (height, current_block_index) in chain.iter().enumerate() {
+            assert_eq!(current_block_index.height(), height.try_into().unwrap());
+            assert!(chain.contains(&current_block_index));
+            last_height = height;
+            last_block_index = Some(current_block_index);
         }
 
-        assert_eq!(height_counter, tip_height);
-        assert_eq!(current.block_hash().hash, tip_hash.hash);
+        assert_eq!(last_height, tip_height as usize);
+        assert_eq!(last_block_index.unwrap().block_hash().hash, tip_hash.hash);
     }
 
     fn verify_test(
@@ -538,10 +536,10 @@ mod tests {
         amount: i64,
         input: usize,
     ) -> Result<(), KernelError> {
-        let outputs = vec![];
+        let outputs: Vec<TxOutRef> = vec![];
         let spent_script_pubkey =
             ScriptPubkey::try_from(hex::decode(spent).unwrap().as_slice()).unwrap();
-        let spending_tx = Transaction::try_from(hex::decode(spending).unwrap().as_slice()).unwrap();
+        let spending_tx = Transaction::new(hex::decode(spending).unwrap().as_slice()).unwrap();
         verify(
             &spent_script_pubkey,
             Some(amount),

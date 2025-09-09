@@ -15,6 +15,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace btck {
@@ -22,8 +23,7 @@ namespace btck {
 class Transaction;
 class TransactionOutput;
 
-enum class LogCategory : btck_LogCategory
-{
+enum class LogCategory : btck_LogCategory {
     ALL = btck_LogCategory_ALL,
     BENCH = btck_LogCategory_BENCH,
     BLOCKSTORAGE = btck_LogCategory_BLOCKSTORAGE,
@@ -37,15 +37,13 @@ enum class LogCategory : btck_LogCategory
     KERNEL = btck_LogCategory_KERNEL
 };
 
-enum class LogLevel : btck_LogLevel
-{
+enum class LogLevel : btck_LogLevel {
     TRACE_LEVEL = btck_LogLevel_TRACE,
     DEBUG_LEVEL = btck_LogLevel_DEBUG,
     INFO_LEVEL = btck_LogLevel_INFO
 };
 
-enum class ChainType : btck_ChainType
-{
+enum class ChainType : btck_ChainType {
     MAINNET = btck_ChainType_MAINNET,
     TESTNET = btck_ChainType_TESTNET,
     TESTNET_4 = btck_ChainType_TESTNET_4,
@@ -53,28 +51,24 @@ enum class ChainType : btck_ChainType
     REGTEST = btck_ChainType_REGTEST
 };
 
-enum class SynchronizationState : btck_SynchronizationState
-{
+enum class SynchronizationState : btck_SynchronizationState {
     INIT_REINDEX = btck_SynchronizationState_INIT_REINDEX,
     INIT_DOWNLOAD = btck_SynchronizationState_INIT_DOWNLOAD,
     POST_INIT = btck_SynchronizationState_POST_INIT
 };
 
-enum class Warning : btck_Warning
-{
+enum class Warning : btck_Warning {
     UNKNOWN_NEW_RULES_ACTIVATED = btck_Warning_UNKNOWN_NEW_RULES_ACTIVATED,
     LARGE_WORK_INVALID_CHAIN = btck_Warning_LARGE_WORK_INVALID_CHAIN
 };
 
-enum class ValidationMode : btck_ValidationMode
-{
+enum class ValidationMode : btck_ValidationMode {
     VALID = btck_ValidationMode_VALID,
     INVALID = btck_ValidationMode_INVALID,
     INTERNAL_ERROR = btck_ValidationMode_INTERNAL_ERROR
 };
 
-enum class BlockValidationResult : btck_BlockValidationResult
-{
+enum class BlockValidationResult : btck_BlockValidationResult {
     UNSET = btck_BlockValidationResult_UNSET,
     CONSENSUS = btck_BlockValidationResult_CONSENSUS,
     CACHED_INVALID = btck_BlockValidationResult_CACHED_INVALID,
@@ -86,15 +80,13 @@ enum class BlockValidationResult : btck_BlockValidationResult
     HEADER_LOW_WORK = btck_BlockValidationResult_HEADER_LOW_WORK
 };
 
-enum class ScriptVerifyStatus : btck_ScriptVerifyStatus
-{
+enum class ScriptVerifyStatus : btck_ScriptVerifyStatus {
     OK = btck_ScriptVerifyStatus_SCRIPT_VERIFY_OK,
     ERROR_INVALID_FLAGS_COMBINATION = btck_ScriptVerifyStatus_ERROR_INVALID_FLAGS_COMBINATION,
     ERROR_SPENT_OUTPUTS_REQUIRED = btck_ScriptVerifyStatus_ERROR_SPENT_OUTPUTS_REQUIRED,
 };
 
-enum class ScriptVerificationFlags : btck_ScriptVerificationFlags
-{
+enum class ScriptVerificationFlags : btck_ScriptVerificationFlags {
     NONE = btck_ScriptVerificationFlags_NONE,
     P2SH = btck_ScriptVerificationFlags_P2SH,
     DERSIG = btck_ScriptVerificationFlags_DERSIG,
@@ -106,53 +98,59 @@ enum class ScriptVerificationFlags : btck_ScriptVerificationFlags
     ALL = btck_ScriptVerificationFlags_ALL
 };
 
-template<typename T>
-struct is_bitmask_enum : std::false_type {};
+template <typename T>
+struct is_bitmask_enum : std::false_type {
+};
 
-template<>
-struct is_bitmask_enum<ScriptVerificationFlags> : std::true_type {};
+template <>
+struct is_bitmask_enum<ScriptVerificationFlags> : std::true_type {
+};
 
-template<typename T>
+template <typename T>
 concept BitmaskEnum = is_bitmask_enum<T>::value;
 
-template<BitmaskEnum T>
-constexpr T operator|(T lhs, T rhs) {
+template <BitmaskEnum T>
+constexpr T operator|(T lhs, T rhs)
+{
     return static_cast<T>(
-        static_cast<std::underlying_type_t<T>>(lhs) | static_cast<std::underlying_type_t<T>>(rhs)
-    );
+        static_cast<std::underlying_type_t<T>>(lhs) | static_cast<std::underlying_type_t<T>>(rhs));
 }
 
-template<BitmaskEnum T>
-constexpr T operator&(T lhs, T rhs) {
+template <BitmaskEnum T>
+constexpr T operator&(T lhs, T rhs)
+{
     return static_cast<T>(
-        static_cast<std::underlying_type_t<T>>(lhs) & static_cast<std::underlying_type_t<T>>(rhs)
-    );
+        static_cast<std::underlying_type_t<T>>(lhs) & static_cast<std::underlying_type_t<T>>(rhs));
 }
 
-template<BitmaskEnum T>
-constexpr T operator^(T lhs, T rhs) {
+template <BitmaskEnum T>
+constexpr T operator^(T lhs, T rhs)
+{
     return static_cast<T>(
-        static_cast<std::underlying_type_t<T>>(lhs) ^ static_cast<std::underlying_type_t<T>>(rhs)
-    );
+        static_cast<std::underlying_type_t<T>>(lhs) ^ static_cast<std::underlying_type_t<T>>(rhs));
 }
 
-template<BitmaskEnum T>
-constexpr T operator~(T value) {
+template <BitmaskEnum T>
+constexpr T operator~(T value)
+{
     return static_cast<T>(~static_cast<std::underlying_type_t<T>>(value));
 }
 
-template<BitmaskEnum T>
-constexpr T& operator|=(T& lhs, T rhs) {
+template <BitmaskEnum T>
+constexpr T& operator|=(T& lhs, T rhs)
+{
     return lhs = lhs | rhs;
 }
 
-template<BitmaskEnum T>
-constexpr T& operator&=(T& lhs, T rhs) {
+template <BitmaskEnum T>
+constexpr T& operator&=(T& lhs, T rhs)
+{
     return lhs = lhs & rhs;
 }
 
-template<BitmaskEnum T>
-constexpr T& operator^=(T& lhs, T rhs) {
+template <BitmaskEnum T>
+constexpr T& operator^=(T& lhs, T rhs)
+{
     return lhs = lhs ^ rhs;
 }
 
@@ -210,14 +208,14 @@ private:
     friend Iterator operator+(difference_type n, const Iterator& it) { return it + n; }
 };
 
-template<typename Container, typename SizeFunc, typename GetFunc>
+template <typename Container, typename SizeFunc, typename GetFunc>
 concept IndexedContainer = requires(const Container& c, SizeFunc size_func, GetFunc get_func, std::size_t i) {
     { std::invoke(size_func, c) } -> std::convertible_to<std::size_t>;
     { std::invoke(get_func, c, i) }; // Return type is deduced
 };
 
-template<typename Container, auto SizeFunc, auto GetFunc>
-requires IndexedContainer<Container, decltype(SizeFunc), decltype(GetFunc)>
+template <typename Container, auto SizeFunc, auto GetFunc>
+    requires IndexedContainer<Container, decltype(SizeFunc), decltype(GetFunc)>
 class Range
 {
 public:
@@ -230,7 +228,8 @@ private:
     const Container* m_container;
 
 public:
-    explicit Range(const Container& container) : m_container(&container) {
+    explicit Range(const Container& container) : m_container(&container)
+    {
         static_assert(std::ranges::random_access_range<Range>);
     }
 
@@ -256,25 +255,6 @@ public:
 
     value_type front() const { return (*this)[0]; }
     value_type back() const { return (*this)[size() - 1]; }
-};
-
-template <typename T>
-class RefWrapper
-{
-private:
-    const T m_ref_data;
-
-public:
-    RefWrapper(T&& data) : m_ref_data{std::move(data)} {}
-
-    // Copying this data type might be dangerous, so prohibit it.
-    RefWrapper(const RefWrapper&) = delete;
-    RefWrapper& operator=(const RefWrapper& other) = delete;
-
-    const T& Get() const
-    {
-        return m_ref_data;
-    }
 };
 
 template <typename T>
@@ -307,132 +287,175 @@ std::vector<std::byte> write_bytes(const T* object, int (*to_bytes)(const T*, bt
     return bytes;
 }
 
-template <typename T, void(*DeleterFunc)(T*)>
-class Handle
+template <typename CType>
+class View
 {
-private:
-    struct Deleter {
-        void operator()(T* ptr) const noexcept
-        {
-            if (ptr) DeleterFunc(ptr);
-        }
-    };
-
-    std::unique_ptr<T, Deleter> m_handle;
-
 protected:
-    explicit Handle(T* handle) : m_handle(handle) {}
+    const CType* m_ptr;
 
 public:
-    T* impl() { return m_handle.get(); }
-    const T* impl() const { return m_handle.get(); }
+    explicit View(const CType* ptr) : m_ptr{check(ptr)} {}
 
-    void reset(T* handle = nullptr) { m_handle.reset(handle); }
+    const CType* get() const { return m_ptr; }
 };
 
-class ScriptPubkey : public Handle<btck_ScriptPubkey, btck_script_pubkey_destroy>
+template <typename CType, CType* (*CopyFunc)(const CType*), void (*DestroyFunc)(CType*)>
+class Handle
 {
+protected:
+    CType* m_ptr;
+
 public:
-    ScriptPubkey(std::span<const std::byte> script_pubkey)
-        : Handle(check(btck_script_pubkey_create(script_pubkey.data(), script_pubkey.size())))
-    {
-    }
+    explicit Handle(CType* ptr) : m_ptr{check(ptr)} {}
 
-    bool Verify(int64_t amount,
-               const Transaction& tx_to,
-               const std::span<const TransactionOutput> spent_outputs,
-               unsigned int input_index,
-               ScriptVerificationFlags flags,
-               ScriptVerifyStatus& status) const;
-
-    // Copy constructor and assignment
-    ScriptPubkey(const ScriptPubkey& other)
-        : Handle(check(btck_script_pubkey_copy(other.impl())))
-    {
-    }
-    ScriptPubkey& operator=(const ScriptPubkey& other)
+    // Copy constructors
+    Handle(const Handle& other)
+        : m_ptr{check(CopyFunc(other.m_ptr))} {}
+    Handle operator=(const Handle& other)
     {
         if (this != &other) {
-            reset(check(btck_script_pubkey_copy(other.impl())));
+            Handle temp(other);
+            std::swap(m_ptr, temp.m_ptr);
         }
         return *this;
     }
 
-    ScriptPubkey(btck_ScriptPubkey* script_pubkey)
-        : Handle{check(script_pubkey)}
+    // Move constructors
+    Handle(Handle&& other) noexcept : m_ptr(other.m_ptr) { other.m_ptr = nullptr; }
+    Handle operator=(Handle&& other) noexcept
+    {
+        DestroyFunc(m_ptr);
+        m_ptr = std::exchange(other.m_ptr, nullptr);
+        return *this;
+    }
+
+    template <typename ViewType>
+        requires std::derived_from<ViewType, View<CType>>
+    Handle(const ViewType& view)
+        : Handle{CopyFunc(view.get())}
     {
     }
+
+    ~Handle() { DestroyFunc(m_ptr); }
+
+    CType* get() { return m_ptr; }
+    const CType* get() const { return m_ptr; }
+};
+
+template <typename CType, void (*DestroyFunc)(CType*)>
+class UniqueHandle
+{
+protected:
+    struct Deleter {
+        void operator()(CType* ptr) const noexcept
+        {
+            if (ptr) DestroyFunc(ptr);
+        }
+    };
+    std::unique_ptr<CType, Deleter> m_ptr;
+
+public:
+    explicit UniqueHandle(CType* ptr) : m_ptr{check(ptr)} {}
+
+    CType* get() { return m_ptr.get(); }
+    const CType* get() const { return m_ptr.get(); }
+};
+
+class Transaction;
+class TransactionOutput;
+
+template <typename Derived>
+class ScriptPubkeyApi
+{
+private:
+    auto impl() const
+    {
+        return static_cast<const Derived*>(this)->get();
+    }
+
+    friend Derived;
+    ScriptPubkeyApi() = default;
+
+public:
+    bool Verify(int64_t amount,
+                const Transaction& tx_to,
+                std::span<const TransactionOutput> spent_outputs,
+                unsigned int input_index,
+                ScriptVerificationFlags flags,
+                ScriptVerifyStatus& status) const;
 
     std::vector<std::byte> ToBytes() const
     {
         return write_bytes(impl(), btck_script_pubkey_to_bytes);
     }
-
-    friend class TransactionOutput;
 };
 
-class TransactionOutput : public Handle<btck_TransactionOutput, btck_transaction_output_destroy>
+class ScriptPubkeyView : public View<btck_ScriptPubkey>, public ScriptPubkeyApi<ScriptPubkeyView>
 {
 public:
-    TransactionOutput(const ScriptPubkey& script_pubkey, int64_t amount)
-        : Handle{check(btck_transaction_output_create(script_pubkey.impl(), amount))}
+    explicit ScriptPubkeyView(const btck_ScriptPubkey* ptr) : View{ptr} {}
+};
+
+class ScriptPubkey : public Handle<btck_ScriptPubkey, btck_script_pubkey_copy, btck_script_pubkey_destroy>, public ScriptPubkeyApi<ScriptPubkey>
+{
+public:
+    explicit ScriptPubkey(std::span<const std::byte> raw)
+        : Handle{btck_script_pubkey_create(raw.data(), raw.size())} {}
+
+    ScriptPubkey(const ScriptPubkeyView& view)
+        : Handle(view) {}
+};
+
+template <typename Derived>
+class TransactionOutputApi
+{
+private:
+    auto impl() const
     {
+        return static_cast<const Derived*>(this)->get();
     }
 
-    // Copy constructor and assignment
-    TransactionOutput(const TransactionOutput& other)
-        : Handle{check(btck_transaction_output_copy(other.impl()))} {}
-    TransactionOutput& operator=(const TransactionOutput& other)
-    {
-        if (this != &other) {
-            reset(check(btck_transaction_output_copy(other.impl())));
-        }
-        return *this;
-    }
+    friend Derived;
+    TransactionOutputApi() = default;
 
-    TransactionOutput(btck_TransactionOutput* transaction_output)
-        : Handle{check(transaction_output)}
-    {
-    }
-
-    int64_t GetAmount() const
+public:
+    int64_t Amount() const
     {
         return btck_transaction_output_get_amount(impl());
     }
 
-    RefWrapper<ScriptPubkey> GetScriptPubkey() const
+    ScriptPubkeyView GetScriptPubkey() const
     {
-        return ScriptPubkey{btck_transaction_output_get_script_pubkey(impl())};
+        return ScriptPubkeyView{btck_transaction_output_get_script_pubkey(impl())};
     }
-
-    friend class ScriptPubkey;
-    friend class Transaction;
 };
 
-class Transaction : public Handle<btck_Transaction, btck_transaction_destroy>
+class TransactionOutputView : public View<btck_TransactionOutput>, public TransactionOutputApi<TransactionOutputView>
 {
 public:
-    Transaction(std::span<const std::byte> raw_transaction)
-        : Handle{check(btck_transaction_create(raw_transaction.data(), raw_transaction.size()))}
+    explicit TransactionOutputView(const btck_TransactionOutput* ptr) : View{ptr} {}
+};
+
+class TransactionOutput : public Handle<btck_TransactionOutput, btck_transaction_output_copy, btck_transaction_output_destroy>, public TransactionOutputApi<TransactionOutput>
+{
+public:
+    explicit TransactionOutput(const ScriptPubkey& script_pubkey, int64_t amount)
+        : Handle{btck_transaction_output_create(script_pubkey.get(), amount)} {}
+
+    TransactionOutput(const TransactionOutputView& view)
+        : Handle(view) {}
+};
+
+template <typename Derived>
+class TransactionApi
+{
+private:
+    auto impl() const
     {
+        return static_cast<const Derived*>(this)->get();
     }
 
-    // Copy constructor and assignment
-    Transaction(const Transaction& other)
-        : Handle{check(btck_transaction_copy(other.impl()))} {}
-    Transaction& operator=(const Transaction& other)
-    {
-        if (this != &other) {
-            reset(check(btck_transaction_copy(other.impl())));
-        }
-        return *this;
-    }
-
-    Transaction(btck_Transaction* transaction)
-        : Handle{check(transaction)}
-    {
-    }
-
+public:
     size_t CountOutputs() const
     {
         return btck_transaction_count_outputs(impl());
@@ -443,30 +466,45 @@ public:
         return btck_transaction_count_inputs(impl());
     }
 
-    RefWrapper<TransactionOutput> GetOutput(size_t index) const
+    TransactionOutputView GetOutput(size_t index) const
     {
-        return TransactionOutput{btck_transaction_get_output_at(impl(), index)};
+        return TransactionOutputView{btck_transaction_get_output_at(impl(), index)};
     }
 
     auto Outputs() const
     {
-        return Range<Transaction, &Transaction::CountOutputs, &Transaction::GetOutput>{*this};
+        return Range<Transaction, &TransactionApi::CountOutputs, &TransactionApi::GetOutput>{*static_cast<const Derived*>(this)};
     }
 
     std::vector<std::byte> ToBytes() const
     {
         return write_bytes(impl(), btck_transaction_to_bytes);
     }
-
-    friend class ScriptPubkey;
 };
 
-bool ScriptPubkey::Verify(int64_t amount,
-                  const Transaction& tx_to,
-                  const std::span<const TransactionOutput> spent_outputs,
-                  unsigned int input_index,
-                  ScriptVerificationFlags flags,
-                  ScriptVerifyStatus& status) const
+class TransactionView : public View<btck_Transaction>, public TransactionApi<TransactionView>
+{
+public:
+    explicit TransactionView(const btck_Transaction* ptr) : View{ptr} {}
+};
+
+class Transaction : public Handle<btck_Transaction, btck_transaction_copy, btck_transaction_destroy>, public TransactionApi<Transaction>
+{
+public:
+    explicit Transaction(std::span<const std::byte> raw_transaction)
+        : Handle{btck_transaction_create(raw_transaction.data(), raw_transaction.size())} {}
+
+    Transaction(const TransactionView& view)
+        : Handle{view} {}
+};
+
+template <typename Derived>
+bool ScriptPubkeyApi<Derived>::Verify(int64_t amount,
+                                      const Transaction& tx_to,
+                                      const std::span<const TransactionOutput> spent_outputs,
+                                      unsigned int input_index,
+                                      ScriptVerificationFlags flags,
+                                      ScriptVerifyStatus& status) const
 {
     const btck_TransactionOutput** spent_outputs_ptr = nullptr;
     std::vector<const btck_TransactionOutput*> raw_spent_outputs;
@@ -474,14 +512,14 @@ bool ScriptPubkey::Verify(int64_t amount,
         raw_spent_outputs.reserve(spent_outputs.size());
 
         for (const auto& output : spent_outputs) {
-            raw_spent_outputs.push_back(output.impl());
+            raw_spent_outputs.push_back(output.get());
         }
         spent_outputs_ptr = raw_spent_outputs.data();
     }
     auto result = btck_script_pubkey_verify(
         impl(),
         amount,
-        tx_to.impl(),
+        tx_to.get(),
         spent_outputs_ptr, spent_outputs.size(),
         input_index,
         static_cast<btck_ScriptVerificationFlags>(flags),
@@ -496,10 +534,9 @@ struct BlockHashDeleter {
     }
 };
 
-class Block : Handle<btck_Block, btck_block_destroy>
+class Block : public Handle<btck_Block, btck_block_copy, btck_block_destroy>
 {
 public:
-
     Block(const std::span<const std::byte> raw_block)
         : Handle{check(btck_block_create(raw_block.data(), raw_block.size()))}
     {
@@ -507,25 +544,14 @@ public:
 
     Block(btck_Block* block) : Handle{check(block)} {}
 
-    // Copy constructor and assignment
-    Block(const Block& other)
-        : Handle{check(btck_block_copy(other.impl()))} {}
-    Block& operator=(const Block& other)
-    {
-        if (this != &other) {
-            reset(check(btck_block_copy(other.impl())));
-        }
-        return *this;
-    }
-
     size_t CountTransactions() const
     {
-        return btck_block_count_transactions(impl());
+        return btck_block_count_transactions(get());
     }
 
-    Transaction GetTransaction(size_t index) const
+    TransactionView GetTransaction(size_t index) const
     {
-        return Transaction{btck_block_get_transaction_at(impl(), index)};
+        return TransactionView{btck_block_get_transaction_at(get(), index)};
     }
 
     auto Transactions() const
@@ -535,12 +561,12 @@ public:
 
     std::unique_ptr<btck_BlockHash, BlockHashDeleter> GetHash() const
     {
-        return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_get_hash(impl()));
+        return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_get_hash(get()));
     }
 
     std::vector<std::byte> ToBytes() const
     {
-        return write_bytes(impl(), btck_block_to_bytes);
+        return write_bytes(get(), btck_block_to_bytes);
     }
 
     friend class ChainMan;
@@ -572,42 +598,42 @@ concept Log = requires(T a, std::string_view message) {
 };
 
 template <Log T>
-class Logger : Handle<btck_LoggingConnection, btck_logging_connection_destroy>
+class Logger : UniqueHandle<btck_LoggingConnection, btck_logging_connection_destroy>
 {
 public:
     Logger(std::unique_ptr<T> log, const btck_LoggingOptions& logging_options)
-        : Handle{check(btck_logging_connection_create(
+        : UniqueHandle{btck_logging_connection_create(
               +[](void* user_data, const char* message, size_t message_len) { static_cast<T*>(user_data)->LogMessage({message, message_len}); },
               log.release(),
               +[](void* user_data) { delete static_cast<T*>(user_data); },
-              logging_options))}
+              logging_options)}
     {
     }
 };
 
-class BlockTreeEntry : Handle<btck_BlockTreeEntry, btck_block_tree_entry_destroy>
+class BlockTreeEntry : public View<btck_BlockTreeEntry>
 {
 public:
-    BlockTreeEntry(btck_BlockTreeEntry* entry)
-        : Handle{check(entry)}
+    BlockTreeEntry(const btck_BlockTreeEntry* entry)
+        : View{check(entry)}
     {
     }
 
     std::optional<BlockTreeEntry> GetPrevious() const
     {
-        auto entry{btck_block_tree_entry_get_previous(impl())};
+        auto entry{btck_block_tree_entry_get_previous(get())};
         if (!entry) return std::nullopt;
         return entry;
     }
 
     int32_t GetHeight() const
     {
-        return btck_block_tree_entry_get_height(impl());
+        return btck_block_tree_entry_get_height(get());
     }
 
     std::unique_ptr<btck_BlockHash, BlockHashDeleter> GetHash() const
     {
-        return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_tree_entry_get_block_hash(impl()));
+        return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_tree_entry_get_block_hash(get()));
     }
 
     friend class ChainMan;
@@ -668,22 +694,23 @@ public:
     virtual void BlockChecked(Block block, const BlockValidationState state) {}
 };
 
-class ChainParams : Handle<btck_ChainParameters, btck_chain_parameters_destroy>
+class ChainParams : Handle<btck_ChainParameters, btck_chain_parameters_copy, btck_chain_parameters_destroy>
 {
 public:
-    ChainParams(ChainType chain_type) : Handle{check(btck_chain_parameters_create(static_cast<btck_ChainType>(chain_type)))} {}
+    ChainParams(ChainType chain_type)
+        : Handle{btck_chain_parameters_create(static_cast<btck_ChainType>(chain_type))} {}
 
     friend class ContextOptions;
 };
 
-class ContextOptions : Handle<btck_ContextOptions, btck_context_options_destroy>
+class ContextOptions : UniqueHandle<btck_ContextOptions, btck_context_options_destroy>
 {
 public:
-    ContextOptions() : Handle{check(btck_context_options_create())} {}
+    ContextOptions() : UniqueHandle{check(btck_context_options_create())} {}
 
     void SetChainParams(ChainParams& chain_params)
     {
-        btck_context_options_set_chainparams(impl(), chain_params.impl());
+        btck_context_options_set_chainparams(get(), chain_params.get());
     }
 
     template <typename T>
@@ -693,27 +720,18 @@ public:
         auto heap_notifications = std::make_unique<std::shared_ptr<T>>(std::move(notifications));
         using user_type = std::shared_ptr<T>*;
         btck_context_options_set_notifications(
-            impl(),
+            get(),
             btck_NotificationInterfaceCallbacks{
                 .user_data = heap_notifications.release(),
                 .user_data_destroy = +[](void* user_data) { delete static_cast<user_type>(user_data); },
-                .block_tip = +[](void* user_data, btck_SynchronizationState state, btck_BlockTreeEntry* entry, double verification_progress) {
-                    (*static_cast<user_type>(user_data))->BlockTipHandler(static_cast<SynchronizationState>(state), BlockTreeEntry{entry}, verification_progress);
-                },
-                .header_tip = +[](void* user_data, btck_SynchronizationState state, int64_t height, int64_t timestamp, int presync) {
-                    (*static_cast<user_type>(user_data))->HeaderTipHandler(static_cast<SynchronizationState>(state), height, timestamp, presync == 1);
-                },
-                .progress = +[](void* user_data, const char* title, size_t title_len, int progress_percent, int resume_possible) {
-                    (*static_cast<user_type>(user_data))->ProgressHandler({title, title_len}, progress_percent, resume_possible == 1);
-                },
-                .warning_set = +[](void* user_data, btck_Warning warning, const char* message, size_t message_len) {
-                    (*static_cast<user_type>(user_data))->WarningSetHandler(static_cast<Warning>(warning), {message, message_len});
-                },
+                .block_tip = +[](void* user_data, btck_SynchronizationState state, const btck_BlockTreeEntry* entry, double verification_progress) { (*static_cast<user_type>(user_data))->BlockTipHandler(static_cast<SynchronizationState>(state), BlockTreeEntry{entry}, verification_progress); },
+                .header_tip = +[](void* user_data, btck_SynchronizationState state, int64_t height, int64_t timestamp, int presync) { (*static_cast<user_type>(user_data))->HeaderTipHandler(static_cast<SynchronizationState>(state), height, timestamp, presync == 1); },
+                .progress = +[](void* user_data, const char* title, size_t title_len, int progress_percent, int resume_possible) { (*static_cast<user_type>(user_data))->ProgressHandler({title, title_len}, progress_percent, resume_possible == 1); },
+                .warning_set = +[](void* user_data, btck_Warning warning, const char* message, size_t message_len) { (*static_cast<user_type>(user_data))->WarningSetHandler(static_cast<Warning>(warning), {message, message_len}); },
                 .warning_unset = +[](void* user_data, btck_Warning warning) { (*static_cast<user_type>(user_data))->WarningUnsetHandler(static_cast<Warning>(warning)); },
                 .flush_error = +[](void* user_data, const char* error, size_t error_len) { (*static_cast<user_type>(user_data))->FlushErrorHandler({error, error_len}); },
                 .fatal_error = +[](void* user_data, const char* error, size_t error_len) { (*static_cast<user_type>(user_data))->FatalErrorHandler({error, error_len}); },
-            }
-        );
+            });
     }
 
     template <typename T>
@@ -723,180 +741,73 @@ public:
         auto heap_vi = std::make_unique<std::shared_ptr<T>>(std::move(validation_interface));
         using user_type = std::shared_ptr<T>*;
         btck_context_options_set_validation_interface(
-            impl(),
+            get(),
             btck_ValidationInterfaceCallbacks{
                 .user_data = heap_vi.release(),
                 .user_data_destroy = +[](void* user_data) { delete static_cast<user_type>(user_data); },
-                .block_checked = +[](void* user_data, btck_Block* block, const btck_BlockValidationState* state) {
-                    (*static_cast<user_type>(user_data))->BlockChecked(Block{block}, BlockValidationState{state});
-                },
-            }
-        );
+                .block_checked = +[](void* user_data, btck_Block* block, const btck_BlockValidationState* state) { (*static_cast<user_type>(user_data))->BlockChecked(Block{block}, BlockValidationState{state}); },
+            });
     }
 
     friend class Context;
 };
 
-class Context : Handle<btck_Context, btck_context_destroy>
+class Context : public Handle<btck_Context, btck_context_copy, btck_context_destroy>
 {
 public:
     Context(ContextOptions& opts)
-        : Handle{check(btck_context_create(opts.impl()))}
-    {
-    }
+        : Handle{btck_context_create(opts.get())} {}
 
     Context()
-        : Handle{check(btck_context_create(ContextOptions{}.impl()))}
-    {
-    }
+        : Handle{check(btck_context_create(ContextOptions{}.get()))} {}
 
     friend class ChainstateManagerOptions;
 };
 
-class ChainstateManagerOptions : Handle<btck_ChainstateManagerOptions, btck_chainstate_manager_options_destroy>
+class ChainstateManagerOptions : UniqueHandle<btck_ChainstateManagerOptions, btck_chainstate_manager_options_destroy>
 {
 public:
     ChainstateManagerOptions(const Context& context, const std::string& data_dir, const std::string& blocks_dir)
-        : Handle{check(btck_chainstate_manager_options_create(context.impl(), data_dir.c_str(), data_dir.length(), blocks_dir.c_str(), blocks_dir.length()))}
+        : UniqueHandle{check(btck_chainstate_manager_options_create(context.get(), data_dir.c_str(), data_dir.length(), blocks_dir.c_str(), blocks_dir.length()))}
     {
     }
 
     void SetWorkerThreads(int worker_threads)
     {
-        btck_chainstate_manager_options_set_worker_threads_num(impl(), worker_threads);
+        btck_chainstate_manager_options_set_worker_threads_num(get(), worker_threads);
     }
 
     bool SetWipeDbs(bool wipe_block_tree, bool wipe_chainstate)
     {
-        return btck_chainstate_manager_options_set_wipe_dbs(impl(), wipe_block_tree, wipe_chainstate) == 0;
+        return btck_chainstate_manager_options_set_wipe_dbs(get(), wipe_block_tree, wipe_chainstate) == 0;
     }
 
     void SetBlockTreeDbInMemory(bool block_tree_db_in_memory)
     {
-        btck_chainstate_manager_options_set_block_tree_db_in_memory(impl(), block_tree_db_in_memory);
+        btck_chainstate_manager_options_set_block_tree_db_in_memory(get(), block_tree_db_in_memory);
     }
 
     void SetChainstateDbInMemory(bool chainstate_db_in_memory)
     {
-        btck_chainstate_manager_options_set_chainstate_db_in_memory(impl(), chainstate_db_in_memory);
+        btck_chainstate_manager_options_set_chainstate_db_in_memory(get(), chainstate_db_in_memory);
     }
 
     friend class ChainMan;
 };
 
-class Coin : Handle<btck_Coin, btck_coin_destroy>
+class ChainView : public View<btck_Chain>
 {
 public:
-    Coin(btck_Coin* coin) : Handle{check(coin)} {}
-
-    // Copy constructor and assignment
-    Coin(const Coin& other)
-        : Handle{check(btck_coin_copy(other.impl()))} {}
-    Coin& operator=(const Coin& other)
-    {
-        if (this != &other) {
-            reset(check(btck_coin_copy(other.impl())));
-        }
-        return *this;
-    }
-
-    uint32_t GetConfirmationHeight() const { return btck_coin_confirmation_height(impl()); }
-
-    bool IsCoinbase() const { return btck_coin_is_coinbase(impl()); }
-
-    RefWrapper<TransactionOutput> GetOutput() const
-    {
-        return TransactionOutput{btck_coin_get_output(impl())};
-    }
-};
-
-class TransactionSpentOutputs : Handle<btck_TransactionSpentOutputs, btck_transaction_spent_outputs_destroy>
-{
-public:
-
-    TransactionSpentOutputs(btck_TransactionSpentOutputs* transaction_spent_outputs)
-        : Handle{check(transaction_spent_outputs)}
-    {
-    }
-    // Copy constructor and assignment
-    TransactionSpentOutputs(const TransactionSpentOutputs& other)
-        : Handle{check(btck_transaction_spent_outputs_copy(other.impl()))}
-    {
-    }
-    TransactionSpentOutputs& operator=(const TransactionSpentOutputs& other)
-    {
-        if (this != &other) {
-            reset(check(btck_transaction_spent_outputs_copy(other.impl())));
-        }
-        return *this;
-    }
-
-    size_t Count() const
-    {
-        return btck_transaction_spent_outputs_count(impl());
-    }
-
-    RefWrapper<Coin> GetCoin(size_t index) const
-    {
-        return Coin{btck_transaction_spent_outputs_get_coin_at(impl(), index)};
-    }
-
-    auto Coins() const
-    {
-        return Range<TransactionSpentOutputs, &TransactionSpentOutputs::Count, &TransactionSpentOutputs::GetCoin>{*this};
-    }
-};
-
-class BlockSpentOutputs : Handle<btck_BlockSpentOutputs, btck_block_spent_outputs_destroy>
-{
-public:
-    BlockSpentOutputs(btck_BlockSpentOutputs* block_spent_outputs)
-        : Handle{check(block_spent_outputs)}
-    {
-    }
-
-    // Copy constructor and assignment
-    BlockSpentOutputs(const BlockSpentOutputs& other)
-        : Handle{check(btck_block_spent_outputs_copy(other.impl()))}
-    {
-    }
-    BlockSpentOutputs& operator=(const BlockSpentOutputs& other)
-    {
-        if (this != &other) {
-            reset(check(btck_block_spent_outputs_copy(other.impl())));
-        }
-        return *this;
-    }
-
-    size_t Count() const
-    {
-        return btck_block_spent_outputs_count(impl());
-    }
-
-    RefWrapper<TransactionSpentOutputs> GetTxSpentOutputs(size_t tx_undo_index) const
-    {
-        return TransactionSpentOutputs{btck_block_spent_outputs_get_transaction_spent_outputs_at(impl(), tx_undo_index)};
-    }
-
-    auto TxsSpentOutputs() const
-    {
-        return Range<BlockSpentOutputs, &BlockSpentOutputs::Count, &BlockSpentOutputs::GetTxSpentOutputs>{*this};
-    }
-};
-
-class Chain : Handle<btck_Chain, btck_chain_destroy>
-{
-public:
-    Chain(btck_Chain* chain) : Handle{check(chain)} {}
+    explicit ChainView(const btck_Chain* ptr) : View{ptr} {}
 
     BlockTreeEntry GetTip() const
     {
-        return btck_chain_get_tip(impl());
+        return btck_chain_get_tip(get());
     }
 
     BlockTreeEntry GetGenesis() const
     {
-        return btck_chain_get_genesis(impl());
+        return btck_chain_get_genesis(get());
     }
 
     size_t CurrentHeight() const
@@ -906,26 +817,127 @@ public:
 
     BlockTreeEntry GetByHeight(int height) const
     {
-        auto index{btck_chain_get_by_height(impl(), height)};
+        auto index{btck_chain_get_by_height(get(), height)};
         return index;
     }
 
     bool Contains(BlockTreeEntry& entry) const
     {
-        return btck_chain_contains(impl(), entry.impl());
+        return btck_chain_contains(get(), entry.get());
     }
 
     auto Entries() const
     {
-        return Range<Chain, &Chain::CurrentHeight, &Chain::GetByHeight>{*this};
+        return Range<ChainView, &ChainView::CurrentHeight, &ChainView::GetByHeight>{*this};
     }
 };
 
-class ChainMan : Handle<btck_ChainstateManager, btck_chainstate_manager_destroy>
+template <typename Derived>
+class CoinApi
+{
+private:
+    auto impl() const
+    {
+        return static_cast<const Derived*>(this)->get();
+    }
+
+    friend Derived;
+    CoinApi() = default;
+
+public:
+    uint32_t GetConfirmationHeight() const { return btck_coin_confirmation_height(impl()); }
+
+    bool IsCoinbase() const { return btck_coin_is_coinbase(impl()); }
+
+    TransactionOutputView GetOutput() const
+    {
+        return TransactionOutputView{btck_coin_get_output(impl())};
+    }
+};
+
+class CoinView : public View<btck_Coin>, public CoinApi<CoinView>
+{
+public:
+    explicit CoinView(const btck_Coin* ptr) : View{ptr} {}
+};
+
+class Coin : Handle<btck_Coin, btck_coin_copy, btck_coin_destroy>, public CoinApi<Coin>
+{
+public:
+    Coin(btck_Coin* coin) : Handle{check(coin)} {}
+};
+
+template <typename Derived>
+class TransactionSpentOutputsApi
+{
+private:
+    auto impl() const
+    {
+        return static_cast<const Derived*>(this)->get();
+    }
+
+    friend Derived;
+    TransactionSpentOutputsApi() = default;
+
+public:
+    size_t Count() const
+    {
+        return btck_transaction_spent_outputs_count(impl());
+    }
+
+    CoinView GetCoin(size_t index) const
+    {
+        return CoinView{btck_transaction_spent_outputs_get_coin_at(impl(), index)};
+    }
+
+    auto Coins() const
+    {
+        return Range<Derived, &TransactionSpentOutputsApi<Derived>::Count, &TransactionSpentOutputsApi<Derived>::GetCoin>{*static_cast<const Derived*>(this)};
+    }
+};
+
+class TransactionSpentOutputsView : public View<btck_TransactionSpentOutputs>, public TransactionSpentOutputsApi<TransactionSpentOutputsView>
+{
+public:
+    explicit TransactionSpentOutputsView(const btck_TransactionSpentOutputs* ptr) : View{ptr} {}
+};
+
+class TransactionSpentOutputs : Handle<btck_TransactionSpentOutputs, btck_transaction_spent_outputs_copy, btck_transaction_spent_outputs_destroy>,
+                                public TransactionSpentOutputsApi<TransactionSpentOutputs>
+{
+public:
+    TransactionSpentOutputs(btck_TransactionSpentOutputs* transaction_spent_outputs) : Handle{check(transaction_spent_outputs)} {}
+};
+
+class BlockSpentOutputs : Handle<btck_BlockSpentOutputs, btck_block_spent_outputs_copy, btck_block_spent_outputs_destroy>
+{
+public:
+    BlockSpentOutputs(btck_BlockSpentOutputs* block_spent_outputs)
+        : Handle{check(block_spent_outputs)}
+    {
+    }
+
+    size_t Count() const
+    {
+        return btck_block_spent_outputs_count(get());
+    }
+
+    TransactionSpentOutputsView GetTxSpentOutputs(size_t tx_undo_index) const
+    {
+        return TransactionSpentOutputsView{btck_block_spent_outputs_get_transaction_spent_outputs_at(get(), tx_undo_index)};
+    }
+
+    auto TxsSpentOutputs() const
+    {
+        return Range<BlockSpentOutputs, &BlockSpentOutputs::Count, &BlockSpentOutputs::GetTxSpentOutputs>{*this};
+    }
+};
+
+class ChainMan : UniqueHandle<btck_ChainstateManager, btck_chainstate_manager_destroy>
 {
 public:
     ChainMan(const Context& context, const ChainstateManagerOptions& chainman_opts)
-        : Handle{check(btck_chainstate_manager_create(chainman_opts.impl()))}
+        : UniqueHandle{check(btck_chainstate_manager_create(chainman_opts.get()))}
     {
     }
 
@@ -940,37 +952,37 @@ public:
             c_paths_lens.push_back(path.length());
         }
 
-        return btck_chainstate_manager_import_blocks(impl(), c_paths.data(), c_paths_lens.data(), c_paths.size()) == 0;
+        return btck_chainstate_manager_import_blocks(get(), c_paths.data(), c_paths_lens.data(), c_paths.size()) == 0;
     }
 
     bool ProcessBlock(const Block& block, bool* new_block)
     {
         int _new_block;
-        int res = btck_chainstate_manager_process_block(impl(), block.impl(), &_new_block);
+        int res = btck_chainstate_manager_process_block(get(), block.get(), &_new_block);
         if (new_block) *new_block = _new_block == 1;
         return res == 0;
     }
 
-    RefWrapper<Chain> GetChain() const
+    ChainView GetChain() const
     {
-        return Chain{btck_chainstate_manager_get_active_chain(impl())};
+        return ChainView{btck_chainstate_manager_get_active_chain(get())};
     }
 
     BlockTreeEntry GetBlockTreeEntry(btck_BlockHash* block_hash) const
     {
-        return btck_chainstate_manager_get_block_tree_entry_by_hash(impl(), block_hash);
+        return btck_chainstate_manager_get_block_tree_entry_by_hash(get(), block_hash);
     }
 
     std::optional<Block> ReadBlock(BlockTreeEntry& entry) const
     {
-        auto block{btck_block_read(impl(), entry.impl())};
+        auto block{btck_block_read(get(), entry.get())};
         if (!block) return std::nullopt;
         return block;
     }
 
     BlockSpentOutputs ReadBlockSpentOutputs(const BlockTreeEntry& entry) const
     {
-        return btck_block_spent_outputs_read(impl(), entry.impl());
+        return btck_block_spent_outputs_read(get(), entry.get());
     }
 };
 
