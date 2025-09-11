@@ -8,7 +8,7 @@ use std::{fmt, panic};
 pub mod constants;
 
 use crate::constants::*;
-use crate::core::{TransactionExt, TxOutExt};
+use crate::core::{ScriptPubkeyExt, TransactionExt, TxOutExt};
 use libbitcoinkernel_sys::*;
 
 pub mod core;
@@ -769,138 +769,6 @@ impl From<btck_BlockValidationResult> for BlockValidationResult {
     }
 }
 
-/// Common operations for script pubkeys, implemented by both owned and borrowed types.
-pub trait ScriptPubkeyExt {
-    /// Returns a raw pointer to the underlying C object.
-    fn as_ptr(&self) -> *const btck_ScriptPubkey;
-
-    /// Serializes the script to raw bytes.
-    fn to_bytes(&self) -> Vec<u8> {
-        c_serialize(|callback, user_data| unsafe {
-            btck_script_pubkey_to_bytes(self.as_ptr(), Some(callback), user_data)
-        })
-        .expect("Script pubkey to_bytes should never fail")
-    }
-}
-
-/// A single script pubkey containing spending conditions for a transaction output.
-///
-/// Script pubkeys can be created from raw script bytes or retrieved from existing
-/// transaction outputs.
-#[derive(Debug)]
-pub struct ScriptPubkey {
-    inner: *mut btck_ScriptPubkey,
-}
-
-unsafe impl Send for ScriptPubkey {}
-unsafe impl Sync for ScriptPubkey {}
-
-impl ScriptPubkey {
-    pub fn new(script_bytes: &[u8]) -> Result<Self, KernelError> {
-        let inner = unsafe {
-            btck_script_pubkey_create(script_bytes.as_ptr() as *const c_void, script_bytes.len())
-        };
-
-        if inner.is_null() {
-            Err(KernelError::Internal(
-                "Failed to create ScriptPubkey from bytes".to_string(),
-            ))
-        } else {
-            Ok(ScriptPubkey { inner })
-        }
-    }
-
-    pub fn as_ref(&self) -> ScriptPubkeyRef<'_> {
-        unsafe { ScriptPubkeyRef::from_ptr(self.inner as *const _) }
-    }
-}
-
-impl ScriptPubkeyExt for ScriptPubkey {
-    fn as_ptr(&self) -> *const btck_ScriptPubkey {
-        self.inner as *const _
-    }
-}
-
-impl Clone for ScriptPubkey {
-    fn clone(&self) -> Self {
-        ScriptPubkey {
-            inner: unsafe { btck_script_pubkey_copy(self.inner) },
-        }
-    }
-}
-
-impl Drop for ScriptPubkey {
-    fn drop(&mut self) {
-        unsafe { btck_script_pubkey_destroy(self.inner) }
-    }
-}
-
-impl TryFrom<&[u8]> for ScriptPubkey {
-    type Error = KernelError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        ScriptPubkey::new(bytes)
-    }
-}
-
-impl From<ScriptPubkey> for Vec<u8> {
-    fn from(script: ScriptPubkey) -> Self {
-        script.to_bytes()
-    }
-}
-
-impl From<&ScriptPubkey> for Vec<u8> {
-    fn from(script: &ScriptPubkey) -> Self {
-        script.to_bytes()
-    }
-}
-
-pub struct ScriptPubkeyRef<'a> {
-    inner: *const btck_ScriptPubkey,
-    marker: PhantomData<&'a ()>,
-}
-
-impl<'a> ScriptPubkeyRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_ScriptPubkey) -> Self {
-        ScriptPubkeyRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
-    pub fn to_owned(&self) -> ScriptPubkey {
-        ScriptPubkey {
-            inner: unsafe { btck_script_pubkey_copy(self.inner) },
-        }
-    }
-}
-
-impl<'a> ScriptPubkeyExt for ScriptPubkeyRef<'a> {
-    fn as_ptr(&self) -> *const btck_ScriptPubkey {
-        self.inner
-    }
-}
-
-impl<'a> From<ScriptPubkeyRef<'a>> for Vec<u8> {
-    fn from(script_ref: ScriptPubkeyRef<'a>) -> Self {
-        script_ref.to_bytes()
-    }
-}
-
-impl<'a> From<&ScriptPubkeyRef<'a>> for Vec<u8> {
-    fn from(script_ref: &ScriptPubkeyRef<'a>) -> Self {
-        script_ref.to_bytes()
-    }
-}
-
-impl<'a> Clone for ScriptPubkeyRef<'a> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<'a> Copy for ScriptPubkeyRef<'a> {}
-
 /// Holds the configuration options for creating a new [`ChainstateManager`]
 pub struct ChainstateManagerOptions {
     inner: *mut btck_ChainstateManagerOptions,
@@ -1375,13 +1243,13 @@ impl From<btck_LogLevel> for LogLevel {
 
 pub use crate::core::{
     Block, BlockHash, BlockSpentOutputs, BlockSpentOutputsRef, BlockTreeEntry, Coin, CoinRef,
-    Transaction, TransactionRef, TransactionSpentOutputs, TransactionSpentOutputsRef, TxOut,
-    TxOutRef,
+    ScriptPubkey, ScriptPubkeyRef, Transaction, TransactionRef, TransactionSpentOutputs,
+    TransactionSpentOutputsRef, TxOut, TxOutRef,
 };
 
 pub mod prelude {
     pub use crate::core::{
-        BlockSpentOutputsExt, CoinExt, TransactionExt, TransactionSpentOutputsExt, TxOutExt,
+        BlockSpentOutputsExt, CoinExt, ScriptPubkeyExt, TransactionExt, TransactionSpentOutputsExt,
+        TxOutExt,
     };
-    pub use crate::ScriptPubkeyExt;
 }

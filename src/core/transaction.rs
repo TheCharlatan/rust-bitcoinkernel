@@ -8,7 +8,9 @@ use libbitcoinkernel_sys::{
     btck_transaction_output_get_script_pubkey, btck_transaction_to_bytes,
 };
 
-use crate::{c_serialize, KernelError, ScriptPubkeyExt, ScriptPubkeyRef};
+use crate::{c_serialize, KernelError, ScriptPubkeyExt};
+
+use super::script::ScriptPubkeyRef;
 
 /// Common operations for transactions, implemented by both owned and borrowed types.
 pub trait TransactionExt {
