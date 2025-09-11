@@ -12,7 +12,9 @@ use libbitcoinkernel_sys::{
     btck_transaction_spent_outputs_get_coin_at,
 };
 
-use crate::{c_helpers, c_serialize, KernelError, TransactionRef, TxOutRef};
+use crate::{c_helpers, c_serialize, KernelError};
+
+use super::transaction::{TransactionRef, TxOutRef};
 
 /// A type for a Block hash.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
