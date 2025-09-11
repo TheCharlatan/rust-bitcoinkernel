@@ -276,6 +276,17 @@ pub enum SynchronizationState {
     PostInit = BTCK_SYNCHRONIZATION_STATE_POST_INIT,
 }
 
+/// Current synchronization state of the blockchain.
+///
+/// Indicates what phase of blockchain synchronization is currently active.
+/// Emitted by block tip notifications to track sync progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum WarningType {
+    Unknown = btck_WarningType_btck_WarningType_UNKNOWN,
+    Invalid = btck_WarningType_btck_WarningType_INVALID,
+}
+
 impl From<SynchronizationState> for btck_SynchronizationState {
     fn from(state: SynchronizationState) -> Self {
         state as btck_SynchronizationState
