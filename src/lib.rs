@@ -1160,6 +1160,10 @@ unsafe impl Send for Block {}
 unsafe impl Sync for Block {}
 
 impl Block {
+    pub unsafe fn from_ptr(ptr: *mut btck_Block) -> Self {
+        Block { inner: ptr }
+    }
+
     pub fn new(raw_block: &[u8]) -> Result<Self, KernelError> {
         let inner =
             unsafe { btck_block_create(raw_block.as_ptr() as *const c_void, raw_block.len()) };
@@ -1378,6 +1382,10 @@ unsafe impl Send for BlockSpentOutputs {}
 unsafe impl Sync for BlockSpentOutputs {}
 
 impl BlockSpentOutputs {
+    pub unsafe fn from_ptr(ptr: *mut btck_BlockSpentOutputs) -> Self {
+        BlockSpentOutputs { inner: ptr }
+    }
+
     pub fn as_ref(&self) -> BlockSpentOutputsRef<'_> {
         unsafe { BlockSpentOutputsRef::from_ptr(self.inner as *const _) }
     }
