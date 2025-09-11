@@ -244,6 +244,9 @@ void run_verify_test(
     BOOST_CHECK(status == ScriptVerifyStatus::OK);
 
     status = ScriptVerifyStatus::OK;
+
+    BOOST_CHECK_EQUAL(btck_WarningType::btck_WarningType_INVALID, 0);
+    static_assert(std::is_same_v<std::underlying_type_t<btck_WarningType>, uint8_t>);
 }
 
 BOOST_AUTO_TEST_CASE(btck_transaction_tests)

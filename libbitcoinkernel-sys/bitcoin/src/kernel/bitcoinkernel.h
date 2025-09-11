@@ -260,6 +260,12 @@ typedef uint8_t btck_Warning;
 #define btck_Warning_UNKNOWN_NEW_RULES_ACTIVATED ((btck_Warning)(0))
 #define btck_Warning_LARGE_WORK_INVALID_CHAIN ((btck_Warning)(1))
 
+enum btck_WarningType : uint8_t
+{
+    btck_WarningType_UNKNOWN = 0,
+    btck_WarningType_INVALID = 1,
+};
+
 /** Callback function types */
 
 /**
