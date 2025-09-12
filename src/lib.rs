@@ -8,7 +8,7 @@ use std::{fmt, panic};
 
 use crate::core::{ScriptPubkeyExt, TransactionExt, TxOutExt};
 use ffi::{
-    BTCK_BLOCK_VALIDATION_RESULT_CACHED_INVALID, BTCK_BLOCK_VALIDATION_RESULT_CONSENSUS,
+    c_helpers, BTCK_BLOCK_VALIDATION_RESULT_CACHED_INVALID, BTCK_BLOCK_VALIDATION_RESULT_CONSENSUS,
     BTCK_BLOCK_VALIDATION_RESULT_HEADER_LOW_WORK, BTCK_BLOCK_VALIDATION_RESULT_INVALID_HEADER,
     BTCK_BLOCK_VALIDATION_RESULT_INVALID_PREV, BTCK_BLOCK_VALIDATION_RESULT_MISSING_PREV,
     BTCK_BLOCK_VALIDATION_RESULT_MUTATED, BTCK_BLOCK_VALIDATION_RESULT_TIME_FUTURE,
@@ -27,53 +27,6 @@ use libbitcoinkernel_sys::*;
 
 pub mod core;
 pub mod ffi;
-
-/// Helper functions for converting between Rust and C types.
-mod c_helpers {
-    /// Returns true if the C return code indicates success (0).
-    #[inline]
-    pub fn success(code: i32) -> bool {
-        code == 0
-    }
-
-    /// Returns true if the C return code indicates a present/found state (non-zero).
-    #[inline]
-    pub fn present(code: i32) -> bool {
-        code != 0
-    }
-
-    /// Returns true if the C return code indicates an enabled state (non-zero).
-    #[inline]
-    pub fn enabled(code: i32) -> bool {
-        code != 0
-    }
-
-    /// Returns true if the C return code indicates verification passed (1).
-    #[inline]
-    pub fn verification_passed(code: i32) -> bool {
-        code == 1
-    }
-
-    /// Converts a Rust bool to C bool representation (1 for true, 0 for false).
-    #[inline]
-    pub fn to_c_bool(value: bool) -> i32 {
-        if value {
-            1
-        } else {
-            0
-        }
-    }
-
-    /// Converts success status to C result code (0 for success, 1 for failure).
-    #[inline]
-    pub fn to_c_result(success: bool) -> i32 {
-        if success {
-            0
-        } else {
-            1
-        }
-    }
-}
 
 /// Serializes data using a C callback function pattern.
 ///
@@ -111,15 +64,6 @@ where
         Ok(buffer)
     } else {
         Err(KernelError::SerializationFailed)
-    }
-}
-
-unsafe fn cast_string(c_str: *const c_char, len: usize) -> String {
-    if !c_str.is_null() {
-        let slice = std::slice::from_raw_parts(c_str as *const u8, len);
-        String::from_utf8_lossy(slice).into_owned()
-    } else {
-        "".to_string()
     }
 }
 
@@ -307,7 +251,7 @@ unsafe extern "C" fn kn_progress_wrapper(
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     (holder.kn_progress)(
-        cast_string(title, title_len),
+        c_helpers::cast_string(title, title_len),
         progress_percent,
         c_helpers::enabled(resume_possible),
     );
@@ -320,7 +264,7 @@ unsafe extern "C" fn kn_warning_set_wrapper(
     message_len: usize,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
-    (holder.kn_warning_set)(warning.into(), cast_string(message, message_len));
+    (holder.kn_warning_set)(warning.into(), c_helpers::cast_string(message, message_len));
 }
 
 unsafe extern "C" fn kn_warning_unset_wrapper(user_data: *mut c_void, warning: btck_Warning) {
@@ -334,7 +278,7 @@ unsafe extern "C" fn kn_flush_error_wrapper(
     message_len: usize,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
-    (holder.kn_flush_error)(cast_string(message, message_len));
+    (holder.kn_flush_error)(c_helpers::cast_string(message, message_len));
 }
 
 unsafe extern "C" fn kn_fatal_error_wrapper(
@@ -343,7 +287,7 @@ unsafe extern "C" fn kn_fatal_error_wrapper(
     message_len: usize,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
-    (holder.kn_fatal_error)(cast_string(message, message_len));
+    (holder.kn_fatal_error)(c_helpers::cast_string(message, message_len));
 }
 
 /// The chain parameters with which to configure a [`Context`].
@@ -918,7 +862,7 @@ unsafe extern "C" fn log_callback<T: Log + 'static>(
     message: *const c_char,
     message_len: usize,
 ) {
-    let message = unsafe { cast_string(message, message_len) };
+    let message = unsafe { c_helpers::cast_string(message, message_len) };
     let log = user_data as *mut T;
     (*log).log(&message);
 }
