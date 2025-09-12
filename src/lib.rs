@@ -29,6 +29,7 @@ use notifications::notification::{
     kn_progress_wrapper, kn_user_data_destroy_wrapper, kn_warning_set_wrapper,
     kn_warning_unset_wrapper,
 };
+use notifications::validation::{vi_block_checked_wrapper, vi_user_data_destroy_wrapper};
 
 pub mod core;
 pub mod ffi;
@@ -134,33 +135,6 @@ impl Drop for ChainParams {
             btck_chain_parameters_destroy(self.inner);
         }
     }
-}
-
-/// Exposes the result after validating a block.
-pub trait BlockChecked: Fn(Block, ValidationMode, BlockValidationResult) {}
-impl<F: Fn(Block, ValidationMode, BlockValidationResult)> BlockChecked for F {}
-
-/// A holder struct for validation interface callbacks
-pub struct ValidationInterfaceCallbacks {
-    /// Called after a block has completed validation and communicates its validation state.
-    pub block_checked: Box<dyn BlockChecked>,
-}
-
-unsafe extern "C" fn vi_user_data_destroy_wrapper(user_data: *mut c_void) {
-    if !user_data.is_null() {
-        let _ = Box::from_raw(user_data as *mut ValidationInterfaceCallbacks);
-    }
-}
-
-unsafe extern "C" fn vi_block_checked_wrapper(
-    user_data: *mut c_void,
-    block: *mut btck_Block,
-    stateIn: *const btck_BlockValidationState,
-) {
-    let holder = &*(user_data as *mut ValidationInterfaceCallbacks);
-    let result = btck_block_validation_state_get_block_validation_result(stateIn);
-    let mode = btck_block_validation_state_get_validation_mode(stateIn);
-    (holder.block_checked)(Block::from_ptr(block), mode.into(), result.into());
 }
 
 /// The main context struct. This should be setup through the [`ContextBuilder`] and
@@ -785,9 +759,9 @@ pub use crate::core::{
 };
 
 pub use crate::notifications::{
-    BlockTip, BlockValidationResult, FatalError, FlushError, HeaderTip,
-    KernelNotificationInterfaceCallbacks, Progress, SynchronizationState, ValidationMode, Warning,
-    WarningSet, WarningUnset,
+    BlockChecked, BlockTip, BlockValidationResult, FatalError, FlushError, HeaderTip,
+    KernelNotificationInterfaceCallbacks, Progress, SynchronizationState,
+    ValidationInterfaceCallbacks, ValidationMode, Warning, WarningSet, WarningUnset,
 };
 
 pub use crate::core::verify_flags::{
