@@ -5,7 +5,9 @@ use libbitcoinkernel_sys::{
     btck_block_tree_entry_get_block_hash,
 };
 
-use crate::{ffi::c_helpers, BlockHash, SynchronizationState, Warning};
+use crate::{ffi::c_helpers, BlockHash};
+
+use super::{SynchronizationState, Warning};
 
 /// The chain's tip was updated to the provided block hash.
 pub trait BlockTip: Fn(SynchronizationState, BlockHash, f64) {}
