@@ -12,11 +12,9 @@ use libbitcoinkernel_sys::{
     btck_chainstate_manager_options_set_worker_threads_num, btck_chainstate_manager_process_block,
 };
 
-use crate::{
-    ffi::c_helpers, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, Chain, KernelError,
-};
+use crate::{ffi::c_helpers, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, KernelError};
 
-use super::Context;
+use super::{Chain, Context};
 
 /// The chainstate manager is the central object for doing validation tasks as
 /// well as retrieving data from the chain. Internally it is a complex data
