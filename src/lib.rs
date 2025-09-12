@@ -251,7 +251,7 @@ unsafe extern "C" fn kn_progress_wrapper(
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
     (holder.kn_progress)(
-        c_helpers::cast_string(title, title_len),
+        c_helpers::to_string(title, title_len),
         progress_percent,
         c_helpers::enabled(resume_possible),
     );
@@ -264,7 +264,7 @@ unsafe extern "C" fn kn_warning_set_wrapper(
     message_len: usize,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
-    (holder.kn_warning_set)(warning.into(), c_helpers::cast_string(message, message_len));
+    (holder.kn_warning_set)(warning.into(), c_helpers::to_string(message, message_len));
 }
 
 unsafe extern "C" fn kn_warning_unset_wrapper(user_data: *mut c_void, warning: btck_Warning) {
@@ -278,7 +278,7 @@ unsafe extern "C" fn kn_flush_error_wrapper(
     message_len: usize,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
-    (holder.kn_flush_error)(c_helpers::cast_string(message, message_len));
+    (holder.kn_flush_error)(c_helpers::to_string(message, message_len));
 }
 
 unsafe extern "C" fn kn_fatal_error_wrapper(
@@ -287,7 +287,7 @@ unsafe extern "C" fn kn_fatal_error_wrapper(
     message_len: usize,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
-    (holder.kn_fatal_error)(c_helpers::cast_string(message, message_len));
+    (holder.kn_fatal_error)(c_helpers::to_string(message, message_len));
 }
 
 /// The chain parameters with which to configure a [`Context`].
@@ -862,7 +862,7 @@ unsafe extern "C" fn log_callback<T: Log + 'static>(
     message: *const c_char,
     message_len: usize,
 ) {
-    let message = unsafe { c_helpers::cast_string(message, message_len) };
+    let message = unsafe { c_helpers::to_string(message, message_len) };
     let log = user_data as *mut T;
     (*log).log(&message);
 }
