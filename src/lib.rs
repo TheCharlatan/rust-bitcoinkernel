@@ -1880,7 +1880,7 @@ impl ChainstateManager {
 
     /// Read a block from disk by its block tree entry.
     pub fn read_block_data(&self, entry: &BlockTreeEntry) -> Result<Block, KernelError> {
-        let inner = unsafe { btck_block_read(self.inner, entry.inner) };
+        let inner = unsafe { btck_block_read(self.inner, entry.as_ptr()) };
         if inner.is_null() {
             return Err(KernelError::Internal("Failed to read block.".to_string()));
         }
@@ -1892,7 +1892,7 @@ impl ChainstateManager {
         &self,
         entry: &BlockTreeEntry,
     ) -> Result<BlockSpentOutputs, KernelError> {
-        let inner = unsafe { btck_block_spent_outputs_read(self.inner, entry.inner) };
+        let inner = unsafe { btck_block_spent_outputs_read(self.inner, entry.as_ptr()) };
         if inner.is_null() {
             return Err(KernelError::Internal(
                 "Failed to read undo data.".to_string(),
