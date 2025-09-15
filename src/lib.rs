@@ -156,6 +156,10 @@ impl Context {
             ));
         }
     }
+
+    pub fn as_ptr(&self) -> *mut btck_Context {
+        self.inner
+    }
 }
 
 impl Drop for Context {
@@ -293,7 +297,7 @@ impl ChainstateManagerOptions {
         let c_blocks_dir = CString::new(blocks_dir)?;
         let inner = unsafe {
             btck_chainstate_manager_options_create(
-                context.inner,
+                context.as_ptr(),
                 c_data_dir.as_ptr(),
                 c_data_dir.as_bytes().len(),
                 c_blocks_dir.as_ptr(),
