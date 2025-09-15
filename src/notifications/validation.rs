@@ -19,13 +19,13 @@ pub struct ValidationInterfaceCallbacks {
     pub block_checked: Box<dyn BlockChecked>,
 }
 
-pub unsafe extern "C" fn vi_user_data_destroy_wrapper(user_data: *mut c_void) {
+pub(crate) unsafe extern "C" fn vi_user_data_destroy_wrapper(user_data: *mut c_void) {
     if !user_data.is_null() {
         let _ = Box::from_raw(user_data as *mut ValidationInterfaceCallbacks);
     }
 }
 
-pub unsafe extern "C" fn vi_block_checked_wrapper(
+pub(crate) unsafe extern "C" fn vi_block_checked_wrapper(
     user_data: *mut c_void,
     block: *mut btck_Block,
     stateIn: *const btck_BlockValidationState,
