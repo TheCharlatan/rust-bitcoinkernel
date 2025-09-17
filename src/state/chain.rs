@@ -5,7 +5,13 @@ use libbitcoinkernel_sys::{
     btck_chain_get_height, btck_chain_get_tip,
 };
 
-use crate::{ffi::c_helpers, BlockTreeEntry};
+use crate::{
+    ffi::{
+        c_helpers,
+        sealed::{AsPtr, FromPtr},
+    },
+    BlockTreeEntry,
+};
 
 use super::ChainstateManager;
 
@@ -41,13 +47,6 @@ pub struct Chain<'a> {
 }
 
 impl<'a> Chain<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_Chain) -> Self {
-        Chain {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     /// Returns the tip (highest block) of the active chain.
     pub fn tip(&self) -> BlockTreeEntry<'a> {
         let ptr = unsafe { btck_chain_get_tip(self.inner) };
@@ -88,6 +87,15 @@ impl<'a> Chain<'a> {
 
     pub fn height(&self) -> i32 {
         unsafe { btck_chain_get_height(self.inner) }
+    }
+}
+
+impl<'a> FromPtr<btck_Chain> for Chain<'a> {
+    unsafe fn from_ptr(ptr: *const btck_Chain) -> Self {
+        Chain {
+            inner: ptr,
+            marker: PhantomData,
+        }
     }
 }
 

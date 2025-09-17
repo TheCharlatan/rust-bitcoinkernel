@@ -5,13 +5,14 @@ use libbitcoinkernel_sys::{
     btck_script_pubkey_destroy, btck_script_pubkey_to_bytes,
 };
 
-use crate::{c_serialize, KernelError};
+use crate::{
+    c_serialize,
+    ffi::sealed::{AsPtr, FromPtr},
+    KernelError,
+};
 
 /// Common operations for script pubkeys, implemented by both owned and borrowed types.
-pub trait ScriptPubkeyExt {
-    /// Returns a raw pointer to the underlying C object.
-    fn as_ptr(&self) -> *const btck_ScriptPubkey;
-
+pub trait ScriptPubkeyExt: AsPtr<btck_ScriptPubkey> {
     /// Serializes the script to raw bytes.
     fn to_bytes(&self) -> Vec<u8> {
         c_serialize(|callback, user_data| unsafe {
@@ -53,11 +54,13 @@ impl ScriptPubkey {
     }
 }
 
-impl ScriptPubkeyExt for ScriptPubkey {
+impl AsPtr<btck_ScriptPubkey> for ScriptPubkey {
     fn as_ptr(&self) -> *const btck_ScriptPubkey {
         self.inner as *const _
     }
 }
+
+impl ScriptPubkeyExt for ScriptPubkey {}
 
 impl Clone for ScriptPubkey {
     fn clone(&self) -> Self {
@@ -99,13 +102,6 @@ pub struct ScriptPubkeyRef<'a> {
 }
 
 impl<'a> ScriptPubkeyRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_ScriptPubkey) -> Self {
-        ScriptPubkeyRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     pub fn to_owned(&self) -> ScriptPubkey {
         ScriptPubkey {
             inner: unsafe { btck_script_pubkey_copy(self.inner) },
@@ -113,11 +109,22 @@ impl<'a> ScriptPubkeyRef<'a> {
     }
 }
 
-impl<'a> ScriptPubkeyExt for ScriptPubkeyRef<'a> {
+impl<'a> AsPtr<btck_ScriptPubkey> for ScriptPubkeyRef<'a> {
     fn as_ptr(&self) -> *const btck_ScriptPubkey {
         self.inner
     }
 }
+
+impl<'a> FromPtr<btck_ScriptPubkey> for ScriptPubkeyRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_ScriptPubkey) -> Self {
+        ScriptPubkeyRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'a> ScriptPubkeyExt for ScriptPubkeyRef<'a> {}
 
 impl<'a> From<ScriptPubkeyRef<'a>> for Vec<u8> {
     fn from(script_ref: ScriptPubkeyRef<'a>) -> Self {

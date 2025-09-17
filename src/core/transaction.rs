@@ -8,15 +8,16 @@ use libbitcoinkernel_sys::{
     btck_transaction_output_get_script_pubkey, btck_transaction_to_bytes,
 };
 
-use crate::{c_serialize, KernelError, ScriptPubkeyExt};
+use crate::{
+    c_serialize,
+    ffi::sealed::{AsPtr, FromPtr},
+    KernelError, ScriptPubkeyExt,
+};
 
 use super::script::ScriptPubkeyRef;
 
 /// Common operations for transactions, implemented by both owned and borrowed types.
-pub trait TransactionExt {
-    /// Returns a raw pointer to the underlying C object.
-    fn as_ptr(&self) -> *const btck_Transaction;
-
+pub trait TransactionExt: AsPtr<btck_Transaction> {
     /// Returns the number of outputs in this transaction.
     fn output_count(&self) -> usize {
         unsafe { btck_transaction_count_outputs(self.as_ptr()) as usize }
@@ -30,12 +31,15 @@ pub trait TransactionExt {
     /// # Returns
     /// * `Ok(RefType<TxOut, Transaction>)` - A reference to the output
     /// * `Err(KernelError::OutOfBounds)` - If the index is invalid
-    unsafe fn output(&self, index: usize) -> Result<TxOutRef<'_>, KernelError> {
+    fn output(&self, index: usize) -> Result<TxOutRef<'_>, KernelError> {
         if index >= self.output_count() {
             return Err(KernelError::OutOfBounds);
         }
-        let ptr = unsafe { btck_transaction_get_output_at(self.as_ptr(), index) };
-        Ok(TxOutRef::from_ptr(ptr))
+
+        let tx_out_ref =
+            unsafe { TxOutRef::from_ptr(btck_transaction_get_output_at(self.as_ptr(), index)) };
+
+        Ok(tx_out_ref)
     }
 
     fn input_count(&self) -> usize {
@@ -81,11 +85,13 @@ impl Transaction {
     }
 }
 
-impl TransactionExt for Transaction {
+impl AsPtr<btck_Transaction> for Transaction {
     fn as_ptr(&self) -> *const btck_Transaction {
         self.inner as *const _
     }
 }
+
+impl TransactionExt for Transaction {}
 
 impl Clone for Transaction {
     fn clone(&self) -> Self {
@@ -131,13 +137,6 @@ pub struct TransactionRef<'a> {
 }
 
 impl<'a> TransactionRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_Transaction) -> Self {
-        TransactionRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     pub fn to_owned(&self) -> Transaction {
         Transaction {
             inner: unsafe { btck_transaction_copy(self.inner) },
@@ -145,11 +144,21 @@ impl<'a> TransactionRef<'a> {
     }
 }
 
-impl<'a> TransactionExt for TransactionRef<'a> {
+impl<'a> AsPtr<btck_Transaction> for TransactionRef<'a> {
     fn as_ptr(&self) -> *const btck_Transaction {
         self.inner
     }
 }
+
+impl<'a> FromPtr<btck_Transaction> for TransactionRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_Transaction) -> Self {
+        TransactionRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+}
+impl<'a> TransactionExt for TransactionRef<'a> {}
 
 impl<'a> Clone for TransactionRef<'a> {
     fn clone(&self) -> Self {
@@ -160,10 +169,7 @@ impl<'a> Clone for TransactionRef<'a> {
 impl<'a> Copy for TransactionRef<'a> {}
 
 /// Common operations for transaction outputs, implemented by both owned and borrowed types.
-pub trait TxOutExt {
-    /// Returns a raw pointer to the underlying C object.
-    fn as_ptr(&self) -> *const btck_TransactionOutput;
-
+pub trait TxOutExt: AsPtr<btck_TransactionOutput> {
     /// Returns the amount of this output in satoshis.
     fn value(&self) -> i64 {
         unsafe { btck_transaction_output_get_amount(self.as_ptr()) }
@@ -208,11 +214,13 @@ impl TxOut {
     }
 }
 
-impl TxOutExt for TxOut {
+impl AsPtr<btck_TransactionOutput> for TxOut {
     fn as_ptr(&self) -> *const btck_TransactionOutput {
         self.inner as *const _
     }
 }
+
+impl TxOutExt for TxOut {}
 
 impl Clone for TxOut {
     fn clone(&self) -> Self {
@@ -234,13 +242,6 @@ pub struct TxOutRef<'a> {
 }
 
 impl<'a> TxOutRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_TransactionOutput) -> Self {
-        TxOutRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     pub fn to_owned(&self) -> TxOut {
         TxOut {
             inner: unsafe { btck_transaction_output_copy(self.inner) },
@@ -248,11 +249,22 @@ impl<'a> TxOutRef<'a> {
     }
 }
 
-impl<'a> TxOutExt for TxOutRef<'a> {
+impl<'a> AsPtr<btck_TransactionOutput> for TxOutRef<'a> {
     fn as_ptr(&self) -> *const btck_TransactionOutput {
-        self.inner
+        self.inner as *const _
     }
 }
+
+impl<'a> FromPtr<btck_TransactionOutput> for TxOutRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_TransactionOutput) -> Self {
+        TxOutRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'a> TxOutExt for TxOutRef<'a> {}
 
 impl<'a> Clone for TxOutRef<'a> {
     fn clone(&self) -> Self {
