@@ -36,6 +36,7 @@ fn main() {
         .arg("-DBUILD_CLI=OFF")
         .arg("-DBUILD_SHARED_LIBS=OFF")
         .arg("-DCMAKE_INSTALL_LIBDIR=lib")
+        .arg("-DENABLE_IPC=OFF")
         .arg(format!("-DCMAKE_INSTALL_PREFIX={}", install_dir.display()))
         .status()
         .unwrap();
