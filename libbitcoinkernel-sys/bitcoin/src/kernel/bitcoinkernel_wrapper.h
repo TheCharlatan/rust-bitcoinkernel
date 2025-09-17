@@ -800,24 +800,25 @@ class ChainView : public View<btck_Chain>
 public:
     explicit ChainView(const btck_Chain* ptr) : View{ptr} {}
 
-    BlockTreeEntry GetTip() const
+    BlockTreeEntry Tip() const
     {
         return btck_chain_get_tip(get());
     }
 
-    BlockTreeEntry GetGenesis() const
+    int Height() const
     {
-        return btck_chain_get_genesis(get());
+        return btck_chain_get_height(get());
     }
 
-    size_t CurrentHeight() const
+    BlockTreeEntry Genesis() const
     {
-        return GetTip().GetHeight();
+        return btck_chain_get_genesis(get());
     }
 
     BlockTreeEntry GetByHeight(int height) const
     {
         auto index{btck_chain_get_by_height(get(), height)};
+        if (!index) throw std::runtime_error("No entry in the chain at the provided height");
         return index;
     }
 
@@ -828,7 +829,7 @@ public:
 
     auto Entries() const
     {
-        return Range<ChainView, &ChainView::CurrentHeight, &ChainView::GetByHeight>{*this};
+        return Range<ChainView, &ChainView::Height, &ChainView::GetByHeight>{*this};
     }
 };
 

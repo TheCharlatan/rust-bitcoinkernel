@@ -302,7 +302,7 @@ public:
         m_cbs.user_data = nullptr;
     }
 
-    kernel::InterruptResult blockTip(SynchronizationState state, CBlockIndex& index, double verification_progress) override
+    kernel::InterruptResult blockTip(SynchronizationState state, const CBlockIndex& index, double verification_progress) override
     {
         if (m_cbs.block_tip) m_cbs.block_tip(m_cbs.user_data, cast_state(state), btck_BlockTreeEntry::ref(&index), verification_progress);
         return {};
@@ -628,7 +628,6 @@ void btck_logging_set_level_category(btck_LogCategory category, btck_LogLevel le
 
 void btck_logging_enable_category(btck_LogCategory category)
 {
-    LOCK(cs_main);
     LogInstance().EnableCategory(get_bclog_flag(category));
 }
 
@@ -1126,6 +1125,11 @@ const btck_BlockTreeEntry* btck_chain_get_tip(const btck_Chain* chain)
     return btck_BlockTreeEntry::ref(btck_Chain::get(chain).Tip());
 }
 
+int btck_chain_get_height(const btck_Chain* chain)
+{
+    return btck_Chain::get(chain).Height();
+}
+
 const btck_BlockTreeEntry* btck_chain_get_genesis(const btck_Chain* chain)
 {
     return btck_BlockTreeEntry::ref(btck_Chain::get(chain).Genesis());
@@ -1134,7 +1138,6 @@ const btck_BlockTreeEntry* btck_chain_get_genesis(const btck_Chain* chain)
 const btck_BlockTreeEntry* btck_chain_get_by_height(const btck_Chain* chain, int height)
 {
     LOCK(::cs_main);
-    assert(height >= 0 && height <= btck_Chain::get(chain).Height());
     return btck_BlockTreeEntry::ref(btck_Chain::get(chain)[height]);
 }
 

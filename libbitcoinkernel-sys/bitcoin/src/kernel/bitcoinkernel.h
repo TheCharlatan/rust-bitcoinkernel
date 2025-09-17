@@ -126,8 +126,8 @@ typedef struct btck_TransactionOutput btck_TransactionOutput;
  * Messages that were logged before a connection is created are buffered in a
  * 1MB buffer. Logging can alternatively be permanently disabled by calling
  * @ref btck_logging_disable. Functions changing the logging settings are
- * global (and not thread safe) and change the settings for all existing
- * btck_LoggingConnection instances.
+ * global and change the settings for all existing btck_LoggingConnection
+ * instances.
  */
 typedef struct btck_LoggingConnection btck_LoggingConnection;
 
@@ -652,10 +652,9 @@ BITCOINKERNEL_API void btck_logging_disable();
 /**
  * @brief Set the log level of the global internal logger. This does not
  * enable the selected categories. Use @ref btck_logging_enable_category to
- * start logging from a specific, or all categories. This function is not
- * thread safe. Multiple calls from different threads are allowed but must be
- * synchronized. This changes a global setting and will override settings for
- * all existing @ref btck_LoggingConnection instances.
+ * start logging from a specific, or all categories. This changes a global
+ * setting and will override settings for all existing
+ * @ref btck_LoggingConnection instances.
  *
  * @param[in] category If btck_LOG_ALL is chosen, all messages at the specified level
  *                     will be logged. Otherwise only messages from the specified category
@@ -666,9 +665,8 @@ BITCOINKERNEL_API void btck_logging_set_level_category(btck_LogCategory category
 
 /**
  * @brief Enable a specific log category for the global internal logger. This
- * function is not thread safe. Multiple calls from different threads are
- * allowed but must be synchronized. This changes a global setting and will
- * override settings for all existing @ref btck_LoggingConnection instances.
+ * changes a global setting and will override settings for all existing @ref
+ * btck_LoggingConnection instances.
  *
  * @param[in] category If btck_LOG_ALL is chosen, all categories will be enabled.
  */
@@ -676,9 +674,8 @@ BITCOINKERNEL_API void btck_logging_enable_category(btck_LogCategory category);
 
 /**
  * @brief Disable a specific log category for the global internal logger. This
- * function is not thread safe. Multiple calls from different threads are
- * allowed but must be synchronized. This changes a global setting and will
- * override settings for all existing @ref btck_LoggingConnection instances.
+ * changes a global setting and will override settings for all existing @ref
+ * btck_LoggingConnection instances.
  *
  * @param[in] category If btck_LOG_ALL is chosen, all categories will be disabled.
  */
@@ -1138,6 +1135,15 @@ BITCOINKERNEL_API btck_BlockValidationResult btck_block_validation_state_get_blo
 BITCOINKERNEL_API const btck_BlockTreeEntry* BITCOINKERNEL_WARN_UNUSED_RESULT btck_chain_get_tip(
     const btck_Chain* chain) BITCOINKERNEL_ARG_NONNULL(1);
 
+/**
+ * @brief Return the height of the tip of the chain.
+ *
+ * @param[in] chain Non-null.
+ * @return          The current height.
+ */
+BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_chain_get_height(
+    const btck_Chain* chain) BITCOINKERNEL_ARG_NONNULL(1);
+
 /*
  * @brief Get the block tree entry of the genesis block.
  *
@@ -1153,7 +1159,8 @@ BITCOINKERNEL_API const btck_BlockTreeEntry* BITCOINKERNEL_WARN_UNUSED_RESULT bt
  *
  * @param[in] chain        Non-null.
  * @param[in] block_height Height in the chain of the to be retrieved block tree entry.
- * @return                 The block tree entry at a certain height in the currently active chain.
+ * @return                 The block tree entry at a certain height in the currently active chain, or null
+ *                         if the height is out of bounds.
  */
 BITCOINKERNEL_API const btck_BlockTreeEntry* BITCOINKERNEL_WARN_UNUSED_RESULT btck_chain_get_by_height(
     const btck_Chain* chain,
