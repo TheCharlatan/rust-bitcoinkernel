@@ -103,9 +103,10 @@ pub use crate::core::{
 pub use crate::log::{disable_logging, Log, LogCategory, LogLevel, Logger};
 
 pub use crate::notifications::{
-    BlockChecked, BlockTip, BlockValidationResult, FatalError, FlushError, HeaderTip,
-    KernelNotificationInterfaceCallbacks, Progress, SynchronizationState,
-    ValidationInterfaceCallbacks, ValidationMode, Warning, WarningSet, WarningUnset,
+    BlockTipCallback, BlockValidationResult, FatalErrorCallback, FlushErrorCallback,
+    HeaderTipCallback, NotificationCallbackRegistry, ProgressCallback, SynchronizationState,
+    ValidationInterfaceCallbacks, ValidationMode, Warning, WarningSetCallback,
+    WarningUnsetCallback,
 };
 
 pub use crate::state::{
