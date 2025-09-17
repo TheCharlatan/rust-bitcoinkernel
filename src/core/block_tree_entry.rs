@@ -5,7 +5,10 @@ use libbitcoinkernel_sys::{
     btck_block_tree_entry_get_height, btck_block_tree_entry_get_previous,
 };
 
-use crate::{ffi::sealed::AsPtr, BlockHash, ChainstateManager};
+use crate::{
+    ffi::sealed::{AsPtr, FromPtr},
+    BlockHash, ChainstateManager,
+};
 
 /// A block tree entry that is tied to a specific [`ChainstateManager`].
 ///
@@ -23,13 +26,6 @@ unsafe impl Send for BlockTreeEntry<'_> {}
 unsafe impl Sync for BlockTreeEntry<'_> {}
 
 impl<'a> BlockTreeEntry<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_BlockTreeEntry) -> Self {
-        BlockTreeEntry {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     /// Move to the previous entry in the block tree. E.g. from height n to
     /// height n-1.
     pub fn prev(self) -> Option<BlockTreeEntry<'a>> {
@@ -61,6 +57,15 @@ impl<'a> BlockTreeEntry<'a> {
 impl<'a> AsPtr<btck_BlockTreeEntry> for BlockTreeEntry<'a> {
     fn as_ptr(&self) -> *const btck_BlockTreeEntry {
         self.inner
+    }
+}
+
+impl<'a> FromPtr<btck_BlockTreeEntry> for BlockTreeEntry<'a> {
+    unsafe fn from_ptr(ptr: *const btck_BlockTreeEntry) -> Self {
+        BlockTreeEntry {
+            inner: ptr,
+            marker: PhantomData,
+        }
     }
 }
 

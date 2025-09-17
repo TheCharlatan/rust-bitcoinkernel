@@ -13,8 +13,11 @@ use libbitcoinkernel_sys::{
 };
 
 use crate::{
-    ffi::c_helpers, ffi::sealed::AsPtr, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry,
-    KernelError,
+    ffi::{
+        c_helpers,
+        sealed::{AsPtr, FromMutPtr, FromPtr},
+    },
+    Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, KernelError,
 };
 
 use super::{Chain, Context};

@@ -12,7 +12,11 @@ use libbitcoinkernel_sys::{
     btck_transaction_spent_outputs_get_coin_at,
 };
 
-use crate::{c_helpers, c_serialize, ffi::sealed::AsPtr, KernelError};
+use crate::{
+    c_helpers, c_serialize,
+    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
+    KernelError,
+};
 
 use super::transaction::{TransactionRef, TxOutRef};
 
@@ -34,10 +38,6 @@ unsafe impl Send for Block {}
 unsafe impl Sync for Block {}
 
 impl Block {
-    pub unsafe fn from_ptr(ptr: *mut btck_Block) -> Self {
-        Block { inner: ptr }
-    }
-
     pub fn new(raw_block: &[u8]) -> Result<Self, KernelError> {
         let inner =
             unsafe { btck_block_create(raw_block.as_ptr() as *const c_void, raw_block.len()) };
@@ -95,6 +95,12 @@ impl Block {
 impl AsPtr<btck_Block> for Block {
     fn as_ptr(&self) -> *const btck_Block {
         self.inner as *const _
+    }
+}
+
+impl FromMutPtr<btck_Block> for Block {
+    unsafe fn from_ptr(ptr: *mut btck_Block) -> Self {
+        Block { inner: ptr }
     }
 }
 
@@ -186,12 +192,14 @@ unsafe impl Send for BlockSpentOutputs {}
 unsafe impl Sync for BlockSpentOutputs {}
 
 impl BlockSpentOutputs {
-    pub unsafe fn from_ptr(ptr: *mut btck_BlockSpentOutputs) -> Self {
-        BlockSpentOutputs { inner: ptr }
-    }
-
     pub fn as_ref(&self) -> BlockSpentOutputsRef<'_> {
         unsafe { BlockSpentOutputsRef::from_ptr(self.inner as *const _) }
+    }
+}
+
+impl FromMutPtr<btck_BlockSpentOutputs> for BlockSpentOutputs {
+    unsafe fn from_ptr(ptr: *mut btck_BlockSpentOutputs) -> Self {
+        BlockSpentOutputs { inner: ptr }
     }
 }
 
@@ -223,13 +231,6 @@ pub struct BlockSpentOutputsRef<'a> {
 }
 
 impl<'a> BlockSpentOutputsRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_BlockSpentOutputs) -> Self {
-        BlockSpentOutputsRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     pub fn to_owned(&self) -> BlockSpentOutputs {
         BlockSpentOutputs {
             inner: unsafe { btck_block_spent_outputs_copy(self.inner) },
@@ -240,6 +241,15 @@ impl<'a> BlockSpentOutputsRef<'a> {
 impl<'a> AsPtr<btck_BlockSpentOutputs> for BlockSpentOutputsRef<'a> {
     fn as_ptr(&self) -> *const btck_BlockSpentOutputs {
         self.inner
+    }
+}
+
+impl<'a> FromPtr<btck_BlockSpentOutputs> for BlockSpentOutputsRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_BlockSpentOutputs) -> Self {
+        BlockSpentOutputsRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
     }
 }
 
@@ -324,13 +334,6 @@ pub struct TransactionSpentOutputsRef<'a> {
 }
 
 impl<'a> TransactionSpentOutputsRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_TransactionSpentOutputs) -> Self {
-        TransactionSpentOutputsRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     pub fn to_owned(&self) -> TransactionSpentOutputs {
         TransactionSpentOutputs {
             inner: unsafe { btck_transaction_spent_outputs_copy(self.inner) },
@@ -341,6 +344,15 @@ impl<'a> TransactionSpentOutputsRef<'a> {
 impl<'a> AsPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputsRef<'a> {
     fn as_ptr(&self) -> *const btck_TransactionSpentOutputs {
         self.inner
+    }
+}
+
+impl<'a> FromPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputsRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_TransactionSpentOutputs) -> Self {
+        TransactionSpentOutputsRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
     }
 }
 
@@ -424,13 +436,6 @@ pub struct CoinRef<'a> {
 }
 
 impl<'a> CoinRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_Coin) -> Self {
-        CoinRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     pub fn to_owned(&self) -> Coin {
         Coin {
             inner: unsafe { btck_coin_copy(self.inner) },
@@ -441,6 +446,15 @@ impl<'a> CoinRef<'a> {
 impl<'a> AsPtr<btck_Coin> for CoinRef<'a> {
     fn as_ptr(&self) -> *const btck_Coin {
         self.inner
+    }
+}
+
+impl<'a> FromPtr<btck_Coin> for CoinRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_Coin) -> Self {
+        CoinRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
     }
 }
 

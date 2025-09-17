@@ -5,7 +5,7 @@ use libbitcoinkernel_sys::{
     btck_block_validation_state_get_validation_mode,
 };
 
-use crate::Block;
+use crate::{ffi::sealed::FromMutPtr, Block};
 
 use super::{BlockValidationResult, ValidationMode};
 

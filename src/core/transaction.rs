@@ -8,7 +8,11 @@ use libbitcoinkernel_sys::{
     btck_transaction_output_get_script_pubkey, btck_transaction_to_bytes,
 };
 
-use crate::{c_serialize, ffi::sealed::AsPtr, KernelError, ScriptPubkeyExt};
+use crate::{
+    c_serialize,
+    ffi::sealed::{AsPtr, FromPtr},
+    KernelError, ScriptPubkeyExt,
+};
 
 use super::script::ScriptPubkeyRef;
 
@@ -130,13 +134,6 @@ pub struct TransactionRef<'a> {
 }
 
 impl<'a> TransactionRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_Transaction) -> Self {
-        TransactionRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     pub fn to_owned(&self) -> Transaction {
         Transaction {
             inner: unsafe { btck_transaction_copy(self.inner) },
@@ -150,6 +147,14 @@ impl<'a> AsPtr<btck_Transaction> for TransactionRef<'a> {
     }
 }
 
+impl<'a> FromPtr<btck_Transaction> for TransactionRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_Transaction) -> Self {
+        TransactionRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+}
 impl<'a> TransactionExt for TransactionRef<'a> {}
 
 impl<'a> Clone for TransactionRef<'a> {
@@ -234,13 +239,6 @@ pub struct TxOutRef<'a> {
 }
 
 impl<'a> TxOutRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_TransactionOutput) -> Self {
-        TxOutRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     pub fn to_owned(&self) -> TxOut {
         TxOut {
             inner: unsafe { btck_transaction_output_copy(self.inner) },
@@ -251,6 +249,15 @@ impl<'a> TxOutRef<'a> {
 impl<'a> AsPtr<btck_TransactionOutput> for TxOutRef<'a> {
     fn as_ptr(&self) -> *const btck_TransactionOutput {
         self.inner as *const _
+    }
+}
+
+impl<'a> FromPtr<btck_TransactionOutput> for TxOutRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_TransactionOutput) -> Self {
+        TxOutRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
     }
 }
 

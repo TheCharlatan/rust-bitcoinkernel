@@ -5,7 +5,11 @@ use libbitcoinkernel_sys::{
     btck_script_pubkey_destroy, btck_script_pubkey_to_bytes,
 };
 
-use crate::{c_serialize, ffi::sealed::AsPtr, KernelError};
+use crate::{
+    c_serialize,
+    ffi::sealed::{AsPtr, FromPtr},
+    KernelError,
+};
 
 /// Common operations for script pubkeys, implemented by both owned and borrowed types.
 pub trait ScriptPubkeyExt: AsPtr<btck_ScriptPubkey> {
@@ -98,13 +102,6 @@ pub struct ScriptPubkeyRef<'a> {
 }
 
 impl<'a> ScriptPubkeyRef<'a> {
-    pub unsafe fn from_ptr(ptr: *const btck_ScriptPubkey) -> Self {
-        ScriptPubkeyRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-
     pub fn to_owned(&self) -> ScriptPubkey {
         ScriptPubkey {
             inner: unsafe { btck_script_pubkey_copy(self.inner) },
@@ -115,6 +112,15 @@ impl<'a> ScriptPubkeyRef<'a> {
 impl<'a> AsPtr<btck_ScriptPubkey> for ScriptPubkeyRef<'a> {
     fn as_ptr(&self) -> *const btck_ScriptPubkey {
         self.inner
+    }
+}
+
+impl<'a> FromPtr<btck_ScriptPubkey> for ScriptPubkeyRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_ScriptPubkey) -> Self {
+        ScriptPubkeyRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
     }
 }
 
