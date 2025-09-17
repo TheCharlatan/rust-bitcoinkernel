@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use libbitcoinkernel_sys::{
     btck_Chain, btck_chain_contains, btck_chain_get_by_height, btck_chain_get_genesis,
-    btck_chain_get_tip,
+    btck_chain_get_height, btck_chain_get_tip,
 };
 
 use crate::{ffi::c_helpers, BlockTreeEntry};
@@ -87,7 +87,7 @@ impl<'a> Chain<'a> {
     }
 
     pub fn height(&self) -> i32 {
-        self.tip().height()
+        unsafe { btck_chain_get_height(self.inner) }
     }
 }
 
