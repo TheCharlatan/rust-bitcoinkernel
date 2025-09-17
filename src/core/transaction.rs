@@ -31,12 +31,15 @@ pub trait TransactionExt: AsPtr<btck_Transaction> {
     /// # Returns
     /// * `Ok(RefType<TxOut, Transaction>)` - A reference to the output
     /// * `Err(KernelError::OutOfBounds)` - If the index is invalid
-    unsafe fn output(&self, index: usize) -> Result<TxOutRef<'_>, KernelError> {
+    fn output(&self, index: usize) -> Result<TxOutRef<'_>, KernelError> {
         if index >= self.output_count() {
             return Err(KernelError::OutOfBounds);
         }
-        let ptr = unsafe { btck_transaction_get_output_at(self.as_ptr(), index) };
-        Ok(TxOutRef::from_ptr(ptr))
+
+        let tx_out_ref =
+            unsafe { TxOutRef::from_ptr(btck_transaction_get_output_at(self.as_ptr(), index)) };
+
+        Ok(tx_out_ref)
     }
 
     fn input_count(&self) -> usize {
