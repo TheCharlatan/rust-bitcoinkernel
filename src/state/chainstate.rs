@@ -12,7 +12,10 @@ use libbitcoinkernel_sys::{
     btck_chainstate_manager_options_set_worker_threads_num, btck_chainstate_manager_process_block,
 };
 
-use crate::{ffi::c_helpers, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, KernelError};
+use crate::{
+    ffi::c_helpers, ffi::sealed::AsPtr, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry,
+    KernelError,
+};
 
 use super::{Chain, Context};
 

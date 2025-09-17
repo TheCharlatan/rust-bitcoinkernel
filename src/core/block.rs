@@ -12,7 +12,7 @@ use libbitcoinkernel_sys::{
     btck_transaction_spent_outputs_get_coin_at,
 };
 
-use crate::{c_helpers, c_serialize, KernelError};
+use crate::{c_helpers, c_serialize, ffi::sealed::AsPtr, KernelError};
 
 use super::transaction::{TransactionRef, TxOutRef};
 
@@ -90,8 +90,10 @@ impl Block {
             btck_block_to_bytes(self.inner, Some(callback), user_data)
         })
     }
+}
 
-    pub fn as_ptr(&self) -> *const btck_Block {
+impl AsPtr<btck_Block> for Block {
+    fn as_ptr(&self) -> *const btck_Block {
         self.inner as *const _
     }
 }
@@ -135,10 +137,7 @@ impl TryFrom<&Block> for Vec<u8> {
 }
 
 /// Common operations for block spent outputs, implemented by both owned and borrowed types.
-pub trait BlockSpentOutputsExt {
-    /// Returns a raw pointer to the underlying C object.
-    fn as_ptr(&self) -> *const btck_BlockSpentOutputs;
-
+pub trait BlockSpentOutputsExt: AsPtr<btck_BlockSpentOutputs> {
     /// Returns the number of transactions that have spent output data.
     ///
     /// Note: This excludes the coinbase transaction, which has no inputs.
@@ -196,11 +195,13 @@ impl BlockSpentOutputs {
     }
 }
 
-impl BlockSpentOutputsExt for BlockSpentOutputs {
+impl AsPtr<btck_BlockSpentOutputs> for BlockSpentOutputs {
     fn as_ptr(&self) -> *const btck_BlockSpentOutputs {
         self.inner as *const _
     }
 }
+
+impl BlockSpentOutputsExt for BlockSpentOutputs {}
 
 impl Clone for BlockSpentOutputs {
     fn clone(&self) -> Self {
@@ -236,11 +237,13 @@ impl<'a> BlockSpentOutputsRef<'a> {
     }
 }
 
-impl<'a> BlockSpentOutputsExt for BlockSpentOutputsRef<'a> {
+impl<'a> AsPtr<btck_BlockSpentOutputs> for BlockSpentOutputsRef<'a> {
     fn as_ptr(&self) -> *const btck_BlockSpentOutputs {
         self.inner
     }
 }
+
+impl<'a> BlockSpentOutputsExt for BlockSpentOutputsRef<'a> {}
 
 impl<'a> Clone for BlockSpentOutputsRef<'a> {
     fn clone(&self) -> Self {
@@ -251,10 +254,7 @@ impl<'a> Clone for BlockSpentOutputsRef<'a> {
 impl<'a> Copy for BlockSpentOutputsRef<'a> {}
 
 /// Common operations for transaction spent outputs, implemented by both owned and borrowed types.
-pub trait TransactionSpentOutputsExt {
-    /// Returns a raw pointer to the underlying C object.
-    fn as_ptr(&self) -> *const btck_TransactionSpentOutputs;
-
+pub trait TransactionSpentOutputsExt: AsPtr<btck_TransactionSpentOutputs> {
     /// Returns the number of coins spent by this transaction
     fn count(&self) -> usize {
         unsafe { btck_transaction_spent_outputs_count(self.as_ptr()) }
@@ -296,11 +296,13 @@ impl TransactionSpentOutputs {
     }
 }
 
-impl TransactionSpentOutputsExt for TransactionSpentOutputs {
+impl AsPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputs {
     fn as_ptr(&self) -> *const btck_TransactionSpentOutputs {
         self.inner as *const _
     }
 }
+
+impl TransactionSpentOutputsExt for TransactionSpentOutputs {}
 
 impl Clone for TransactionSpentOutputs {
     fn clone(&self) -> Self {
@@ -336,11 +338,13 @@ impl<'a> TransactionSpentOutputsRef<'a> {
     }
 }
 
-impl<'a> TransactionSpentOutputsExt for TransactionSpentOutputsRef<'a> {
+impl<'a> AsPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputsRef<'a> {
     fn as_ptr(&self) -> *const btck_TransactionSpentOutputs {
         self.inner
     }
 }
+
+impl<'a> TransactionSpentOutputsExt for TransactionSpentOutputsRef<'a> {}
 
 impl<'a> Clone for TransactionSpentOutputsRef<'a> {
     fn clone(&self) -> Self {
@@ -351,10 +355,7 @@ impl<'a> Clone for TransactionSpentOutputsRef<'a> {
 impl<'a> Copy for TransactionSpentOutputsRef<'a> {}
 
 /// Common operations for coins, implemented by both owned and borrowed types.
-pub trait CoinExt {
-    /// Returns a raw pointer to the underlying C object.
-    fn as_ptr(&self) -> *const btck_Coin;
-
+pub trait CoinExt: AsPtr<btck_Coin> {
     /// Returns the height of the block where this coin was created.
     fn confirmation_height(&self) -> u32 {
         unsafe { btck_coin_confirmation_height(self.as_ptr()) }
@@ -395,11 +396,13 @@ impl Coin {
     }
 }
 
-impl CoinExt for Coin {
+impl AsPtr<btck_Coin> for Coin {
     fn as_ptr(&self) -> *const btck_Coin {
         self.inner as *const _
     }
 }
+
+impl CoinExt for Coin {}
 
 impl Clone for Coin {
     fn clone(&self) -> Self {
@@ -435,11 +438,13 @@ impl<'a> CoinRef<'a> {
     }
 }
 
-impl<'a> CoinExt for CoinRef<'a> {
+impl<'a> AsPtr<btck_Coin> for CoinRef<'a> {
     fn as_ptr(&self) -> *const btck_Coin {
         self.inner
     }
 }
+
+impl<'a> CoinExt for CoinRef<'a> {}
 
 impl<'a> Clone for CoinRef<'a> {
     fn clone(&self) -> Self {

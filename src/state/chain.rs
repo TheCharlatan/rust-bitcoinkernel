@@ -5,7 +5,10 @@ use libbitcoinkernel_sys::{
     btck_chain_get_height, btck_chain_get_tip,
 };
 
-use crate::{ffi::c_helpers, BlockTreeEntry};
+use crate::{
+    ffi::{c_helpers, sealed::AsPtr},
+    BlockTreeEntry,
+};
 
 use super::ChainstateManager;
 

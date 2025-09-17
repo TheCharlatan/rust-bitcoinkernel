@@ -5,7 +5,7 @@ use libbitcoinkernel_sys::{
     btck_block_tree_entry_get_height, btck_block_tree_entry_get_previous,
 };
 
-use crate::{BlockHash, ChainstateManager};
+use crate::{ffi::sealed::AsPtr, BlockHash, ChainstateManager};
 
 /// A block tree entry that is tied to a specific [`ChainstateManager`].
 ///
@@ -56,8 +56,10 @@ impl<'a> BlockTreeEntry<'a> {
         unsafe { btck_block_hash_destroy(hash) };
         res
     }
+}
 
-    pub fn as_ptr(&self) -> *const btck_BlockTreeEntry {
+impl<'a> AsPtr<btck_BlockTreeEntry> for BlockTreeEntry<'a> {
+    fn as_ptr(&self) -> *const btck_BlockTreeEntry {
         self.inner
     }
 }
