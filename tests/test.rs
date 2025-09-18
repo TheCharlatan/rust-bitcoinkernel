@@ -5,8 +5,7 @@ mod tests {
         prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
         ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder,
         KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction,
-        TransactionSpentOutputs, TxOut, TxOutRef, ValidationInterfaceCallbacks,
-        VERIFY_ALL_PRE_TAPROOT,
+        TransactionSpentOutputs, TxOut, TxOutRef, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -62,11 +61,10 @@ mod tests {
             .with_fatal_error_notification(|message| {
                 log::info!("Fatal error! {}", message);
             })
-            .validation_interface(Box::new(ValidationInterfaceCallbacks {
-                block_checked: Box::new(|_block, _mode, _result| {
-                    log::info!("Block checked!");
-                }),
-            }));
+            .with_block_checked_validation(|_block, _mode, _result| {
+                log::info!("Block checked!");
+            });
+
         builder.build().unwrap()
     }
 

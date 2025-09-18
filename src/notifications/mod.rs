@@ -9,4 +9,4 @@ pub use notification::{
     NotificationCallbackRegistry, ProgressCallback, WarningSetCallback, WarningUnsetCallback,
 };
 
-pub use validation::{BlockChecked, ValidationInterfaceCallbacks};
+pub use validation::{BlockCheckedCallback, ValidationCallbackRegistry};

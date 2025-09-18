@@ -19,10 +19,13 @@ use crate::{
             FlushErrorCallback, HeaderTipCallback, NotificationCallbackRegistry, ProgressCallback,
             WarningSetCallback, WarningUnsetCallback,
         },
-        validation::{vi_block_checked_wrapper, vi_user_data_destroy_wrapper},
+        validation::{
+            vi_block_checked_wrapper, vi_user_data_destroy_wrapper, BlockCheckedCallback,
+            ValidationCallbackRegistry,
+        },
     },
-    KernelError, ValidationInterfaceCallbacks, BTCK_CHAIN_TYPE_MAINNET, BTCK_CHAIN_TYPE_REGTEST,
-    BTCK_CHAIN_TYPE_SIGNET, BTCK_CHAIN_TYPE_TESTNET, BTCK_CHAIN_TYPE_TESTNET_4,
+    KernelError, BTCK_CHAIN_TYPE_MAINNET, BTCK_CHAIN_TYPE_REGTEST, BTCK_CHAIN_TYPE_SIGNET,
+    BTCK_CHAIN_TYPE_TESTNET, BTCK_CHAIN_TYPE_TESTNET_4,
 };
 
 /// The chain parameters with which to configure a [`Context`].
@@ -93,6 +96,7 @@ impl Drop for Context {
 pub struct ContextBuilder {
     inner: *mut btck_ContextOptions,
     notification_registry: Option<NotificationCallbackRegistry>,
+    validation_registry: Option<ValidationCallbackRegistry>,
 }
 
 impl Default for ContextBuilder {
@@ -106,6 +110,7 @@ impl ContextBuilder {
         ContextBuilder {
             inner: unsafe { btck_context_options_create() },
             notification_registry: None,
+            validation_registry: None,
         }
     }
 
@@ -114,23 +119,12 @@ impl ContextBuilder {
     /// # Errors
     ///
     /// Returns [`KernelError::Internal`] if [`Context`] creation fails.
-    pub fn build(self) -> Result<Context, KernelError> {
-        if let Some(registry) = self.notification_registry {
-            let registry_ptr = Box::into_raw(Box::new(registry));
-            unsafe {
-                let holder = btck_NotificationInterfaceCallbacks {
-                    user_data: registry_ptr as *mut c_void,
-                    user_data_destroy: Some(kn_user_data_destroy_wrapper),
-                    block_tip: Some(kn_block_tip_wrapper),
-                    header_tip: Some(kn_header_tip_wrapper),
-                    progress: Some(kn_progress_wrapper),
-                    warning_set: Some(kn_warning_set_wrapper),
-                    warning_unset: Some(kn_warning_unset_wrapper),
-                    flush_error: Some(kn_flush_error_wrapper),
-                    fatal_error: Some(kn_fatal_error_wrapper),
-                };
-                btck_context_options_set_notifications(self.inner, holder);
-            }
+    pub fn build(mut self) -> Result<Context, KernelError> {
+        if let Some(registry) = self.notification_registry.take() {
+            self.setup_notification_interface(registry);
+        }
+        if let Some(registry) = self.validation_registry.take() {
+            self.setup_validation_interface(registry);
         }
 
         let inner = unsafe { btck_context_create(self.inner) };
@@ -139,6 +133,36 @@ impl ContextBuilder {
         }
         unsafe { btck_context_options_destroy(self.inner) };
         Ok(Context { inner })
+    }
+
+    fn setup_notification_interface(&self, registry: NotificationCallbackRegistry) {
+        let registry_ptr = Box::into_raw(Box::new(registry));
+        unsafe {
+            let holder = btck_NotificationInterfaceCallbacks {
+                user_data: registry_ptr as *mut c_void,
+                user_data_destroy: Some(kn_user_data_destroy_wrapper),
+                block_tip: Some(kn_block_tip_wrapper),
+                header_tip: Some(kn_header_tip_wrapper),
+                progress: Some(kn_progress_wrapper),
+                warning_set: Some(kn_warning_set_wrapper),
+                warning_unset: Some(kn_warning_unset_wrapper),
+                flush_error: Some(kn_flush_error_wrapper),
+                fatal_error: Some(kn_fatal_error_wrapper),
+            };
+            btck_context_options_set_notifications(self.inner, holder);
+        }
+    }
+
+    fn setup_validation_interface(&self, registry: ValidationCallbackRegistry) {
+        let registry_ptr = Box::into_raw(Box::new(registry));
+        unsafe {
+            let holder = btck_ValidationInterfaceCallbacks {
+                user_data: registry_ptr as *mut c_void,
+                user_data_destroy: Some(vi_user_data_destroy_wrapper),
+                block_checked: Some(vi_block_checked_wrapper),
+            };
+            btck_context_options_set_validation_interface(self.inner, holder);
+        }
     }
 
     /// Sets the chain type
@@ -227,21 +251,20 @@ impl ContextBuilder {
         self.notification_registry.as_mut().unwrap()
     }
 
-    /// Sets the validation interface callbacks
-    pub fn validation_interface(
-        self,
-        vi_callbacks: Box<ValidationInterfaceCallbacks>,
-    ) -> ContextBuilder {
-        let vi_pointer = Box::into_raw(vi_callbacks);
-        unsafe {
-            let holder = btck_ValidationInterfaceCallbacks {
-                user_data: vi_pointer as *mut c_void,
-                user_data_destroy: Some(vi_user_data_destroy_wrapper),
-                block_checked: Some(vi_block_checked_wrapper),
-            };
-            btck_context_options_set_validation_interface(self.inner, holder);
-        }
+    pub fn with_block_checked_validation<T>(mut self, handler: T) -> Self
+    where
+        T: BlockCheckedCallback + 'static,
+    {
+        self.get_or_create_validation_registry()
+            .register_block_checked(handler);
         self
+    }
+
+    fn get_or_create_validation_registry(&mut self) -> &mut ValidationCallbackRegistry {
+        if self.validation_registry.is_none() {
+            self.validation_registry = Some(ValidationCallbackRegistry::new());
+        }
+        self.validation_registry.as_mut().unwrap()
     }
 }
 
