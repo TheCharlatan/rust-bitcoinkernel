@@ -13,15 +13,17 @@ use crate::{
     ffi::c_helpers,
     notifications::{
         notification::{
-            kn_block_tip_wrapper, kn_fatal_error_wrapper, kn_flush_error_wrapper,
-            kn_header_tip_wrapper, kn_progress_wrapper, kn_user_data_destroy_wrapper,
-            kn_warning_set_wrapper, kn_warning_unset_wrapper, BlockTipCallback, FatalErrorCallback,
-            FlushErrorCallback, HeaderTipCallback, NotificationCallbackRegistry, ProgressCallback,
-            WarningSetCallback, WarningUnsetCallback,
+            notification_block_tip_wrapper, notification_fatal_error_wrapper,
+            notification_flush_error_wrapper, notification_header_tip_wrapper,
+            notification_progress_wrapper, notification_user_data_destroy_wrapper,
+            notification_warning_set_wrapper, notification_warning_unset_wrapper, BlockTipCallback,
+            FatalErrorCallback, FlushErrorCallback, HeaderTipCallback,
+            NotificationCallbackRegistry, ProgressCallback, WarningSetCallback,
+            WarningUnsetCallback,
         },
         validation::{
-            vi_block_checked_wrapper, vi_user_data_destroy_wrapper, BlockCheckedCallback,
-            ValidationCallbackRegistry,
+            validation_block_checked_wrapper, validation_user_data_destroy_wrapper,
+            BlockCheckedCallback, ValidationCallbackRegistry,
         },
     },
     KernelError, BTCK_CHAIN_TYPE_MAINNET, BTCK_CHAIN_TYPE_REGTEST, BTCK_CHAIN_TYPE_SIGNET,
@@ -140,14 +142,14 @@ impl ContextBuilder {
         unsafe {
             let holder = btck_NotificationInterfaceCallbacks {
                 user_data: registry_ptr as *mut c_void,
-                user_data_destroy: Some(kn_user_data_destroy_wrapper),
-                block_tip: Some(kn_block_tip_wrapper),
-                header_tip: Some(kn_header_tip_wrapper),
-                progress: Some(kn_progress_wrapper),
-                warning_set: Some(kn_warning_set_wrapper),
-                warning_unset: Some(kn_warning_unset_wrapper),
-                flush_error: Some(kn_flush_error_wrapper),
-                fatal_error: Some(kn_fatal_error_wrapper),
+                user_data_destroy: Some(notification_user_data_destroy_wrapper),
+                block_tip: Some(notification_block_tip_wrapper),
+                header_tip: Some(notification_header_tip_wrapper),
+                progress: Some(notification_progress_wrapper),
+                warning_set: Some(notification_warning_set_wrapper),
+                warning_unset: Some(notification_warning_unset_wrapper),
+                flush_error: Some(notification_flush_error_wrapper),
+                fatal_error: Some(notification_fatal_error_wrapper),
             };
             btck_context_options_set_notifications(self.inner, holder);
         }
@@ -158,8 +160,8 @@ impl ContextBuilder {
         unsafe {
             let holder = btck_ValidationInterfaceCallbacks {
                 user_data: registry_ptr as *mut c_void,
-                user_data_destroy: Some(vi_user_data_destroy_wrapper),
-                block_checked: Some(vi_block_checked_wrapper),
+                user_data_destroy: Some(validation_user_data_destroy_wrapper),
+                block_checked: Some(validation_block_checked_wrapper),
             };
             btck_context_options_set_validation_interface(self.inner, holder);
         }
