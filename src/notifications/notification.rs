@@ -198,13 +198,13 @@ impl NotificationCallbackRegistry {
     }
 }
 
-pub(crate) unsafe extern "C" fn kn_user_data_destroy_wrapper(user_data: *mut c_void) {
+pub(crate) unsafe extern "C" fn notification_user_data_destroy_wrapper(user_data: *mut c_void) {
     if !user_data.is_null() {
         let _ = Box::from_raw(user_data as *mut NotificationCallbackRegistry);
     }
 }
 
-pub(crate) unsafe extern "C" fn kn_block_tip_wrapper(
+pub(crate) unsafe extern "C" fn notification_block_tip_wrapper(
     user_data: *mut c_void,
     state: btck_SynchronizationState,
     entry: *const btck_BlockTreeEntry,
@@ -220,7 +220,7 @@ pub(crate) unsafe extern "C" fn kn_block_tip_wrapper(
     }
 }
 
-pub(crate) unsafe extern "C" fn kn_header_tip_wrapper(
+pub(crate) unsafe extern "C" fn notification_header_tip_wrapper(
     user_data: *mut c_void,
     state: btck_SynchronizationState,
     height: i64,
@@ -234,7 +234,7 @@ pub(crate) unsafe extern "C" fn kn_header_tip_wrapper(
     }
 }
 
-pub(crate) unsafe extern "C" fn kn_progress_wrapper(
+pub(crate) unsafe extern "C" fn notification_progress_wrapper(
     user_data: *mut c_void,
     title: *const c_char,
     title_len: usize,
@@ -252,7 +252,7 @@ pub(crate) unsafe extern "C" fn kn_progress_wrapper(
     }
 }
 
-pub(crate) unsafe extern "C" fn kn_warning_set_wrapper(
+pub(crate) unsafe extern "C" fn notification_warning_set_wrapper(
     user_data: *mut c_void,
     warning: btck_Warning,
     message: *const c_char,
@@ -264,7 +264,7 @@ pub(crate) unsafe extern "C" fn kn_warning_set_wrapper(
     }
 }
 
-pub(crate) unsafe extern "C" fn kn_warning_unset_wrapper(
+pub(crate) unsafe extern "C" fn notification_warning_unset_wrapper(
     user_data: *mut c_void,
     warning: btck_Warning,
 ) {
@@ -274,7 +274,7 @@ pub(crate) unsafe extern "C" fn kn_warning_unset_wrapper(
     }
 }
 
-pub(crate) unsafe extern "C" fn kn_flush_error_wrapper(
+pub(crate) unsafe extern "C" fn notification_flush_error_wrapper(
     user_data: *mut c_void,
     message: *const c_char,
     message_len: usize,
@@ -285,7 +285,7 @@ pub(crate) unsafe extern "C" fn kn_flush_error_wrapper(
     }
 }
 
-pub(crate) unsafe extern "C" fn kn_fatal_error_wrapper(
+pub(crate) unsafe extern "C" fn notification_fatal_error_wrapper(
     user_data: *mut c_void,
     message: *const c_char,
     message_len: usize,
