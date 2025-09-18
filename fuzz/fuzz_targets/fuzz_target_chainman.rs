@@ -8,7 +8,7 @@ use arbitrary::Arbitrary;
 
 use bitcoinkernel::{
     disable_logging, Block, ChainType, ChainstateManager, ChainstateManagerOptions, Context,
-    ContextBuilder, KernelError, ValidationInterfaceCallbacks,
+    ContextBuilder, KernelError,
 };
 
 fn create_context(chain_type: ChainType) -> Arc<Context> {
@@ -22,9 +22,7 @@ fn create_context(chain_type: ChainType) -> Arc<Context> {
             .with_warning_unset_notification(|_warning| {})
             .with_flush_error_notification(|_message| {})
             .with_fatal_error_notification(|_message| {})
-            .validation_interface(Box::new(ValidationInterfaceCallbacks {
-                block_checked: Box::new(|_, _, _| {}),
-            }))
+            .with_block_checked_validation(|_block, _mode, _result| {})
             .build()
             .unwrap(),
     )
