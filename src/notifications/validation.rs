@@ -62,3 +62,25 @@ pub(crate) unsafe extern "C" fn validation_block_checked_wrapper(
         handler.on_block_checked(Block::from_ptr(block), mode.into(), result.into());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_stores_single_handler() {
+        let mut registry = ValidationCallbackRegistry::new();
+
+        registry.register_block_checked(|_block, _mode, result| {
+            assert_eq!(result, BlockValidationResult::Consensus);
+        });
+
+        assert!(registry.block_checked_handler.is_some());
+    }
+
+    #[test]
+    fn test_closure_trait_implementation() {
+        let handler = |_block, _mode, _result| {};
+        let _: Box<dyn BlockCheckedCallback> = Box::new(handler);
+    }
+}
