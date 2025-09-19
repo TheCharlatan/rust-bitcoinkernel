@@ -297,3 +297,73 @@ pub(crate) unsafe extern "C" fn notification_fatal_error_wrapper(
         handler.on_fatal_error(c_helpers::to_string(message, message_len));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_stores_single_handler() {
+        let mut registry = NotificationCallbackRegistry::new();
+
+        registry.register_block_tip(|_state, _hash, progress| {
+            assert_eq!(progress, 50_f64);
+        });
+
+        registry.register_header_tip(|_state, height, _timestamp, _presync| {
+            assert_eq!(height, 100);
+        });
+
+        registry.register_progress(|_title, percent, _resume| {
+            assert_eq!(percent, 50);
+        });
+
+        registry.register_warning_set(|warning, _message| {
+            let _ = warning;
+        });
+
+        registry.register_warning_unset(|warning| {
+            let _ = warning;
+        });
+
+        registry.register_flush_error(|message: String| {
+            assert!(message.contains("test"));
+        });
+
+        registry.register_fatal_error(|message: String| {
+            assert!(message.contains("fatal"));
+        });
+
+        assert!(registry.progress_handler.is_some());
+        assert!(registry.block_tip_handler.is_some());
+        assert!(registry.header_tip_handler.is_some());
+        assert!(registry.warning_set_handler.is_some());
+        assert!(registry.warning_unset_handler.is_some());
+        assert!(registry.flush_error_handler.is_some());
+        assert!(registry.fatal_error_handler.is_some());
+    }
+
+    #[test]
+    fn test_closure_trait_implementation() {
+        let handler = |_state, _hash, _progress| {};
+        let _: Box<dyn BlockTipCallback> = Box::new(handler);
+
+        let header_tip_handler = |_state, _height, _timestamp, _presync| {};
+        let _: Box<dyn HeaderTipCallback> = Box::new(header_tip_handler);
+
+        let progress_handler = |_title, _percent, _resume_possible| {};
+        let _: Box<dyn ProgressCallback> = Box::new(progress_handler);
+
+        let warning_set_handler = |_warning, _message| {};
+        let _: Box<dyn WarningSetCallback> = Box::new(warning_set_handler);
+
+        let warning_unset_handler = |_warning| {};
+        let _: Box<dyn WarningUnsetCallback> = Box::new(warning_unset_handler);
+
+        let flush_error_handler = |_message| {};
+        let _: Box<dyn FlushErrorCallback> = Box::new(flush_error_handler);
+
+        let fatal_error_handler = |_message| {};
+        let _: Box<dyn FatalErrorCallback> = Box::new(fatal_error_handler);
+    }
+}
