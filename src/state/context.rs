@@ -307,3 +307,89 @@ impl From<btck_ChainType> for ChainType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_notification_callback_registration_methods() {
+        let mut builder = ContextBuilder::new();
+
+        builder = builder
+            .with_progress_notification(|_title, _percent, _resume| {})
+            .with_block_tip_notification(|_state, _hash, _progress| {})
+            .with_header_tip_notification(|_state, _height, _timestamp, _presync| {})
+            .with_warning_set_notification(|_warning, _message| {})
+            .with_warning_unset_notification(|_warning| {})
+            .with_flush_error_notification(|_message| {})
+            .with_fatal_error_notification(|_message| {});
+
+        assert!(builder.notification_registry.is_some());
+    }
+
+    #[test]
+    fn test_validation_callback_registration_method() {
+        let mut builder = ContextBuilder::new();
+
+        builder = builder.with_block_checked_validation(|_block, _mode, _result| {});
+
+        assert!(builder.validation_registry.is_some());
+    }
+
+    #[test]
+    fn test_advanced_notification_configuration() {
+        let mut builder = ContextBuilder::new();
+
+        builder = builder.notifications(|registry| {
+            registry.register_progress(|_title, _percent, _resume| {});
+            registry.register_block_tip(|_state, _hash, _progress| {});
+        });
+
+        assert!(builder.notification_registry.is_some());
+    }
+
+    #[test]
+    fn test_mixed_callback_registration() {
+        let mut builder = ContextBuilder::new();
+
+        builder = builder
+            .with_progress_notification(|_title, _percent, _resume| {})
+            .with_block_checked_validation(|_block, _mode, _result| {})
+            .chain_type(ChainType::Testnet);
+
+        assert!(builder.notification_registry.is_some());
+        assert!(builder.validation_registry.is_some());
+    }
+
+    #[test]
+    fn test_lazy_registry_creation() {
+        let builder = ContextBuilder::new();
+
+        assert!(builder.notification_registry.is_none());
+        assert!(builder.validation_registry.is_none());
+    }
+
+    #[test]
+    fn test_method_chaining_preserves_other_settings() {
+        let builder = ContextBuilder::new()
+            .chain_type(ChainType::Regtest)
+            .with_progress_notification(|_title, _percent, _resume| {})
+            .with_block_checked_validation(|_block, _mode, _result| {});
+
+        assert!(builder.notification_registry.is_some());
+        assert!(builder.validation_registry.is_some());
+    }
+
+    #[test]
+    fn test_build_with_callbacks() {
+        let context_result = ContextBuilder::new()
+            .with_progress_notification(|_title, _percent, _resume| {})
+            .with_block_checked_validation(|_block, _mode, _result| {})
+            .chain_type(ChainType::Testnet)
+            .build();
+
+        assert!(context_result.is_ok());
+        let _context = context_result.unwrap();
+    }
+}
