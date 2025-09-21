@@ -295,6 +295,12 @@ BOOST_AUTO_TEST_CASE(btck_transaction_tests)
     // auto output_new = get_output();
     // BOOST_CHECK_EQUAL(output_new.Amount(), 20737411);
 
+    int64_t total_amount{0};
+    for (const auto output : tx.Outputs()) {
+        total_amount += output.Amount();
+    }
+    BOOST_CHECK_EQUAL(total_amount, 62867453);
+
     auto amount = *(tx.Outputs() | std::ranges::views::filter([](const auto& output) {
                         return output.Amount() == 42130042;
                     }) |
@@ -407,6 +413,7 @@ BOOST_AUTO_TEST_CASE(btck_context_tests)
 {
     { // test default context
         Context context{};
+        Context context2 = context; // NOLINT: Test for copy constructor
     }
 
     { // test with context options, but not options set
@@ -417,6 +424,7 @@ BOOST_AUTO_TEST_CASE(btck_context_tests)
     { // test with context options
         ContextOptions options{};
         ChainParams params{ChainType::MAINNET};
+        ChainParams params_copy = params;
         options.SetChainParams(params);
         options.SetNotifications(std::make_shared<TestKernelNotifications>());
         Context context{options};
@@ -523,6 +531,7 @@ void chainman_reindex_test(TestDirectory& test_directory)
     auto chain{chainman->GetChain()};
     BOOST_CHECK_THROW(chain.GetByHeight(1000), std::runtime_error);
     auto genesis_index{chain.Genesis()};
+    BOOST_CHECK(!genesis_index.GetPrevious());
     auto genesis_block_raw{chainman->ReadBlock(genesis_index).value().ToBytes()};
     auto first_index{chain.GetByHeight(0)};
     auto first_block_raw{chainman->ReadBlock(genesis_index).value().ToBytes()};
@@ -543,11 +552,11 @@ void chainman_reindex_test(TestDirectory& test_directory)
     check_equal(next_block_data, tip_block_data);
     check_equal(next_block_data, second_block_data);
 
-    auto hash{second_index.GetHash()};
-    auto another_second_index{chainman->GetBlockTreeEntry(hash.get())};
+    auto second_hash{second_index.GetHash()};
+    auto another_second_index{chainman->GetBlockTreeEntry(second_hash.get())};
     auto another_second_height{another_second_index.GetHeight()};
-    auto block_hash{second_block.GetHash()};
-    BOOST_CHECK(std::equal(std::begin(block_hash->hash), std::end(block_hash->hash), std::begin(hash->hash)));
+    auto second_block_hash{second_block.GetHash()};
+    check_equal(second_block_hash.Bytes(), second_hash.Bytes());
     BOOST_CHECK_EQUAL(second_height, another_second_height);
 }
 
@@ -583,10 +592,14 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
     // mainnet block 1
     auto raw_block = hex_string_to_byte_vec("010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e362990101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec11600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf621e73a82cbf2342c858eeac00000000");
     Block block{raw_block};
+    Block block_copy = block; // NOLINT: Test block copy
     TransactionView tx{block.GetTransaction(block.CountTransactions() - 1)};
     BOOST_CHECK_EQUAL(tx.CountInputs(), 1);
     Transaction tx2 = tx;
     BOOST_CHECK_EQUAL(tx2.CountInputs(), 1);
+    for (auto transaction : block.Transactions()) {
+        BOOST_CHECK_EQUAL(transaction.CountInputs(), 1);
+    }
     auto output_counts = *(block.Transactions() | std::views::transform([](const auto& tx) {
                                return tx.CountOutputs();
                            })).begin();
@@ -598,6 +611,12 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
     bool new_block = false;
     BOOST_CHECK(chainman->ProcessBlock(block, &new_block));
     BOOST_CHECK(new_block);
+
+    validation_interface->m_expected_valid_block = std::nullopt;
+    new_block = false;
+    Block invalid_block{as_bytes(REGTEST_BLOCK_DATA[REGTEST_BLOCK_DATA.size() - 1])};
+    BOOST_CHECK(!chainman->ProcessBlock(invalid_block, &new_block));
+    BOOST_CHECK(!new_block);
 
     auto chain{chainman->GetChain()};
     BOOST_CHECK_EQUAL(chain.Height(), 1);
@@ -635,6 +654,19 @@ BOOST_AUTO_TEST_CASE(btck_chainman_mainnet_tests)
     chainman_reindex_chainstate_test(test_directory);
 }
 
+BOOST_AUTO_TEST_CASE(btck_block_hash_tests)
+{
+    std::array<std::byte, 32> test_hash;
+    for (int i = 0; i < 32; ++i) {
+        test_hash[i] = static_cast<std::byte>(i);
+    }
+    BlockHash block_hash{test_hash};
+    BlockHash block_hash_copy = block_hash; // NOLINT: Don't warn on this copy test.
+
+    check_equal(block_hash_copy.Bytes(), test_hash);
+    check_equal(block_hash.Bytes(), test_hash);
+}
+
 BOOST_AUTO_TEST_CASE(btck_chainman_in_memory_tests)
 {
     auto in_memory_test_directory{TestDirectory{"in-memory_test_bitcoin_kernel"}};
@@ -652,6 +684,8 @@ BOOST_AUTO_TEST_CASE(btck_chainman_in_memory_tests)
 
     BOOST_CHECK(!std::filesystem::exists(in_memory_test_directory.m_directory / "blocks" / "index"));
     BOOST_CHECK(!std::filesystem::exists(in_memory_test_directory.m_directory / "chainstate"));
+
+    context.interrupt();
 }
 
 BOOST_AUTO_TEST_CASE(btck_chainman_regtest_tests)
@@ -695,9 +729,13 @@ BOOST_AUTO_TEST_CASE(btck_chainman_regtest_tests)
     check_equal(read_block_2.ToBytes(), as_bytes(REGTEST_BLOCK_DATA[REGTEST_BLOCK_DATA.size() - 2]));
 
     BlockSpentOutputs block_spent_outputs{chainman->ReadBlockSpentOutputs(tip)};
+    BlockSpentOutputs block_spent_outputs_copy = block_spent_outputs; // NOLINT: Test copy
     BOOST_CHECK_EQUAL(block_spent_outputs.Count(), 1);
     TransactionSpentOutputsView transaction_spent_outputs{block_spent_outputs.GetTxSpentOutputs(block_spent_outputs.Count() - 1)};
+    TransactionSpentOutputs owned_transaction_spent_outputs{transaction_spent_outputs};
     CoinView coin{transaction_spent_outputs.GetCoin(transaction_spent_outputs.Count() - 1)};
+    BOOST_CHECK(!coin.IsCoinbase());
+    Coin owned_coin{coin};
     TransactionOutputView output = coin.GetOutput();
     uint32_t coin_height = coin.GetConfirmationHeight();
     BOOST_CHECK_EQUAL(coin_height, 205);
@@ -711,6 +749,21 @@ BOOST_AUTO_TEST_CASE(btck_chainman_regtest_tests)
     for (const auto tx_spent_outputs : block_spent_outputs.TxsSpentOutputs()) {
         for (const auto coins : tx_spent_outputs.Coins()) {
             BOOST_CHECK_GT(coins.GetOutput().Amount(), 1);
+        }
+    }
+
+    for (const BlockTreeEntry entry : chain.Entries()) {
+        std::optional<Block> block{chainman->ReadBlock(entry)};
+        if (block) {
+            for (const TransactionView transaction : block->Transactions()) {
+                for (const TransactionOutputView output : transaction.Outputs()) {
+                    // skip data carrier outputs
+                    if ((unsigned char)output.GetScriptPubkey().ToBytes()[0] == 0x6a) {
+                        continue;
+                    }
+                    BOOST_CHECK_GT(output.Amount(), 1);
+                }
+            }
         }
     }
 

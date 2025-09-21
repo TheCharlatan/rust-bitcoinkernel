@@ -249,6 +249,13 @@ typedef struct btck_TransactionSpentOutputs btck_TransactionSpentOutputs;
  */
 typedef struct btck_Coin btck_Coin;
 
+/**
+ * Opaque data structure for holding a block hash.
+ *
+ * This is a type-safe identifier for a block.
+ */
+typedef struct btck_BlockHash btck_BlockHash;
+
 /** Current sync state passed to tip changed callbacks. */
 typedef uint8_t btck_SynchronizationState;
 #define btck_SynchronizationState_INIT_REINDEX ((btck_SynchronizationState)(0))
@@ -425,13 +432,6 @@ typedef uint8_t btck_ChainType;
 #define btck_ChainType_TESTNET_4 ((btck_ChainType)(2))
 #define btck_ChainType_SIGNET ((btck_ChainType)(3))
 #define btck_ChainType_REGTEST ((btck_ChainType)(4))
-
-/**
- * A type-safe block identifier.
- */
-typedef struct {
-    unsigned char hash[32];
-} btck_BlockHash;
 
 /** @name Transaction
  * Functions for working with transactions.
@@ -853,6 +853,15 @@ BITCOINKERNEL_API const btck_BlockTreeEntry* BITCOINKERNEL_WARN_UNUSED_RESULT bt
 BITCOINKERNEL_API int32_t BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_tree_entry_get_height(
     const btck_BlockTreeEntry* block_tree_entry) BITCOINKERNEL_ARG_NONNULL(1);
 
+/**
+ * @brief Return the block hash associated with a block tree entry.
+ *
+ * @param[in] block_tree_entry Non-null.
+ * @return                     The block hash.
+ */
+BITCOINKERNEL_API btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_tree_entry_get_block_hash(
+    const btck_BlockTreeEntry* block_tree_entry) BITCOINKERNEL_ARG_NONNULL(1);
+
 ///@}
 
 /** @name ChainstateManagerOptions
@@ -1087,7 +1096,7 @@ BITCOINKERNEL_API btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_ge
  * @param[in] writer    Non-null, callback to a write bytes function.
  * @param[in] user_data Holds a user-defined opaque structure that will be
  *                      passed back through the writer callback.
- * @return              True on success.
+ * @return              0 on success.
  */
 BITCOINKERNEL_API int btck_block_to_bytes(
     const btck_Block* block,
@@ -1336,13 +1345,28 @@ BITCOINKERNEL_API void btck_coin_destroy(btck_Coin* coin);
 ///@{
 
 /**
- * @brief Return the block hash associated with a block tree entry.
- *
- * @param[in] block_tree_entry Non-null.
- * @return                     The block hash.
+ * @brief Create a block hash from its raw data.
  */
-BITCOINKERNEL_API btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_tree_entry_get_block_hash(
-    const btck_BlockTreeEntry* block_tree_entry) BITCOINKERNEL_ARG_NONNULL(1);
+BITCOINKERNEL_API btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_hash_create(
+    const unsigned char block_hash[32]) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Copy a block hash.
+ *
+ * @param[in] block_hash Non-null.
+ * @return               The copied block hash.
+ */
+BITCOINKERNEL_API btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_hash_copy(
+    const btck_BlockHash* block_hash) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Serializes the block hash to bytes.
+ *
+ * @param[in] block_hash     Non-null.
+ * @param[in] output         The serialized block hash.
+ */
+BITCOINKERNEL_API void btck_block_hash_to_bytes(
+    const btck_BlockHash* block_hash, unsigned char output[32]) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * Destroy the block hash.
