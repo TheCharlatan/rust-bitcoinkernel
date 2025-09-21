@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
 use libbitcoinkernel_sys::{
-    btck_BlockTreeEntry, btck_block_hash_destroy, btck_block_tree_entry_get_block_hash,
-    btck_block_tree_entry_get_height, btck_block_tree_entry_get_previous,
+    btck_BlockTreeEntry, btck_block_tree_entry_get_block_hash, btck_block_tree_entry_get_height,
+    btck_block_tree_entry_get_previous,
 };
 
 use crate::{
-    ffi::sealed::{AsPtr, FromPtr},
+    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
     BlockHash, ChainstateManager,
 };
 
@@ -45,12 +45,8 @@ impl<'a> BlockTreeEntry<'a> {
 
     /// Returns the current block hash associated with this BlockTreeEntry.
     pub fn block_hash(&self) -> BlockHash {
-        let hash = unsafe { btck_block_tree_entry_get_block_hash(self.inner) };
-        let res = BlockHash {
-            hash: unsafe { (&*hash).hash },
-        };
-        unsafe { btck_block_hash_destroy(hash) };
-        res
+        let hash_ptr = unsafe { btck_block_tree_entry_get_block_hash(self.inner) };
+        unsafe { BlockHash::from_ptr(hash_ptr) }
     }
 }
 

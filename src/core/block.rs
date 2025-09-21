@@ -1,13 +1,14 @@
 use std::{ffi::c_void, marker::PhantomData};
 
 use libbitcoinkernel_sys::{
-    btck_Block, btck_BlockSpentOutputs, btck_Coin, btck_TransactionSpentOutputs, btck_block_copy,
-    btck_block_count_transactions, btck_block_create, btck_block_destroy, btck_block_get_hash,
-    btck_block_get_transaction_at, btck_block_hash_destroy, btck_block_spent_outputs_copy,
-    btck_block_spent_outputs_count, btck_block_spent_outputs_destroy,
-    btck_block_spent_outputs_get_transaction_spent_outputs_at, btck_block_to_bytes,
-    btck_coin_confirmation_height, btck_coin_copy, btck_coin_destroy, btck_coin_get_output,
-    btck_coin_is_coinbase, btck_transaction_spent_outputs_copy,
+    btck_Block, btck_BlockHash, btck_BlockSpentOutputs, btck_Coin, btck_TransactionSpentOutputs,
+    btck_block_copy, btck_block_count_transactions, btck_block_create, btck_block_destroy,
+    btck_block_get_hash, btck_block_get_transaction_at, btck_block_hash_copy,
+    btck_block_hash_create, btck_block_hash_destroy, btck_block_hash_to_bytes,
+    btck_block_spent_outputs_copy, btck_block_spent_outputs_count,
+    btck_block_spent_outputs_destroy, btck_block_spent_outputs_get_transaction_spent_outputs_at,
+    btck_block_to_bytes, btck_coin_confirmation_height, btck_coin_copy, btck_coin_destroy,
+    btck_coin_get_output, btck_coin_is_coinbase, btck_transaction_spent_outputs_copy,
     btck_transaction_spent_outputs_count, btck_transaction_spent_outputs_destroy,
     btck_transaction_spent_outputs_get_coin_at,
 };
@@ -20,10 +21,178 @@ use crate::{
 
 use super::transaction::{TransactionRef, TxOutRef};
 
+/// Common operations for block hashes, implemented by both owned and borrowed types.
+pub trait BlockHashExt: AsPtr<btck_BlockHash> {
+    /// Serializes the block hash to raw bytes.
+    fn to_bytes(&self) -> [u8; 32] {
+        let mut output = [0u8; 32];
+        unsafe { btck_block_hash_to_bytes(self.as_ptr(), output.as_mut_ptr()) };
+        output
+    }
+}
+
 /// A type for a Block hash.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct BlockHash {
-    pub hash: [u8; 32],
+    inner: *mut btck_BlockHash,
+}
+
+unsafe impl Send for BlockHash {}
+unsafe impl Sync for BlockHash {}
+
+impl BlockHash {
+    pub fn new(raw_bytes: &[u8]) -> Result<Self, KernelError> {
+        if raw_bytes.len() != 32 {
+            return Err(KernelError::InvalidLength {
+                expcted: 32,
+                actual: raw_bytes.len(),
+            });
+        }
+        let inner = unsafe { btck_block_hash_create(raw_bytes.as_ptr()) };
+
+        if inner.is_null() {
+            Err(KernelError::Internal(
+                "Failed to create block hash from bytes".to_string(),
+            ))
+        } else {
+            Ok(BlockHash { inner })
+        }
+    }
+
+    pub fn as_ref(&self) -> BlockHashRef<'_> {
+        unsafe { BlockHashRef::from_ptr(self.inner as *const _) }
+    }
+}
+
+impl AsPtr<btck_BlockHash> for BlockHash {
+    fn as_ptr(&self) -> *const btck_BlockHash {
+        self.inner as *const _
+    }
+}
+
+impl FromMutPtr<btck_BlockHash> for BlockHash {
+    unsafe fn from_ptr(ptr: *mut btck_BlockHash) -> Self {
+        BlockHash { inner: ptr }
+    }
+}
+
+impl BlockHashExt for BlockHash {}
+
+impl Clone for BlockHash {
+    fn clone(&self) -> Self {
+        BlockHash {
+            inner: unsafe { btck_block_hash_copy(self.inner) },
+        }
+    }
+}
+
+impl Drop for BlockHash {
+    fn drop(&mut self) {
+        unsafe { btck_block_hash_destroy(self.inner) }
+    }
+}
+
+impl From<[u8; 32]> for BlockHash {
+    fn from(hash: [u8; 32]) -> Self {
+        BlockHash::new(hash.as_slice()).expect("32-bytes array should always be valid")
+    }
+}
+
+impl TryFrom<&[u8]> for BlockHash {
+    type Error = KernelError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        BlockHash::new(bytes)
+    }
+}
+
+impl From<BlockHash> for [u8; 32] {
+    fn from(block_hash: BlockHash) -> Self {
+        block_hash.to_bytes()
+    }
+}
+
+impl From<&BlockHash> for [u8; 32] {
+    fn from(block_hash: &BlockHash) -> Self {
+        block_hash.to_bytes()
+    }
+}
+
+impl PartialEq for BlockHash {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_bytes() == other.to_bytes()
+    }
+}
+
+impl std::fmt::Debug for BlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BlockHash({:?})", self.to_bytes())
+    }
+}
+
+impl Eq for BlockHash {}
+
+pub struct BlockHashRef<'a> {
+    inner: *const btck_BlockHash,
+    marker: PhantomData<&'a ()>,
+}
+
+impl<'a> BlockHashRef<'a> {
+    pub fn to_owned(&self) -> BlockHash {
+        BlockHash {
+            inner: unsafe { btck_block_hash_copy(self.inner) },
+        }
+    }
+}
+
+impl<'a> AsPtr<btck_BlockHash> for BlockHashRef<'a> {
+    fn as_ptr(&self) -> *const btck_BlockHash {
+        self.inner
+    }
+}
+
+impl<'a> FromPtr<btck_BlockHash> for BlockHashRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_BlockHash) -> Self {
+        BlockHashRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'a> BlockHashExt for BlockHashRef<'a> {}
+
+impl<'a> From<BlockHashRef<'a>> for [u8; 32] {
+    fn from(block_hash_ref: BlockHashRef<'a>) -> Self {
+        block_hash_ref.to_bytes()
+    }
+}
+
+impl<'a> From<&BlockHashRef<'a>> for [u8; 32] {
+    fn from(block_hash_ref: &BlockHashRef<'a>) -> Self {
+        block_hash_ref.to_bytes()
+    }
+}
+
+impl<'a> Clone for BlockHashRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a> Copy for BlockHashRef<'a> {}
+
+impl<'a> PartialEq for BlockHashRef<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_bytes() == other.to_bytes()
+    }
+}
+
+impl<'a> Eq for BlockHashRef<'a> {}
+
+impl<'a> std::fmt::Debug for BlockHashRef<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BlockHashRef({:?})", self.to_bytes())
+    }
 }
 
 /// A Bitcoin block containing a header and transactions.
@@ -56,12 +225,8 @@ impl Block {
     /// This is the double SHA256 hash of the block header, which serves as
     /// the block's unique identifier.
     pub fn hash(&self) -> BlockHash {
-        let hash = unsafe { btck_block_get_hash(self.inner) };
-        let res = BlockHash {
-            hash: unsafe { (&*hash).hash },
-        };
-        unsafe { btck_block_hash_destroy(hash) };
-        res
+        let hash_ptr = unsafe { btck_block_get_hash(self.inner) };
+        unsafe { BlockHash::from_ptr(hash_ptr) }
     }
 
     /// Returns the number of transactions in this block.

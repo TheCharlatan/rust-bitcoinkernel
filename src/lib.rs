@@ -95,9 +95,10 @@ impl fmt::Display for KernelError {
 }
 
 pub use crate::core::{
-    verify, Block, BlockHash, BlockSpentOutputs, BlockSpentOutputsRef, BlockTreeEntry, Coin,
-    CoinRef, ScriptPubkey, ScriptPubkeyRef, ScriptVerifyError, ScriptVerifyStatus, Transaction,
-    TransactionRef, TransactionSpentOutputs, TransactionSpentOutputsRef, TxOut, TxOutRef,
+    verify, Block, BlockHash, BlockHashRef, BlockSpentOutputs, BlockSpentOutputsRef,
+    BlockTreeEntry, Coin, CoinRef, ScriptPubkey, ScriptPubkeyRef, ScriptVerifyError,
+    ScriptVerifyStatus, Transaction, TransactionRef, TransactionSpentOutputs,
+    TransactionSpentOutputsRef, TxOut, TxOutRef,
 };
 
 pub use crate::log::{disable_logging, Log, LogCategory, LogLevel, Logger};
@@ -120,7 +121,7 @@ pub use crate::core::verify_flags::{
 
 pub mod prelude {
     pub use crate::core::{
-        BlockSpentOutputsExt, CoinExt, ScriptPubkeyExt, TransactionExt, TransactionSpentOutputsExt,
-        TxOutExt,
+        BlockHashExt, BlockSpentOutputsExt, CoinExt, ScriptPubkeyExt, TransactionExt,
+        TransactionSpentOutputsExt, TxOutExt,
     };
 }
