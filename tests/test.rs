@@ -500,15 +500,15 @@ mod tests {
         let tip_hash = tip.block_hash();
 
         assert!(tip_height > 0);
-        assert_ne!(genesis_hash.hash, tip_hash.hash);
+        assert_ne!(genesis_hash, tip_hash);
 
         let genesis_via_height = chain.at_height(0).unwrap();
         assert_eq!(genesis_via_height.height(), 0);
-        assert_eq!(genesis_via_height.block_hash().hash, genesis_hash.hash);
+        assert_eq!(genesis_via_height.block_hash(), genesis_hash);
 
         let tip_via_height = chain.at_height(tip_height as usize).unwrap();
         assert_eq!(tip_via_height.height(), tip_height);
-        assert_eq!(tip_via_height.block_hash().hash, tip_hash.hash);
+        assert_eq!(tip_via_height.block_hash(), tip_hash);
 
         let invalid_entry = chain.at_height(9999);
         assert!(invalid_entry.is_none());
@@ -527,7 +527,7 @@ mod tests {
         }
 
         assert_eq!(last_height, tip_height as usize);
-        assert_eq!(last_block_index.unwrap().block_hash().hash, tip_hash.hash);
+        assert_eq!(last_block_index.unwrap().block_hash(), tip_hash);
     }
 
     fn verify_test(
