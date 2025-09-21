@@ -7,6 +7,7 @@
 
 #include <kernel/bitcoinkernel.h>
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -473,7 +474,7 @@ public:
 
     auto Outputs() const
     {
-        return Range<Transaction, &TransactionApi::CountOutputs, &TransactionApi::GetOutput>{*static_cast<const Derived*>(this)};
+        return Range<Derived, &TransactionApi<Derived>::CountOutputs, &TransactionApi<Derived>::GetOutput>{*static_cast<const Derived*>(this)};
     }
 
     std::vector<std::byte> ToBytes() const
@@ -527,10 +528,20 @@ bool ScriptPubkeyApi<Derived>::Verify(int64_t amount,
     return result == 1;
 }
 
-struct BlockHashDeleter {
-    void operator()(btck_BlockHash* ptr) const
+class BlockHash : public Handle<btck_BlockHash, btck_block_hash_copy, btck_block_hash_destroy>
+{
+public:
+    explicit BlockHash(const std::array<std::byte, 32>& hash)
+        : Handle{btck_block_hash_create(reinterpret_cast<const unsigned char*>(hash.data()))} {}
+
+    explicit BlockHash(btck_BlockHash* hash)
+        : Handle{hash} {}
+
+    std::array<std::byte, 32> Bytes() const
     {
-        btck_block_hash_destroy(ptr);
+        std::array<std::byte, 32> hash;
+        btck_block_hash_to_bytes(get(), reinterpret_cast<unsigned char*>(hash.data()));
+        return hash;
     }
 };
 
@@ -559,9 +570,9 @@ public:
         return Range<Block, &Block::CountTransactions, &Block::GetTransaction>{*this};
     }
 
-    std::unique_ptr<btck_BlockHash, BlockHashDeleter> GetHash() const
+    BlockHash GetHash() const
     {
-        return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_get_hash(get()));
+        return BlockHash{btck_block_get_hash(get())};
     }
 
     std::vector<std::byte> ToBytes() const
@@ -631,9 +642,9 @@ public:
         return btck_block_tree_entry_get_height(get());
     }
 
-    std::unique_ptr<btck_BlockHash, BlockHashDeleter> GetHash() const
+    BlockHash GetHash() const
     {
-        return std::unique_ptr<btck_BlockHash, BlockHashDeleter>(btck_block_tree_entry_get_block_hash(get()));
+        return BlockHash{btck_block_tree_entry_get_block_hash(get())};
     }
 
     friend class ChainMan;
@@ -761,6 +772,10 @@ public:
     Context()
         : Handle{check(btck_context_create(ContextOptions{}.get()))} {}
 
+    bool interrupt() {
+        return btck_context_interrupt(get()) == 0;
+    }
+
     friend class ChainstateManagerOptions;
 };
 
@@ -848,7 +863,7 @@ private:
 public:
     uint32_t GetConfirmationHeight() const { return btck_coin_confirmation_height(impl()); }
 
-    bool IsCoinbase() const { return btck_coin_is_coinbase(impl()); }
+    bool IsCoinbase() const { return btck_coin_is_coinbase(impl()) == 1; }
 
     TransactionOutputView GetOutput() const
     {
@@ -866,6 +881,8 @@ class Coin : Handle<btck_Coin, btck_coin_copy, btck_coin_destroy>, public CoinAp
 {
 public:
     Coin(btck_Coin* coin) : Handle{check(coin)} {}
+
+    Coin(const CoinView& view) : Handle{view} {}
 };
 
 template <typename Derived>
@@ -908,6 +925,8 @@ class TransactionSpentOutputs : Handle<btck_TransactionSpentOutputs, btck_transa
 {
 public:
     TransactionSpentOutputs(btck_TransactionSpentOutputs* transaction_spent_outputs) : Handle{check(transaction_spent_outputs)} {}
+
+    TransactionSpentOutputs(const TransactionSpentOutputsView& view) : Handle{view} {}
 };
 
 class BlockSpentOutputs : Handle<btck_BlockSpentOutputs, btck_block_spent_outputs_copy, btck_block_spent_outputs_destroy>
@@ -969,12 +988,12 @@ public:
         return ChainView{btck_chainstate_manager_get_active_chain(get())};
     }
 
-    BlockTreeEntry GetBlockTreeEntry(btck_BlockHash* block_hash) const
+    BlockTreeEntry GetBlockTreeEntry(const btck_BlockHash* block_hash) const
     {
         return btck_chainstate_manager_get_block_tree_entry_by_hash(get(), block_hash);
     }
 
-    std::optional<Block> ReadBlock(BlockTreeEntry& entry) const
+    std::optional<Block> ReadBlock(const BlockTreeEntry& entry) const
     {
         auto block{btck_block_read(get(), entry.get())};
         if (!block) return std::nullopt;
