@@ -10,7 +10,7 @@ use libbitcoinkernel_sys::{
 
 use crate::{
     c_serialize,
-    ffi::sealed::{AsPtr, FromPtr},
+    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
     KernelError, ScriptPubkeyExt,
 };
 
@@ -88,6 +88,12 @@ impl Transaction {
 impl AsPtr<btck_Transaction> for Transaction {
     fn as_ptr(&self) -> *const btck_Transaction {
         self.inner as *const _
+    }
+}
+
+impl FromMutPtr<btck_Transaction> for Transaction {
+    unsafe fn from_ptr(ptr: *mut btck_Transaction) -> Self {
+        Transaction { inner: ptr }
     }
 }
 
@@ -220,6 +226,12 @@ impl TxOut {
 impl AsPtr<btck_TransactionOutput> for TxOut {
     fn as_ptr(&self) -> *const btck_TransactionOutput {
         self.inner as *const _
+    }
+}
+
+impl FromMutPtr<btck_TransactionOutput> for TxOut {
+    unsafe fn from_ptr(ptr: *mut btck_TransactionOutput) -> Self {
+        TxOut { inner: ptr }
     }
 }
 

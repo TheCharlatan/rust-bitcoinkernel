@@ -407,6 +407,12 @@ impl AsPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputs {
     }
 }
 
+impl FromMutPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputs {
+    unsafe fn from_ptr(ptr: *mut btck_TransactionSpentOutputs) -> Self {
+        TransactionSpentOutputs { inner: ptr }
+    }
+}
+
 impl TransactionSpentOutputsExt for TransactionSpentOutputs {}
 
 impl Clone for TransactionSpentOutputs {
@@ -509,6 +515,12 @@ impl Coin {
 impl AsPtr<btck_Coin> for Coin {
     fn as_ptr(&self) -> *const btck_Coin {
         self.inner as *const _
+    }
+}
+
+impl FromMutPtr<btck_Coin> for Coin {
+    unsafe fn from_ptr(ptr: *mut btck_Coin) -> Self {
+        Coin { inner: ptr }
     }
 }
 

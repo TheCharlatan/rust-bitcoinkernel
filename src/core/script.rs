@@ -7,7 +7,7 @@ use libbitcoinkernel_sys::{
 
 use crate::{
     c_serialize,
-    ffi::sealed::{AsPtr, FromPtr},
+    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
     KernelError,
 };
 
@@ -57,6 +57,12 @@ impl ScriptPubkey {
 impl AsPtr<btck_ScriptPubkey> for ScriptPubkey {
     fn as_ptr(&self) -> *const btck_ScriptPubkey {
         self.inner as *const _
+    }
+}
+
+impl FromMutPtr<btck_ScriptPubkey> for ScriptPubkey {
+    unsafe fn from_ptr(ptr: *mut btck_ScriptPubkey) -> Self {
+        ScriptPubkey { inner: ptr }
     }
 }
 
