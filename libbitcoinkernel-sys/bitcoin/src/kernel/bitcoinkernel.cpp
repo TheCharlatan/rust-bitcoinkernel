@@ -470,6 +470,7 @@ struct btck_Chain : Handle<btck_Chain, CChain> {};
 struct btck_BlockSpentOutputs : Handle<btck_BlockSpentOutputs, std::shared_ptr<CBlockUndo>> {};
 struct btck_TransactionSpentOutputs : Handle<btck_TransactionSpentOutputs, CTxUndo> {};
 struct btck_Coin : Handle<btck_Coin, Coin> {};
+struct btck_BlockHash : Handle<btck_BlockHash, uint256> {};
 
 btck_Transaction* btck_transaction_create(const void* raw_transaction, size_t raw_transaction_len)
 {
@@ -889,9 +890,8 @@ btck_ChainstateManager* btck_chainstate_manager_create(
 
 const btck_BlockTreeEntry* btck_chainstate_manager_get_block_tree_entry_by_hash(const btck_ChainstateManager* chainman, const btck_BlockHash* block_hash)
 {
-    auto hash = uint256{std::span<const unsigned char>{(*block_hash).hash, 32}};
     auto block_index = WITH_LOCK(btck_ChainstateManager::get(chainman).m_chainman->GetMutex(),
-                                 return btck_ChainstateManager::get(chainman).m_chainman->m_blockman.LookupBlockIndex(hash));
+                                 return btck_ChainstateManager::get(chainman).m_chainman->m_blockman.LookupBlockIndex(btck_BlockHash::get(block_hash)));
     if (!block_index) {
         LogDebug(BCLog::KERNEL, "A block with the given hash is not indexed.");
         return nullptr;
@@ -978,10 +978,7 @@ int btck_block_to_bytes(const btck_Block* block, btck_WriteBytes writer, void* u
 
 btck_BlockHash* btck_block_get_hash(const btck_Block* block)
 {
-    auto hash{btck_Block::get(block)->GetHash()};
-    auto block_hash = new btck_BlockHash{};
-    std::memcpy(block_hash->hash, hash.begin(), sizeof(hash));
-    return block_hash;
+    return btck_BlockHash::create(btck_Block::get(block)->GetHash());
 }
 
 void btck_block_destroy(btck_Block* block)
@@ -1009,9 +1006,22 @@ btck_BlockHash* btck_block_tree_entry_get_block_hash(const btck_BlockTreeEntry* 
     if (btck_BlockTreeEntry::get(entry).phashBlock == nullptr) {
         return nullptr;
     }
-    auto block_hash = new btck_BlockHash{};
-    std::memcpy(block_hash->hash, btck_BlockTreeEntry::get(entry).phashBlock->begin(), sizeof(*btck_BlockTreeEntry::get(entry).phashBlock));
-    return block_hash;
+    return btck_BlockHash::create(btck_BlockTreeEntry::get(entry).GetBlockHash());
+}
+
+btck_BlockHash* btck_block_hash_create(const unsigned char block_hash[32])
+{
+    return btck_BlockHash::create(std::span<const unsigned char>{block_hash, 32});
+}
+
+btck_BlockHash* btck_block_hash_copy(const btck_BlockHash* block_hash)
+{
+    return btck_BlockHash::copy(block_hash);
+}
+
+void btck_block_hash_to_bytes(const btck_BlockHash* block_hash, unsigned char output[32])
+{
+    std::memcpy(output, btck_BlockHash::get(block_hash).begin(), 32);
 }
 
 void btck_block_hash_destroy(btck_BlockHash* hash)

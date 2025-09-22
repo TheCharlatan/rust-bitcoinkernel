@@ -1,11 +1,14 @@
 use std::ffi::{c_char, c_void};
 
 use libbitcoinkernel_sys::{
-    btck_BlockTreeEntry, btck_SynchronizationState, btck_Warning, btck_block_hash_destroy,
+    btck_BlockTreeEntry, btck_SynchronizationState, btck_Warning,
     btck_block_tree_entry_get_block_hash,
 };
 
-use crate::{ffi::c_helpers, BlockHash};
+use crate::{
+    ffi::{c_helpers, sealed::FromMutPtr},
+    BlockHash,
+};
 
 use super::{SynchronizationState, Warning};
 
@@ -61,10 +64,9 @@ pub(crate) unsafe extern "C" fn kn_block_tip_wrapper(
     verification_progress: f64,
 ) {
     let holder = &*(user_data as *mut KernelNotificationInterfaceCallbacks);
-    let hash = btck_block_tree_entry_get_block_hash(entry);
-    let res = BlockHash { hash: (*hash).hash };
-    btck_block_hash_destroy(hash);
-    (holder.kn_block_tip)(state.into(), res, verification_progress);
+    let hash_ptr = btck_block_tree_entry_get_block_hash(entry);
+    let block_hash = BlockHash::from_ptr(hash_ptr);
+    (holder.kn_block_tip)(state.into(), block_hash, verification_progress);
 }
 
 pub(crate) unsafe extern "C" fn kn_header_tip_wrapper(

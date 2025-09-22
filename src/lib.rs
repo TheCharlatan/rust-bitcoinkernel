@@ -74,6 +74,7 @@ pub enum KernelError {
     OutOfBounds,
     ScriptVerify(ScriptVerifyError),
     SerializationFailed,
+    InvalidLength { expcted: usize, actual: usize },
 }
 
 impl From<NulError> for KernelError {
