@@ -136,6 +136,9 @@ pub struct TransactionRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
+unsafe impl<'a> Send for TransactionRef<'a> {}
+unsafe impl<'a> Sync for TransactionRef<'a> {}
+
 impl<'a> TransactionRef<'a> {
     pub fn to_owned(&self) -> Transaction {
         Transaction {
@@ -240,6 +243,9 @@ pub struct TxOutRef<'a> {
     inner: *const btck_TransactionOutput,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for TxOutRef<'a> {}
+unsafe impl<'a> Sync for TxOutRef<'a> {}
 
 impl<'a> TxOutRef<'a> {
     pub fn to_owned(&self) -> TxOut {

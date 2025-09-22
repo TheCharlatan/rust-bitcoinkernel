@@ -322,6 +322,9 @@ pub struct BlockSpentOutputsRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
+unsafe impl<'a> Send for BlockSpentOutputsRef<'a> {}
+unsafe impl<'a> Sync for BlockSpentOutputsRef<'a> {}
+
 impl<'a> BlockSpentOutputsRef<'a> {
     pub fn to_owned(&self) -> BlockSpentOutputs {
         BlockSpentOutputs {
@@ -425,6 +428,9 @@ pub struct TransactionSpentOutputsRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
+unsafe impl<'a> Send for TransactionSpentOutputsRef<'a> {}
+unsafe impl<'a> Sync for TransactionSpentOutputsRef<'a> {}
+
 impl<'a> TransactionSpentOutputsRef<'a> {
     pub fn to_owned(&self) -> TransactionSpentOutputs {
         TransactionSpentOutputs {
@@ -526,6 +532,9 @@ pub struct CoinRef<'a> {
     inner: *const btck_Coin,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for CoinRef<'a> {}
+unsafe impl<'a> Sync for CoinRef<'a> {}
 
 impl<'a> CoinRef<'a> {
     pub fn to_owned(&self) -> Coin {

@@ -101,6 +101,9 @@ pub struct ScriptPubkeyRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
+unsafe impl<'a> Send for ScriptPubkeyRef<'a> {}
+unsafe impl<'a> Sync for ScriptPubkeyRef<'a> {}
+
 impl<'a> ScriptPubkeyRef<'a> {
     pub fn to_owned(&self) -> ScriptPubkey {
         ScriptPubkey {
