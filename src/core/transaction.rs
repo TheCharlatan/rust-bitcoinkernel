@@ -291,3 +291,23 @@ impl<'a> Clone for TxOutRef<'a> {
 }
 
 impl<'a> Copy for TxOutRef<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::test_utils::{test_owned_trait_requirements, test_ref_trait_requirements};
+
+    test_owned_trait_requirements!(test_transaction_requirements, Transaction, btck_Transaction);
+    test_ref_trait_requirements!(
+        test_transaction_ref_requirements,
+        TransactionRef<'static>,
+        btck_Transaction
+    );
+
+    test_owned_trait_requirements!(test_txout_requirements, TxOut, btck_TransactionOutput);
+    test_ref_trait_requirements!(
+        test_txout_ref_requirements,
+        TxOutRef<'static>,
+        btck_TransactionOutput
+    );
+}

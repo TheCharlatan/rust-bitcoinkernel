@@ -580,3 +580,40 @@ impl<'a> Clone for CoinRef<'a> {
 }
 
 impl<'a> Copy for CoinRef<'a> {}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::core::test_utils::{test_owned_trait_requirements, test_ref_trait_requirements};
+
+    test_owned_trait_requirements!(test_block_hash_requirements, BlockHash, btck_BlockHash);
+
+    test_owned_trait_requirements!(test_block_requirements, Block, btck_Block);
+
+    test_owned_trait_requirements!(
+        test_block_spent_outputs_requirements,
+        BlockSpentOutputs,
+        btck_BlockSpentOutputs
+    );
+    test_ref_trait_requirements!(
+        test_block_spent_outputs_ref_requirements,
+        BlockSpentOutputsRef<'static>,
+        btck_BlockSpentOutputs
+    );
+
+    test_owned_trait_requirements!(
+        test_transaction_spent_outputs_requirements,
+        TransactionSpentOutputs,
+        btck_TransactionSpentOutputs
+    );
+    test_ref_trait_requirements!(
+        test_transaction_spent_outputs_ref_requirements,
+        TransactionSpentOutputsRef<'static>,
+        btck_TransactionSpentOutputs
+    );
+
+    test_owned_trait_requirements!(test_coin_requirements, Coin, btck_Coin);
+    test_ref_trait_requirements!(test_coin_ref_requirements, CoinRef<'static>, btck_Coin);
+
+}
