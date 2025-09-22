@@ -72,8 +72,20 @@ jobs:
     - name: Check formatting
       run: cargo fmt -- --check
 
-    - name: Run tests
-      run: cargo test -vv
+    - name: Install llvm-tools for coverage
+      run: rustup component add llvm-tools-preview
+
+    - name: Install cargo-llvm-cov
+      run: cargo install cargo-llvm-cov --locked --version 0.6.19
+
+    - name: Run tests with coverage
+      run: cargo llvm-cov --all-features --workspace --html --verbose
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: target/llvm-cov/html/
 
     - name: Install Valgrind
       run: |
