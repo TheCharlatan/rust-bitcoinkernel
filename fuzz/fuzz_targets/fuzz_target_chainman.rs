@@ -8,26 +8,21 @@ use arbitrary::Arbitrary;
 
 use bitcoinkernel::{
     disable_logging, Block, ChainType, ChainstateManager, ChainstateManagerOptions, Context,
-    ContextBuilder, KernelError, KernelNotificationInterfaceCallbacks,
-    ValidationInterfaceCallbacks,
+    ContextBuilder, KernelError,
 };
 
 fn create_context(chain_type: ChainType) -> Arc<Context> {
     Arc::new(
         ContextBuilder::new()
             .chain_type(chain_type)
-            .kn_callbacks(Box::new(KernelNotificationInterfaceCallbacks {
-                kn_block_tip: Box::new(|_state, _block_index, _verification_progress| {}),
-                kn_header_tip: Box::new(|_state, _height, _timestamp, _presync| {}),
-                kn_progress: Box::new(|_title, _progress, _resume_possible| {}),
-                kn_warning_set: Box::new(|_warning, _message| {}),
-                kn_warning_unset: Box::new(|_warning| {}),
-                kn_flush_error: Box::new(|_message| {}),
-                kn_fatal_error: Box::new(|_message| {}),
-            }))
-            .validation_interface(Box::new(ValidationInterfaceCallbacks {
-                block_checked: Box::new(|_, _, _| {}),
-            }))
+            .with_block_tip_notification(|_state, _block_index, _verification_progress| {})
+            .with_header_tip_notification(|_state, _height, _timestamp, _presync| {})
+            .with_progress_notification(|_title, _progress, _resume_possible| {})
+            .with_warning_set_notification(|_warning, _message| {})
+            .with_warning_unset_notification(|_warning| {})
+            .with_flush_error_notification(|_message| {})
+            .with_fatal_error_notification(|_message| {})
+            .with_block_checked_validation(|_block, _mode, _result| {})
             .build()
             .unwrap(),
     )

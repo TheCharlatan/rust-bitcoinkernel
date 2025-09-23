@@ -4,9 +4,8 @@ mod tests {
     use bitcoinkernel::{
         prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
         ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder,
-        KernelError, KernelNotificationInterfaceCallbacks, Log, Logger, ScriptPubkey,
-        ScriptVerifyError, Transaction, TransactionSpentOutputs, TxOut, TxOutRef,
-        ValidationInterfaceCallbacks, VERIFY_ALL_PRE_TAPROOT,
+        KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction,
+        TransactionSpentOutputs, TxOut, TxOutRef, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -36,39 +35,36 @@ mod tests {
     fn create_context() -> Context {
         let builder = ContextBuilder::new()
             .chain_type(ChainType::Regtest)
-            .kn_callbacks(Box::new(KernelNotificationInterfaceCallbacks {
-                kn_block_tip: Box::new(|_state, _block_tip, _verification_progress| {
-                    log::info!("Received block tip.");
-                }),
-                kn_header_tip: Box::new(|_state, height, timestamp, _presync| {
-                    assert!(timestamp > 0);
-                    log::info!(
-                        "Received header tip at height {} and time {}",
-                        height,
-                        timestamp
-                    );
-                }),
-                kn_progress: Box::new(|_state, progress, _resume_possible| {
-                    log::info!("Made progress: {}", progress);
-                }),
-                kn_warning_set: Box::new(|_warning, message| {
-                    log::info!("Received warning: {message}");
-                }),
-                kn_warning_unset: Box::new(|_warning| {
-                    log::info!("Unsetting warning.");
-                }),
-                kn_flush_error: Box::new(|message| {
-                    log::info!("Flush error! {message}");
-                }),
-                kn_fatal_error: Box::new(|message| {
-                    log::info!("Fatal Error! {message}");
-                }),
-            }))
-            .validation_interface(Box::new(ValidationInterfaceCallbacks {
-                block_checked: Box::new(|_block, _mode, _result| {
-                    log::info!("Block checked!");
-                }),
-            }));
+            .with_block_tip_notification(|_state, _block_tip, _verification_progress| {
+                log::info!("Received block tip.");
+            })
+            .with_header_tip_notification(|_state, height, timestamp, _presync| {
+                assert!(timestamp > 0);
+                log::info!(
+                    "Received header tip at height {} and time {}",
+                    height,
+                    timestamp
+                );
+            })
+            .with_progress_notification(|_state, progress, _resume_possible| {
+                log::info!("Made progress: {}", progress);
+            })
+            .with_warning_set_notification(|_warning, message| {
+                log::info!("Received warning: {}", message);
+            })
+            .with_warning_unset_notification(|_warning| {
+                log::info!("Unsetting warning.");
+            })
+            .with_flush_error_notification(|message| {
+                log::info!("Flush error! {}", message);
+            })
+            .with_fatal_error_notification(|message| {
+                log::info!("Fatal error! {}", message);
+            })
+            .with_block_checked_validation(|_block, _mode, _result| {
+                log::info!("Block checked!");
+            });
+
         builder.build().unwrap()
     }
 

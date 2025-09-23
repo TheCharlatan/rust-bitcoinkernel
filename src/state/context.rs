@@ -13,14 +13,20 @@ use crate::{
     ffi::c_helpers,
     notifications::{
         notification::{
-            kn_block_tip_wrapper, kn_fatal_error_wrapper, kn_flush_error_wrapper,
-            kn_header_tip_wrapper, kn_progress_wrapper, kn_user_data_destroy_wrapper,
-            kn_warning_set_wrapper, kn_warning_unset_wrapper,
+            notification_block_tip_wrapper, notification_fatal_error_wrapper,
+            notification_flush_error_wrapper, notification_header_tip_wrapper,
+            notification_progress_wrapper, notification_user_data_destroy_wrapper,
+            notification_warning_set_wrapper, notification_warning_unset_wrapper, BlockTipCallback,
+            FatalErrorCallback, FlushErrorCallback, HeaderTipCallback,
+            NotificationCallbackRegistry, ProgressCallback, WarningSetCallback,
+            WarningUnsetCallback,
         },
-        validation::{vi_block_checked_wrapper, vi_user_data_destroy_wrapper},
+        validation::{
+            validation_block_checked_wrapper, validation_user_data_destroy_wrapper,
+            BlockCheckedCallback, ValidationCallbackRegistry,
+        },
     },
-    KernelError, KernelNotificationInterfaceCallbacks, ValidationInterfaceCallbacks,
-    BTCK_CHAIN_TYPE_MAINNET, BTCK_CHAIN_TYPE_REGTEST, BTCK_CHAIN_TYPE_SIGNET,
+    KernelError, BTCK_CHAIN_TYPE_MAINNET, BTCK_CHAIN_TYPE_REGTEST, BTCK_CHAIN_TYPE_SIGNET,
     BTCK_CHAIN_TYPE_TESTNET, BTCK_CHAIN_TYPE_TESTNET_4,
 };
 
@@ -91,6 +97,8 @@ impl Drop for Context {
 /// notifications.
 pub struct ContextBuilder {
     inner: *mut btck_ContextOptions,
+    notification_registry: Option<NotificationCallbackRegistry>,
+    validation_registry: Option<ValidationCallbackRegistry>,
 }
 
 impl Default for ContextBuilder {
@@ -103,6 +111,8 @@ impl ContextBuilder {
     pub fn new() -> ContextBuilder {
         ContextBuilder {
             inner: unsafe { btck_context_options_create() },
+            notification_registry: None,
+            validation_registry: None,
         }
     }
 
@@ -111,7 +121,14 @@ impl ContextBuilder {
     /// # Errors
     ///
     /// Returns [`KernelError::Internal`] if [`Context`] creation fails.
-    pub fn build(self) -> Result<Context, KernelError> {
+    pub fn build(mut self) -> Result<Context, KernelError> {
+        if let Some(registry) = self.notification_registry.take() {
+            self.setup_notification_interface(registry);
+        }
+        if let Some(registry) = self.validation_registry.take() {
+            self.setup_validation_interface(registry);
+        }
+
         let inner = unsafe { btck_context_create(self.inner) };
         if inner.is_null() {
             return Err(KernelError::Internal("Invalid context.".to_string()));
@@ -120,27 +137,34 @@ impl ContextBuilder {
         Ok(Context { inner })
     }
 
-    /// Sets the notifications callbacks to the passed in holder struct
-    pub fn kn_callbacks(
-        self,
-        kn_callbacks: Box<KernelNotificationInterfaceCallbacks>,
-    ) -> ContextBuilder {
-        let kn_pointer = Box::into_raw(kn_callbacks);
+    fn setup_notification_interface(&self, registry: NotificationCallbackRegistry) {
+        let registry_ptr = Box::into_raw(Box::new(registry));
         unsafe {
             let holder = btck_NotificationInterfaceCallbacks {
-                user_data: kn_pointer as *mut c_void,
-                user_data_destroy: Some(kn_user_data_destroy_wrapper),
-                block_tip: Some(kn_block_tip_wrapper),
-                header_tip: Some(kn_header_tip_wrapper),
-                progress: Some(kn_progress_wrapper),
-                warning_set: Some(kn_warning_set_wrapper),
-                warning_unset: Some(kn_warning_unset_wrapper),
-                flush_error: Some(kn_flush_error_wrapper),
-                fatal_error: Some(kn_fatal_error_wrapper),
+                user_data: registry_ptr as *mut c_void,
+                user_data_destroy: Some(notification_user_data_destroy_wrapper),
+                block_tip: Some(notification_block_tip_wrapper),
+                header_tip: Some(notification_header_tip_wrapper),
+                progress: Some(notification_progress_wrapper),
+                warning_set: Some(notification_warning_set_wrapper),
+                warning_unset: Some(notification_warning_unset_wrapper),
+                flush_error: Some(notification_flush_error_wrapper),
+                fatal_error: Some(notification_fatal_error_wrapper),
             };
             btck_context_options_set_notifications(self.inner, holder);
-        };
-        self
+        }
+    }
+
+    fn setup_validation_interface(&self, registry: ValidationCallbackRegistry) {
+        let registry_ptr = Box::into_raw(Box::new(registry));
+        unsafe {
+            let holder = btck_ValidationInterfaceCallbacks {
+                user_data: registry_ptr as *mut c_void,
+                user_data_destroy: Some(validation_user_data_destroy_wrapper),
+                block_checked: Some(validation_block_checked_wrapper),
+            };
+            btck_context_options_set_validation_interface(self.inner, holder);
+        }
     }
 
     /// Sets the chain type
@@ -150,21 +174,99 @@ impl ContextBuilder {
         self
     }
 
-    /// Sets the validation interface callbacks
-    pub fn validation_interface(
-        self,
-        vi_callbacks: Box<ValidationInterfaceCallbacks>,
-    ) -> ContextBuilder {
-        let vi_pointer = Box::into_raw(vi_callbacks);
-        unsafe {
-            let holder = btck_ValidationInterfaceCallbacks {
-                user_data: vi_pointer as *mut c_void,
-                user_data_destroy: Some(vi_user_data_destroy_wrapper),
-                block_checked: Some(vi_block_checked_wrapper),
-            };
-            btck_context_options_set_validation_interface(self.inner, holder);
-        }
+    pub fn with_block_tip_notification<T>(mut self, handler: T) -> Self
+    where
+        T: BlockTipCallback + 'static,
+    {
+        self.get_or_create_notification_registry()
+            .register_block_tip(handler);
         self
+    }
+
+    pub fn with_progress_notification<T>(mut self, handler: T) -> Self
+    where
+        T: ProgressCallback + 'static,
+    {
+        self.get_or_create_notification_registry()
+            .register_progress(handler);
+        self
+    }
+
+    pub fn with_header_tip_notification<T>(mut self, handler: T) -> Self
+    where
+        T: HeaderTipCallback + 'static,
+    {
+        self.get_or_create_notification_registry()
+            .register_header_tip(handler);
+        self
+    }
+
+    pub fn with_warning_set_notification<T>(mut self, handler: T) -> Self
+    where
+        T: WarningSetCallback + 'static,
+    {
+        self.get_or_create_notification_registry()
+            .register_warning_set(handler);
+        self
+    }
+
+    pub fn with_warning_unset_notification<T>(mut self, handler: T) -> Self
+    where
+        T: WarningUnsetCallback + 'static,
+    {
+        self.get_or_create_notification_registry()
+            .register_warning_unset(handler);
+        self
+    }
+
+    pub fn with_flush_error_notification<T>(mut self, handler: T) -> Self
+    where
+        T: FlushErrorCallback + 'static,
+    {
+        self.get_or_create_notification_registry()
+            .register_flush_error(handler);
+        self
+    }
+
+    pub fn with_fatal_error_notification<T>(mut self, handler: T) -> Self
+    where
+        T: FatalErrorCallback + 'static,
+    {
+        self.get_or_create_notification_registry()
+            .register_fatal_error(handler);
+        self
+    }
+
+    pub fn notifications<F>(mut self, configure: F) -> Self
+    where
+        F: FnOnce(&mut NotificationCallbackRegistry),
+    {
+        let registry = self.get_or_create_notification_registry();
+        configure(registry);
+        self
+    }
+
+    fn get_or_create_notification_registry(&mut self) -> &mut NotificationCallbackRegistry {
+        if self.notification_registry.is_none() {
+            self.notification_registry = Some(NotificationCallbackRegistry::new());
+        }
+        self.notification_registry.as_mut().unwrap()
+    }
+
+    pub fn with_block_checked_validation<T>(mut self, handler: T) -> Self
+    where
+        T: BlockCheckedCallback + 'static,
+    {
+        self.get_or_create_validation_registry()
+            .register_block_checked(handler);
+        self
+    }
+
+    fn get_or_create_validation_registry(&mut self) -> &mut ValidationCallbackRegistry {
+        if self.validation_registry.is_none() {
+            self.validation_registry = Some(ValidationCallbackRegistry::new());
+        }
+        self.validation_registry.as_mut().unwrap()
     }
 }
 
@@ -203,5 +305,91 @@ impl From<btck_ChainType> for ChainType {
             BTCK_CHAIN_TYPE_REGTEST => ChainType::Regtest,
             _ => panic!("Unknown chain type: {}", value),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_notification_callback_registration_methods() {
+        let mut builder = ContextBuilder::new();
+
+        builder = builder
+            .with_progress_notification(|_title, _percent, _resume| {})
+            .with_block_tip_notification(|_state, _hash, _progress| {})
+            .with_header_tip_notification(|_state, _height, _timestamp, _presync| {})
+            .with_warning_set_notification(|_warning, _message| {})
+            .with_warning_unset_notification(|_warning| {})
+            .with_flush_error_notification(|_message| {})
+            .with_fatal_error_notification(|_message| {});
+
+        assert!(builder.notification_registry.is_some());
+    }
+
+    #[test]
+    fn test_validation_callback_registration_method() {
+        let mut builder = ContextBuilder::new();
+
+        builder = builder.with_block_checked_validation(|_block, _mode, _result| {});
+
+        assert!(builder.validation_registry.is_some());
+    }
+
+    #[test]
+    fn test_advanced_notification_configuration() {
+        let mut builder = ContextBuilder::new();
+
+        builder = builder.notifications(|registry| {
+            registry.register_progress(|_title, _percent, _resume| {});
+            registry.register_block_tip(|_state, _hash, _progress| {});
+        });
+
+        assert!(builder.notification_registry.is_some());
+    }
+
+    #[test]
+    fn test_mixed_callback_registration() {
+        let mut builder = ContextBuilder::new();
+
+        builder = builder
+            .with_progress_notification(|_title, _percent, _resume| {})
+            .with_block_checked_validation(|_block, _mode, _result| {})
+            .chain_type(ChainType::Testnet);
+
+        assert!(builder.notification_registry.is_some());
+        assert!(builder.validation_registry.is_some());
+    }
+
+    #[test]
+    fn test_lazy_registry_creation() {
+        let builder = ContextBuilder::new();
+
+        assert!(builder.notification_registry.is_none());
+        assert!(builder.validation_registry.is_none());
+    }
+
+    #[test]
+    fn test_method_chaining_preserves_other_settings() {
+        let builder = ContextBuilder::new()
+            .chain_type(ChainType::Regtest)
+            .with_progress_notification(|_title, _percent, _resume| {})
+            .with_block_checked_validation(|_block, _mode, _result| {});
+
+        assert!(builder.notification_registry.is_some());
+        assert!(builder.validation_registry.is_some());
+    }
+
+    #[test]
+    fn test_build_with_callbacks() {
+        let context_result = ContextBuilder::new()
+            .with_progress_notification(|_title, _percent, _resume| {})
+            .with_block_checked_validation(|_block, _mode, _result| {})
+            .chain_type(ChainType::Testnet)
+            .build();
+
+        assert!(context_result.is_ok());
+        let _context = context_result.unwrap();
     }
 }

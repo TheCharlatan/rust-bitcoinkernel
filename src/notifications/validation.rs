@@ -10,28 +10,77 @@ use crate::{ffi::sealed::FromMutPtr, Block};
 use super::{BlockValidationResult, ValidationMode};
 
 /// Exposes the result after validating a block.
-pub trait BlockChecked: Fn(Block, ValidationMode, BlockValidationResult) {}
-impl<F: Fn(Block, ValidationMode, BlockValidationResult)> BlockChecked for F {}
-
-/// A holder struct for validation interface callbacks
-pub struct ValidationInterfaceCallbacks {
-    /// Called after a block has completed validation and communicates its validation state.
-    pub block_checked: Box<dyn BlockChecked>,
+pub trait BlockCheckedCallback: Send + Sync {
+    fn on_block_checked(&self, block: Block, mode: ValidationMode, result: BlockValidationResult);
 }
 
-pub(crate) unsafe extern "C" fn vi_user_data_destroy_wrapper(user_data: *mut c_void) {
-    if !user_data.is_null() {
-        let _ = Box::from_raw(user_data as *mut ValidationInterfaceCallbacks);
+impl<F> BlockCheckedCallback for F
+where
+    F: Fn(Block, ValidationMode, BlockValidationResult) + Send + Sync + 'static,
+{
+    fn on_block_checked(&self, block: Block, mode: ValidationMode, result: BlockValidationResult) {
+        self(block, mode, result)
     }
 }
 
-pub(crate) unsafe extern "C" fn vi_block_checked_wrapper(
+/// Registry for managing validation interface callback handlers.
+#[derive(Default)]
+pub struct ValidationCallbackRegistry {
+    block_checked_handler: Option<Box<dyn BlockCheckedCallback>>,
+}
+
+impl ValidationCallbackRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn register_block_checked<T>(&mut self, handler: T) -> &mut Self
+    where
+        T: BlockCheckedCallback + 'static,
+    {
+        self.block_checked_handler = Some(Box::new(handler) as Box<dyn BlockCheckedCallback>);
+        self
+    }
+}
+
+pub(crate) unsafe extern "C" fn validation_user_data_destroy_wrapper(user_data: *mut c_void) {
+    if !user_data.is_null() {
+        let _ = Box::from_raw(user_data as *mut ValidationCallbackRegistry);
+    }
+}
+
+pub(crate) unsafe extern "C" fn validation_block_checked_wrapper(
     user_data: *mut c_void,
     block: *mut btck_Block,
     stateIn: *const btck_BlockValidationState,
 ) {
-    let holder = &*(user_data as *mut ValidationInterfaceCallbacks);
-    let result = btck_block_validation_state_get_block_validation_result(stateIn);
-    let mode = btck_block_validation_state_get_validation_mode(stateIn);
-    (holder.block_checked)(Block::from_ptr(block), mode.into(), result.into());
+    let registry = &*(user_data as *mut ValidationCallbackRegistry);
+
+    if let Some(ref handler) = registry.block_checked_handler {
+        let result = btck_block_validation_state_get_block_validation_result(stateIn);
+        let mode = btck_block_validation_state_get_validation_mode(stateIn);
+        handler.on_block_checked(Block::from_ptr(block), mode.into(), result.into());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_stores_single_handler() {
+        let mut registry = ValidationCallbackRegistry::new();
+
+        registry.register_block_checked(|_block, _mode, result| {
+            assert_eq!(result, BlockValidationResult::Consensus);
+        });
+
+        assert!(registry.block_checked_handler.is_some());
+    }
+
+    #[test]
+    fn test_closure_trait_implementation() {
+        let handler = |_block, _mode, _result| {};
+        let _: Box<dyn BlockCheckedCallback> = Box::new(handler);
+    }
 }
