@@ -10,7 +10,7 @@ use libbitcoinkernel_sys::{
 
 use crate::{
     c_serialize,
-    ffi::sealed::{AsPtr, FromPtr},
+    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
     KernelError, ScriptPubkeyExt,
 };
 
@@ -91,6 +91,12 @@ impl AsPtr<btck_Transaction> for Transaction {
     }
 }
 
+impl FromMutPtr<btck_Transaction> for Transaction {
+    unsafe fn from_ptr(ptr: *mut btck_Transaction) -> Self {
+        Transaction { inner: ptr }
+    }
+}
+
 impl TransactionExt for Transaction {}
 
 impl Clone for Transaction {
@@ -135,6 +141,9 @@ pub struct TransactionRef<'a> {
     inner: *const btck_Transaction,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for TransactionRef<'a> {}
+unsafe impl<'a> Sync for TransactionRef<'a> {}
 
 impl<'a> TransactionRef<'a> {
     pub fn to_owned(&self) -> Transaction {
@@ -220,6 +229,12 @@ impl AsPtr<btck_TransactionOutput> for TxOut {
     }
 }
 
+impl FromMutPtr<btck_TransactionOutput> for TxOut {
+    unsafe fn from_ptr(ptr: *mut btck_TransactionOutput) -> Self {
+        TxOut { inner: ptr }
+    }
+}
+
 impl TxOutExt for TxOut {}
 
 impl Clone for TxOut {
@@ -240,6 +255,9 @@ pub struct TxOutRef<'a> {
     inner: *const btck_TransactionOutput,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for TxOutRef<'a> {}
+unsafe impl<'a> Sync for TxOutRef<'a> {}
 
 impl<'a> TxOutRef<'a> {
     pub fn to_owned(&self) -> TxOut {
@@ -273,3 +291,27 @@ impl<'a> Clone for TxOutRef<'a> {
 }
 
 impl<'a> Copy for TxOutRef<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::test_utils::{test_owned_trait_requirements, test_ref_trait_requirements};
+
+    test_owned_trait_requirements!(
+        test_transaction_implementations,
+        Transaction,
+        btck_Transaction
+    );
+    test_ref_trait_requirements!(
+        test_transaction_ref_implementations,
+        TransactionRef<'static>,
+        btck_Transaction
+    );
+
+    test_owned_trait_requirements!(test_txout_implementations, TxOut, btck_TransactionOutput);
+    test_ref_trait_requirements!(
+        test_txout_ref_implementations,
+        TxOutRef<'static>,
+        btck_TransactionOutput
+    );
+}

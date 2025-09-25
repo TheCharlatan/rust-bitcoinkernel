@@ -322,6 +322,9 @@ pub struct BlockSpentOutputsRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
+unsafe impl<'a> Send for BlockSpentOutputsRef<'a> {}
+unsafe impl<'a> Sync for BlockSpentOutputsRef<'a> {}
+
 impl<'a> BlockSpentOutputsRef<'a> {
     pub fn to_owned(&self) -> BlockSpentOutputs {
         BlockSpentOutputs {
@@ -404,6 +407,12 @@ impl AsPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputs {
     }
 }
 
+impl FromMutPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputs {
+    unsafe fn from_ptr(ptr: *mut btck_TransactionSpentOutputs) -> Self {
+        TransactionSpentOutputs { inner: ptr }
+    }
+}
+
 impl TransactionSpentOutputsExt for TransactionSpentOutputs {}
 
 impl Clone for TransactionSpentOutputs {
@@ -424,6 +433,9 @@ pub struct TransactionSpentOutputsRef<'a> {
     inner: *const btck_TransactionSpentOutputs,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for TransactionSpentOutputsRef<'a> {}
+unsafe impl<'a> Sync for TransactionSpentOutputsRef<'a> {}
 
 impl<'a> TransactionSpentOutputsRef<'a> {
     pub fn to_owned(&self) -> TransactionSpentOutputs {
@@ -506,6 +518,12 @@ impl AsPtr<btck_Coin> for Coin {
     }
 }
 
+impl FromMutPtr<btck_Coin> for Coin {
+    unsafe fn from_ptr(ptr: *mut btck_Coin) -> Self {
+        Coin { inner: ptr }
+    }
+}
+
 impl CoinExt for Coin {}
 
 impl Clone for Coin {
@@ -526,6 +544,9 @@ pub struct CoinRef<'a> {
     inner: *const btck_Coin,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for CoinRef<'a> {}
+unsafe impl<'a> Sync for CoinRef<'a> {}
 
 impl<'a> CoinRef<'a> {
     pub fn to_owned(&self) -> Coin {
@@ -559,3 +580,38 @@ impl<'a> Clone for CoinRef<'a> {
 }
 
 impl<'a> Copy for CoinRef<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::test_utils::{test_owned_trait_requirements, test_ref_trait_requirements};
+
+    test_owned_trait_requirements!(test_block_hash_implementations, BlockHash, btck_BlockHash);
+
+    test_owned_trait_requirements!(test_block_implementations, Block, btck_Block);
+
+    test_owned_trait_requirements!(
+        test_blockspentoutputs_implementations,
+        BlockSpentOutputs,
+        btck_BlockSpentOutputs
+    );
+    test_ref_trait_requirements!(
+        test_blockspentoutputs_ref_implementations,
+        BlockSpentOutputsRef<'static>,
+        btck_BlockSpentOutputs
+    );
+
+    test_owned_trait_requirements!(
+        test_transactionspentoutputs_implementations,
+        TransactionSpentOutputs,
+        btck_TransactionSpentOutputs
+    );
+    test_ref_trait_requirements!(
+        test_transactionspentoutputs_ref_implementations,
+        TransactionSpentOutputsRef<'static>,
+        btck_TransactionSpentOutputs
+    );
+
+    test_owned_trait_requirements!(test_coin_implementations, Coin, btck_Coin);
+    test_ref_trait_requirements!(test_coin_ref_implementations, CoinRef<'static>, btck_Coin);
+}
