@@ -41,4 +41,69 @@ macro_rules! test_ref_trait_requirements {
 }
 
 #[cfg(test)]
-pub(crate) use {test_owned_trait_requirements, test_ref_trait_requirements};
+macro_rules! test_owned_clone_and_send {
+    ($test_name:ident, $obj1:expr, $obj2:expr) => {
+        #[test]
+        fn $test_name() {
+            let obj1 = $obj1;
+            let obj2 = $obj2;
+            let clone1 = obj1.clone();
+            let clone2 = obj2.clone();
+
+            assert_ne!(
+                obj1.as_ptr() as *const u8,
+                clone1.as_ptr() as *const u8,
+                "Clone should create independent object"
+            );
+            assert_ne!(
+                obj2.as_ptr() as *const u8,
+                clone2.as_ptr() as *const u8,
+                "Clone should create independent object"
+            );
+
+            let handle1 = std::thread::spawn(move || {
+                let _ptr = clone1.as_ptr();
+                42
+            });
+
+            let handle2 = std::thread::spawn(move || {
+                let _ptr = clone2.as_ptr();
+                24
+            });
+
+            assert_eq!(handle1.join().unwrap(), 42);
+            assert_eq!(handle2.join().unwrap(), 24);
+
+            let _ptr1 = obj1.as_ptr();
+            let _ptr2 = obj2.as_ptr();
+        }
+    };
+}
+
+#[cfg(test)]
+macro_rules! test_ref_copy {
+    ($test_name:ident, $owned:expr) => {
+        #[test]
+        fn $test_name() {
+            let owned = $owned;
+            let ref_val = owned.as_ref();
+
+            let copied = ref_val;
+
+            assert_eq!(
+                ref_val.as_ptr() as *const u8,
+                copied.as_ptr() as *const u8,
+                "Copy should create identical reference"
+            );
+
+            let _ptr1 = ref_val.as_ptr();
+            let _ptr2 = copied.as_ptr();
+        }
+    };
+}
+
+#[cfg(test)]
+pub(crate) use {
+    test_owned_clone_and_send, test_owned_trait_requirements, test_ref_copy,
+    test_ref_trait_requirements,
+};

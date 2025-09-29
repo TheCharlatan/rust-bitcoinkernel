@@ -585,7 +585,26 @@ impl<'a> Copy for CoinRef<'a> {}
 mod tests {
 
     use super::*;
-    use crate::core::test_utils::{test_owned_trait_requirements, test_ref_trait_requirements};
+    use crate::core::test_utils::{
+        test_owned_clone_and_send, test_owned_trait_requirements, test_ref_trait_requirements,
+    };
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader},
+    };
+
+    fn read_block_data() -> Vec<Vec<u8>> {
+        let file = File::open("tests/block_data.txt").unwrap();
+        let reader = BufReader::new(file);
+        let mut lines = vec![];
+        for line in reader.lines() {
+            lines.push(hex::decode(line.unwrap()).unwrap());
+        }
+        lines
+    }
+
+    const VALID_HASH_BYTES1: [u8; 32] = [1u8; 32];
+    const VALID_HASH_BYTES2: [u8; 32] = [2u8; 32];
 
     test_owned_trait_requirements!(test_block_hash_requirements, BlockHash, btck_BlockHash);
 
@@ -616,4 +635,15 @@ mod tests {
     test_owned_trait_requirements!(test_coin_requirements, Coin, btck_Coin);
     test_ref_trait_requirements!(test_coin_ref_requirements, CoinRef<'static>, btck_Coin);
 
+    test_owned_clone_and_send!(
+        test_block_hash_clone_send,
+        BlockHash::from(VALID_HASH_BYTES1),
+        BlockHash::from(VALID_HASH_BYTES2)
+    );
+
+    test_owned_clone_and_send!(
+        test_block_clone_send,
+        Block::new(&read_block_data()[0]).unwrap(),
+        Block::new(&read_block_data()[1]).unwrap()
+    );
 }

@@ -158,7 +158,13 @@ impl<'a> Copy for ScriptPubkeyRef<'a> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::test_utils::{test_owned_trait_requirements, test_ref_trait_requirements};
+    use crate::core::test_utils::{
+        test_owned_clone_and_send, test_owned_trait_requirements, test_ref_copy,
+        test_ref_trait_requirements,
+    };
+
+    const SIMPLE_SCRIPT_1: &[u8] = &[0x76, 0xa9];
+    const SIMPLE_SCRIPT_2: &[u8] = &[0x51];
 
     test_owned_trait_requirements!(
         test_scriptpubkey_implementations,
@@ -169,5 +175,16 @@ mod tests {
         test_scriptpubkey_ref_implementations,
         ScriptPubkeyRef<'static>,
         btck_ScriptPubkey
+    );
+
+    test_owned_clone_and_send!(
+        test_scriptpubkey_clone_send,
+        ScriptPubkey::new(SIMPLE_SCRIPT_1).unwrap(),
+        ScriptPubkey::new(SIMPLE_SCRIPT_2).unwrap()
+    );
+
+    test_ref_copy!(
+        test_scriptpubkey_ref_copy,
+        ScriptPubkey::new(SIMPLE_SCRIPT_1).unwrap()
     );
 }
