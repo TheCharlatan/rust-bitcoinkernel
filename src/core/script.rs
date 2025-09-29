@@ -7,7 +7,7 @@ use libbitcoinkernel_sys::{
 
 use crate::{
     c_serialize,
-    ffi::sealed::{AsPtr, FromPtr},
+    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
     KernelError,
 };
 
@@ -60,6 +60,12 @@ impl AsPtr<btck_ScriptPubkey> for ScriptPubkey {
     }
 }
 
+impl FromMutPtr<btck_ScriptPubkey> for ScriptPubkey {
+    unsafe fn from_ptr(ptr: *mut btck_ScriptPubkey) -> Self {
+        ScriptPubkey { inner: ptr }
+    }
+}
+
 impl ScriptPubkeyExt for ScriptPubkey {}
 
 impl Clone for ScriptPubkey {
@@ -100,6 +106,9 @@ pub struct ScriptPubkeyRef<'a> {
     inner: *const btck_ScriptPubkey,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for ScriptPubkeyRef<'a> {}
+unsafe impl<'a> Sync for ScriptPubkeyRef<'a> {}
 
 impl<'a> ScriptPubkeyRef<'a> {
     pub fn to_owned(&self) -> ScriptPubkey {
@@ -145,3 +154,37 @@ impl<'a> Clone for ScriptPubkeyRef<'a> {
 }
 
 impl<'a> Copy for ScriptPubkeyRef<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::test_utils::{
+        test_owned_clone_and_send, test_owned_trait_requirements, test_ref_copy,
+        test_ref_trait_requirements,
+    };
+
+    const SIMPLE_SCRIPT_1: &[u8] = &[0x76, 0xa9];
+    const SIMPLE_SCRIPT_2: &[u8] = &[0x51];
+
+    test_owned_trait_requirements!(
+        test_scriptpubkey_implementations,
+        ScriptPubkey,
+        btck_ScriptPubkey
+    );
+    test_ref_trait_requirements!(
+        test_scriptpubkey_ref_implementations,
+        ScriptPubkeyRef<'static>,
+        btck_ScriptPubkey
+    );
+
+    test_owned_clone_and_send!(
+        test_scriptpubkey_clone_send,
+        ScriptPubkey::new(SIMPLE_SCRIPT_1).unwrap(),
+        ScriptPubkey::new(SIMPLE_SCRIPT_2).unwrap()
+    );
+
+    test_ref_copy!(
+        test_scriptpubkey_ref_copy,
+        ScriptPubkey::new(SIMPLE_SCRIPT_1).unwrap()
+    );
+}

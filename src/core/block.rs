@@ -322,6 +322,9 @@ pub struct BlockSpentOutputsRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
+unsafe impl<'a> Send for BlockSpentOutputsRef<'a> {}
+unsafe impl<'a> Sync for BlockSpentOutputsRef<'a> {}
+
 impl<'a> BlockSpentOutputsRef<'a> {
     pub fn to_owned(&self) -> BlockSpentOutputs {
         BlockSpentOutputs {
@@ -404,6 +407,12 @@ impl AsPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputs {
     }
 }
 
+impl FromMutPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputs {
+    unsafe fn from_ptr(ptr: *mut btck_TransactionSpentOutputs) -> Self {
+        TransactionSpentOutputs { inner: ptr }
+    }
+}
+
 impl TransactionSpentOutputsExt for TransactionSpentOutputs {}
 
 impl Clone for TransactionSpentOutputs {
@@ -424,6 +433,9 @@ pub struct TransactionSpentOutputsRef<'a> {
     inner: *const btck_TransactionSpentOutputs,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for TransactionSpentOutputsRef<'a> {}
+unsafe impl<'a> Sync for TransactionSpentOutputsRef<'a> {}
 
 impl<'a> TransactionSpentOutputsRef<'a> {
     pub fn to_owned(&self) -> TransactionSpentOutputs {
@@ -506,6 +518,12 @@ impl AsPtr<btck_Coin> for Coin {
     }
 }
 
+impl FromMutPtr<btck_Coin> for Coin {
+    unsafe fn from_ptr(ptr: *mut btck_Coin) -> Self {
+        Coin { inner: ptr }
+    }
+}
+
 impl CoinExt for Coin {}
 
 impl Clone for Coin {
@@ -526,6 +544,9 @@ pub struct CoinRef<'a> {
     inner: *const btck_Coin,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for CoinRef<'a> {}
+unsafe impl<'a> Sync for CoinRef<'a> {}
 
 impl<'a> CoinRef<'a> {
     pub fn to_owned(&self) -> Coin {
@@ -559,3 +580,70 @@ impl<'a> Clone for CoinRef<'a> {
 }
 
 impl<'a> Copy for CoinRef<'a> {}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::core::test_utils::{
+        test_owned_clone_and_send, test_owned_trait_requirements, test_ref_trait_requirements,
+    };
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader},
+    };
+
+    fn read_block_data() -> Vec<Vec<u8>> {
+        let file = File::open("tests/block_data.txt").unwrap();
+        let reader = BufReader::new(file);
+        let mut lines = vec![];
+        for line in reader.lines() {
+            lines.push(hex::decode(line.unwrap()).unwrap());
+        }
+        lines
+    }
+
+    const VALID_HASH_BYTES1: [u8; 32] = [1u8; 32];
+    const VALID_HASH_BYTES2: [u8; 32] = [2u8; 32];
+
+    test_owned_trait_requirements!(test_block_hash_requirements, BlockHash, btck_BlockHash);
+
+    test_owned_trait_requirements!(test_block_requirements, Block, btck_Block);
+
+    test_owned_trait_requirements!(
+        test_block_spent_outputs_requirements,
+        BlockSpentOutputs,
+        btck_BlockSpentOutputs
+    );
+    test_ref_trait_requirements!(
+        test_block_spent_outputs_ref_requirements,
+        BlockSpentOutputsRef<'static>,
+        btck_BlockSpentOutputs
+    );
+
+    test_owned_trait_requirements!(
+        test_transaction_spent_outputs_requirements,
+        TransactionSpentOutputs,
+        btck_TransactionSpentOutputs
+    );
+    test_ref_trait_requirements!(
+        test_transaction_spent_outputs_ref_requirements,
+        TransactionSpentOutputsRef<'static>,
+        btck_TransactionSpentOutputs
+    );
+
+    test_owned_trait_requirements!(test_coin_requirements, Coin, btck_Coin);
+    test_ref_trait_requirements!(test_coin_ref_requirements, CoinRef<'static>, btck_Coin);
+
+    test_owned_clone_and_send!(
+        test_block_hash_clone_send,
+        BlockHash::from(VALID_HASH_BYTES1),
+        BlockHash::from(VALID_HASH_BYTES2)
+    );
+
+    test_owned_clone_and_send!(
+        test_block_clone_send,
+        Block::new(&read_block_data()[0]).unwrap(),
+        Block::new(&read_block_data()[1]).unwrap()
+    );
+}

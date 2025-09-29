@@ -10,7 +10,7 @@ use libbitcoinkernel_sys::{
 
 use crate::{
     c_serialize,
-    ffi::sealed::{AsPtr, FromPtr},
+    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
     KernelError, ScriptPubkeyExt,
 };
 
@@ -91,6 +91,12 @@ impl AsPtr<btck_Transaction> for Transaction {
     }
 }
 
+impl FromMutPtr<btck_Transaction> for Transaction {
+    unsafe fn from_ptr(ptr: *mut btck_Transaction) -> Self {
+        Transaction { inner: ptr }
+    }
+}
+
 impl TransactionExt for Transaction {}
 
 impl Clone for Transaction {
@@ -135,6 +141,9 @@ pub struct TransactionRef<'a> {
     inner: *const btck_Transaction,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for TransactionRef<'a> {}
+unsafe impl<'a> Sync for TransactionRef<'a> {}
 
 impl<'a> TransactionRef<'a> {
     pub fn to_owned(&self) -> Transaction {
@@ -220,6 +229,12 @@ impl AsPtr<btck_TransactionOutput> for TxOut {
     }
 }
 
+impl FromMutPtr<btck_TransactionOutput> for TxOut {
+    unsafe fn from_ptr(ptr: *mut btck_TransactionOutput) -> Self {
+        TxOut { inner: ptr }
+    }
+}
+
 impl TxOutExt for TxOut {}
 
 impl Clone for TxOut {
@@ -240,6 +255,9 @@ pub struct TxOutRef<'a> {
     inner: *const btck_TransactionOutput,
     marker: PhantomData<&'a ()>,
 }
+
+unsafe impl<'a> Send for TxOutRef<'a> {}
+unsafe impl<'a> Sync for TxOutRef<'a> {}
 
 impl<'a> TxOutRef<'a> {
     pub fn to_owned(&self) -> TxOut {
@@ -273,3 +291,69 @@ impl<'a> Clone for TxOutRef<'a> {
 }
 
 impl<'a> Copy for TxOutRef<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::test_utils::{
+        test_owned_clone_and_send, test_owned_trait_requirements, test_ref_copy,
+        test_ref_trait_requirements,
+    };
+    use crate::{Block, ScriptPubkey};
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+
+    fn read_block_data() -> Vec<Vec<u8>> {
+        let file = File::open("tests/block_data.txt").unwrap();
+        let reader = BufReader::new(file);
+        let mut lines = vec![];
+        for line in reader.lines() {
+            lines.push(hex::decode(line.unwrap()).unwrap());
+        }
+        lines
+    }
+
+    fn get_test_transactions() -> (Transaction, Transaction) {
+        let block_data = read_block_data();
+        let tx1 = Block::new(&block_data[0])
+            .unwrap()
+            .transaction(0)
+            .unwrap()
+            .to_owned();
+        let tx2 = Block::new(&block_data[1])
+            .unwrap()
+            .transaction(0)
+            .unwrap()
+            .to_owned();
+        (tx1, tx2)
+    }
+
+    test_owned_trait_requirements!(test_transaction_requirements, Transaction, btck_Transaction);
+    test_ref_trait_requirements!(
+        test_transaction_ref_requirements,
+        TransactionRef<'static>,
+        btck_Transaction
+    );
+    test_owned_clone_and_send!(
+        test_transaction_clone_send,
+        get_test_transactions().0,
+        get_test_transactions().1
+    );
+    test_ref_copy!(test_transaction_ref_behavior, get_test_transactions().0);
+
+    test_owned_trait_requirements!(test_txout_requirements, TxOut, btck_TransactionOutput);
+    test_ref_trait_requirements!(
+        test_txout_ref_requirements,
+        TxOutRef<'static>,
+        btck_TransactionOutput
+    );
+    test_owned_clone_and_send!(
+        test_txout_clone_send,
+        TxOut::new(&ScriptPubkey::new(&[0x76, 0xa9]).unwrap(), 100),
+        TxOut::new(&ScriptPubkey::new(&[0x51]).unwrap(), 200)
+    );
+    test_ref_copy!(
+        test_txout_ref_copy,
+        TxOut::new(&ScriptPubkey::new(&[0x76, 0xa9]).unwrap(), 100)
+    );
+}
