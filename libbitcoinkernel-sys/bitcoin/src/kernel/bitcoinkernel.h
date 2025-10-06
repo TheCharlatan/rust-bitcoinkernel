@@ -155,9 +155,9 @@ typedef struct btck_ContextOptions btck_ContextOptions;
  * Opaque data structure for holding a kernel context.
  *
  * The kernel context is used to initialize internal state and hold the chain
- * parameters and callbacks for handling error and validation events. Once other
- * validation objects are instantiated from it, the context is kept in memory
- * for the duration of their lifetimes.
+ * parameters and callbacks for handling error and validation events. Once
+ * other validation objects are instantiated from it, the context is kept in
+ * memory for the duration of their lifetimes.
  *
  * The processing of validation events is done through an internal task runner
  * owned by the context. It passes events through the registered validation
@@ -256,6 +256,22 @@ typedef struct btck_Coin btck_Coin;
  */
 typedef struct btck_BlockHash btck_BlockHash;
 
+/**
+ * Opaque data structure for holding a transaction input.
+ *
+ * Holds information on the @ref btck_TransactionOutPoint held within.
+ */
+typedef struct btck_TransactionInput btck_TransactionInput;
+
+/**
+ * Opaque data structure for holding a transaction out point.
+ *
+ * Holds the transaction id and output index it is pointing to.
+ */
+typedef struct btck_TransactionOutPoint btck_TransactionOutPoint;
+
+typedef struct btck_Txid btck_Txid;
+
 /** Current sync state passed to tip changed callbacks. */
 typedef uint8_t btck_SynchronizationState;
 #define btck_SynchronizationState_INIT_REINDEX ((btck_SynchronizationState)(0))
@@ -295,6 +311,9 @@ typedef void (*btck_NotifyFatalError)(void* user_data, const char* message, size
  * Function signatures for the validation interface.
  */
 typedef void (*btck_ValidationInterfaceBlockChecked)(void* user_data, btck_Block* block, const btck_BlockValidationState* state);
+typedef void (*btck_ValidationInterfacePowValidBlock)(void* user_data, const btck_BlockTreeEntry* entry, btck_Block* block);
+typedef void (*btck_ValidationInterfaceBlockConnected)(void* user_data, btck_Block* block, const btck_BlockTreeEntry* entry);
+typedef void (*btck_ValidationInterfaceBlockDisconnected)(void* user_data, btck_Block* block, const btck_BlockTreeEntry* entry);
 
 /**
  * Function signature for serializing data.
@@ -331,12 +350,16 @@ typedef uint32_t btck_BlockValidationResult;
  * execution when they are called.
  */
 typedef struct {
-    void* user_data;                                    //!< Holds a user-defined opaque structure that is passed to the validation
-                                                        //!< interface callbacks. If user_data_destroy is also defined ownership of the
-                                                        //!< user_data is passed to the created context options and subsequently context.
-    btck_DestroyCallback user_data_destroy;             //!< Frees the provided user data structure.
-    btck_ValidationInterfaceBlockChecked block_checked; //!< Called when a new block has been checked. Contains the
-                                                        //!< result of its validation.
+    void* user_data;                                              //!< Holds a user-defined opaque structure that is passed to the validation
+                                                                  //!< interface callbacks. If user_data_destroy is also defined ownership of the
+                                                                  //!< user_data is passed to the created context options and subsequently context.
+    btck_DestroyCallback user_data_destroy;                       //!< Frees the provided user data structure.
+    btck_ValidationInterfaceBlockChecked block_checked;           //!< Called when a new block has been fully validated. Contains the
+                                                                  //!< result of its validation.
+    btck_ValidationInterfacePowValidBlock pow_valid_block;        //!< Called when a new block extends the header chain and has a valid transaction
+                                                                  //!< and segwit merkle root.
+    btck_ValidationInterfaceBlockConnected block_connected;       //!< Called when a block is valid and has now been connected to the best chain.
+    btck_ValidationInterfaceBlockDisconnected block_disconnected; //!< Called during a re-org when a block has been removed from the best chain.
 } btck_ValidationInterfaceCallbacks;
 
 /**
@@ -495,12 +518,33 @@ BITCOINKERNEL_API const btck_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT
     const btck_Transaction* transaction, size_t output_index) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
+ * @brief Get the transaction input at the provided index. The returned
+ * transaction input is not owned and depends on the lifetime of the
+ * transaction.
+ *
+ * @param[in] transaction Non-null.
+ * @param[in] input_index The index of the transaction input to be retrieved.
+ * @return                 The transaction input
+ */
+BITCOINKERNEL_API const btck_TransactionInput* BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_get_input_at(
+    const btck_Transaction* transaction, size_t input_index) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
  * @brief Get the number of inputs of a transaction.
  *
  * @param[in] transaction Non-null.
  * @return                The number of inputs.
  */
 BITCOINKERNEL_API size_t BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_count_inputs(
+    const btck_Transaction* transaction) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Get the txid of a transaction.
+ *
+ * @param[in] transaction Non-null.
+ * @return                The txid.
+ */
+BITCOINKERNEL_API const btck_Txid* BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_get_txid(
     const btck_Transaction* transaction) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
@@ -974,10 +1018,12 @@ BITCOINKERNEL_API int btck_chainstate_manager_import_blocks(
 
 /**
  * @brief Process and validate the passed in block with the chainstate
- * manager. More detailed validation information in case of a failure can also
- * be retrieved through a registered validation interface. If the block fails
- * to validate the `block_checked` callback's 'BlockValidationState' will
- * contain details.
+ * manager. Processing first does checks on the block, and if these passed,
+ * saves it to disk. It then validates the block against the utxo set. If it is
+ * valid, the chain is extended with it. The return value is not indicative of
+ * the block's validity. Detailed information on the validity of the block can
+ * be retrieved by registering the `block_checked` callback in the validation
+ * interface.
  *
  * @param[in] chainstate_manager Non-null.
  * @param[in] block              Non-null, block to be validated.
@@ -1028,7 +1074,7 @@ BITCOINKERNEL_API void btck_chainstate_manager_destroy(btck_ChainstateManager* c
 ///@{
 
 /**
- * @brief Reads the block the passed in block index points to from disk and
+ * @brief Reads the block the passed in block tree entry points to from disk and
  * returns it.
  *
  * @param[in] chainstate_manager Non-null.
@@ -1290,6 +1336,118 @@ BITCOINKERNEL_API void btck_transaction_spent_outputs_destroy(btck_TransactionSp
 
 ///@}
 
+/** @name Transaction Input
+ * Functions for working with transaction inputs.
+ */
+///@{
+
+/**
+ * @brief Copy a transaction input.
+ *
+ * @param[in] transaction_input Non-null.
+ * @return                      The copied transaction input.
+ */
+BITCOINKERNEL_API btck_TransactionInput* BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_input_copy(
+    const btck_TransactionInput* transaction_input) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Get the transaction out point. The returned transaction out point is
+ * not owned and depends on the lifetime of the transaction.
+ *
+ * @param[in] transaction_input Non-null.
+ * @return                      The transaction out point.
+ */
+BITCOINKERNEL_API const btck_TransactionOutPoint* BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_input_get_out_point(
+    const btck_TransactionInput* transaction_input) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * Destroy the transaction input.
+ */
+BITCOINKERNEL_API void btck_transaction_input_destroy(btck_TransactionInput* transaction_input);
+
+///@}
+
+/** @name Transaction Out Point
+ * Functions for working with transaction out points.
+ */
+///@{
+
+/**
+ * @brief Copy a transaction out point.
+ *
+ * @param[in] transaction_out_point Non-null.
+ * @return                          The copied transaction out point.
+ */
+BITCOINKERNEL_API btck_TransactionOutPoint* BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_out_point_copy(
+    const btck_TransactionOutPoint* transaction_out_point) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Get the output position from the out point.
+ *
+ * @param[in] transaction_out_point Non-null.
+ * @return                          The output index.
+ */
+BITCOINKERNEL_API uint32_t btck_transaction_out_point_get_index(
+    const btck_TransactionOutPoint* transaction_out_point) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Get the txid from the out point.
+ *
+ * @param[in] transaction_out_point Non-null.
+ * @return                          The txid.
+ */
+BITCOINKERNEL_API const btck_Txid* btck_transaction_out_point_get_txid(
+    const btck_TransactionOutPoint* transaction_out_point) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * Destroy the transaction out point.
+ */
+BITCOINKERNEL_API void btck_transaction_out_point_destroy(btck_TransactionOutPoint* transaction_out_point);
+
+///@}
+
+/** @name Txid
+ * Functions for working with txids.
+ */
+///@{
+
+/**
+ * @brief Copy a txid.
+ *
+ * @param[in] txid Non-null.
+ * @return         The copied txid.
+ */
+BITCOINKERNEL_API btck_Txid* BITCOINKERNEL_WARN_UNUSED_RESULT btck_txid_copy(
+    const btck_Txid* txid) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Check if two txids are equal.
+ *
+ * @param[in] txid1 Non-null.
+ * @param[in] txid2 Non-null.
+ * @return          0 if the txid is not equal.
+ */
+BITCOINKERNEL_API int btck_txid_equals(
+    const btck_Txid* txid1, const btck_Txid* txid2) BITCOINKERNEL_ARG_NONNULL(1, 2);
+
+/**
+ * @brief Serializes the txid to bytes.
+ *
+ * @param[in] txid    Non-null.
+ * @param[out] output The serialized txid.
+ */
+BITCOINKERNEL_API void btck_txid_to_bytes(
+    const btck_Txid* txid, unsigned char output[32]) BITCOINKERNEL_ARG_NONNULL(1, 2);
+
+/**
+ * Destroy the txid.
+ */
+BITCOINKERNEL_API void btck_txid_destroy(btck_Txid* txid);
+
+///@}
+
+///@}
+
 /** @name Coin
  * Functions for working with coins.
  */
@@ -1349,6 +1507,16 @@ BITCOINKERNEL_API void btck_coin_destroy(btck_Coin* coin);
  */
 BITCOINKERNEL_API btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_hash_create(
     const unsigned char block_hash[32]) BITCOINKERNEL_ARG_NONNULL(1);
+
+/**
+ * @brief Check if two block hashes are equal.
+ *
+ * @param[in] hash1 Non-null.
+ * @param[in] hash2 Non-null.
+ * @return          0 if the block hashes are not equal.
+ */
+BITCOINKERNEL_API int btck_block_hash_equals(
+    const btck_BlockHash* hash1, const btck_BlockHash* hash2) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * @brief Copy a block hash.

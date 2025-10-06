@@ -33,6 +33,18 @@ mod tests {
     }
 
     fn create_context() -> Context {
+        fn pow_handler(_pindex: BlockTreeEntry, _block: Block) {
+            log::info!("New PoW valid block!");
+        }
+
+        fn connected_handler(_block: Block, _pindex: BlockTreeEntry) {
+            log::info!("Block connected!");
+        }
+
+        fn disconnected_handler(_block: Block, _pindex: BlockTreeEntry) {
+            log::info!("Block disconnected!");
+        }
+
         let builder = ContextBuilder::new()
             .chain_type(ChainType::Regtest)
             .with_block_tip_notification(|_state, _block_tip, _verification_progress| {
@@ -63,7 +75,10 @@ mod tests {
             })
             .with_block_checked_validation(|_block, _mode, _result| {
                 log::info!("Block checked!");
-            });
+            })
+            .with_new_pow_valid_block(pow_handler)
+            .with_block_connected(connected_handler)
+            .with_block_disconnected(disconnected_handler);
 
         builder.build().unwrap()
     }

@@ -22,8 +22,10 @@ use crate::{
             WarningUnsetCallback,
         },
         validation::{
-            validation_block_checked_wrapper, validation_user_data_destroy_wrapper,
-            BlockCheckedCallback, ValidationCallbackRegistry,
+            validation_block_checked_wrapper, validation_block_connected_wrapper,
+            validation_block_disconnected_wrapper, validation_new_pow_valid_block_wrapper,
+            validation_user_data_destroy_wrapper, BlockCheckedCallback, BlockConnectedCallback,
+            BlockDisconnectedCallback, NewPoWValidBlockCallback, ValidationCallbackRegistry,
         },
     },
     KernelError, BTCK_CHAIN_TYPE_MAINNET, BTCK_CHAIN_TYPE_REGTEST, BTCK_CHAIN_TYPE_SIGNET,
@@ -162,6 +164,9 @@ impl ContextBuilder {
                 user_data: registry_ptr as *mut c_void,
                 user_data_destroy: Some(validation_user_data_destroy_wrapper),
                 block_checked: Some(validation_block_checked_wrapper),
+                pow_valid_block: Some(validation_new_pow_valid_block_wrapper),
+                block_connected: Some(validation_block_connected_wrapper),
+                block_disconnected: Some(validation_block_disconnected_wrapper),
             };
             btck_context_options_set_validation_interface(self.inner, holder);
         }
@@ -262,6 +267,42 @@ impl ContextBuilder {
         self
     }
 
+    pub fn with_new_pow_valid_block<T>(mut self, handler: T) -> Self
+    where
+        T: NewPoWValidBlockCallback + 'static,
+    {
+        self.get_or_create_validation_registry()
+            .register_new_pow_valid_block(handler);
+        self
+    }
+
+    pub fn with_block_connected<T>(mut self, handler: T) -> Self
+    where
+        T: BlockConnectedCallback + 'static,
+    {
+        self.get_or_create_validation_registry()
+            .register_block_connected(handler);
+        self
+    }
+
+    pub fn with_block_disconnected<T>(mut self, handler: T) -> Self
+    where
+        T: BlockDisconnectedCallback + 'static,
+    {
+        self.get_or_create_validation_registry()
+            .register_block_disconnected(handler);
+        self
+    }
+
+    pub fn validation<F>(mut self, configure: F) -> Self
+    where
+        F: FnOnce(&mut ValidationCallbackRegistry),
+    {
+        let registry = self.get_or_create_validation_registry();
+        configure(registry);
+        self
+    }
+
     fn get_or_create_validation_registry(&mut self) -> &mut ValidationCallbackRegistry {
         if self.validation_registry.is_none() {
             self.validation_registry = Some(ValidationCallbackRegistry::new());
@@ -347,6 +388,24 @@ mod tests {
         });
 
         assert!(builder.notification_registry.is_some());
+    }
+
+    #[test]
+    fn test_advanced_validation_configuration() {
+        fn pow_handler(_pindex: crate::BlockTreeEntry, _block: crate::Block) {}
+        fn connected_handler(_block: crate::Block, _pindex: crate::BlockTreeEntry) {}
+        fn disconnected_handler(_block: crate::Block, _pindex: crate::BlockTreeEntry) {}
+
+        let mut builder = ContextBuilder::new();
+
+        builder = builder.validation(|registry| {
+            registry.register_block_checked(|_block, _mode, _result| {});
+            registry.register_new_pow_valid_block(pow_handler);
+            registry.register_block_connected(connected_handler);
+            registry.register_block_disconnected(disconnected_handler);
+        });
+
+        assert!(builder.validation_registry.is_some());
     }
 
     #[test]
