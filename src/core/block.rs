@@ -4,8 +4,8 @@ use libbitcoinkernel_sys::{
     btck_Block, btck_BlockHash, btck_BlockSpentOutputs, btck_Coin, btck_TransactionSpentOutputs,
     btck_block_copy, btck_block_count_transactions, btck_block_create, btck_block_destroy,
     btck_block_get_hash, btck_block_get_transaction_at, btck_block_hash_copy,
-    btck_block_hash_create, btck_block_hash_destroy, btck_block_hash_to_bytes,
-    btck_block_spent_outputs_copy, btck_block_spent_outputs_count,
+    btck_block_hash_create, btck_block_hash_destroy, btck_block_hash_equals,
+    btck_block_hash_to_bytes, btck_block_spent_outputs_copy, btck_block_spent_outputs_count,
     btck_block_spent_outputs_destroy, btck_block_spent_outputs_get_transaction_spent_outputs_at,
     btck_block_to_bytes, btck_coin_confirmation_height, btck_coin_copy, btck_coin_destroy,
     btck_coin_get_output, btck_coin_is_coinbase, btck_transaction_spent_outputs_copy,
@@ -15,7 +15,10 @@ use libbitcoinkernel_sys::{
 
 use crate::{
     c_helpers, c_serialize,
-    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
+    ffi::{
+        c_helpers::present,
+        sealed::{AsPtr, FromMutPtr, FromPtr},
+    },
     KernelError,
 };
 
@@ -110,17 +113,17 @@ impl From<&BlockHash> for [u8; 32] {
 
 impl PartialEq for BlockHash {
     fn eq(&self, other: &Self) -> bool {
-        self.to_bytes() == other.to_bytes()
+        present(unsafe { btck_block_hash_equals(self.inner, other.inner) })
     }
 }
+
+impl Eq for BlockHash {}
 
 impl std::fmt::Debug for BlockHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BlockHash({:?})", self.to_bytes())
     }
 }
-
-impl Eq for BlockHash {}
 
 /// A Bitcoin block containing a header and transactions.
 ///
