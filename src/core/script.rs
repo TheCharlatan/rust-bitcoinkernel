@@ -187,4 +187,215 @@ mod tests {
         test_scriptpubkey_ref_copy,
         ScriptPubkey::new(SIMPLE_SCRIPT_1).unwrap()
     );
+
+    #[test]
+    fn test_scriptpubkey_new() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::new(&script_data);
+        assert!(script.is_ok());
+    }
+
+    #[test]
+    fn test_scriptpubkey_empty() {
+        let script = ScriptPubkey::new(&[]);
+        assert!(script.is_ok());
+    }
+
+    #[test]
+    fn test_scriptpubkey_try_from() {
+        let script_data: &[u8] = &[0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data);
+        assert!(script.is_ok());
+    }
+
+    #[test]
+    fn test_scriptpubkey_to_bytes() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let bytes = script.to_bytes();
+        assert_eq!(bytes, script_data);
+    }
+
+    #[test]
+    fn test_scriptpubkey_into_vec() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let bytes: Vec<u8> = script.into();
+        assert_eq!(bytes, script_data);
+    }
+
+    #[test]
+    fn test_scriptpubkey_ref_into_vec() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let bytes: Vec<u8> = (&script).into();
+        assert_eq!(bytes, script_data);
+    }
+
+    #[test]
+    fn test_scriptpubkey_as_ref() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let owned_script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let script_ref = owned_script.as_ref();
+
+        assert_eq!(script_ref.to_bytes(), script_data);
+        assert_eq!(owned_script.to_bytes(), script_data);
+    }
+
+    #[test]
+    fn test_scriptpubkey_ref_to_owned() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let script_ref = script.as_ref();
+        let owned_script = script_ref.to_owned();
+
+        let bytes1 = script_ref.to_bytes();
+        let bytes2 = owned_script.to_bytes();
+
+        assert_eq!(bytes1, bytes2);
+        assert_eq!(bytes1, script_data);
+    }
+
+    #[test]
+    fn test_scriptpubkey_ref_to_owned_survives_drop() {
+        let owned_script = {
+            let script_data = vec![0x76, 0xa9, 0x14];
+            let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+            let script_ref = script.as_ref();
+            script_ref.to_owned()
+        };
+
+        let bytes = owned_script.to_bytes();
+        assert_eq!(bytes, vec![0x76, 0xa9, 0x14]);
+    }
+
+    #[test]
+    fn test_scriptpubkey_ref_into_vec_from_ref() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let script_ref = script.as_ref();
+
+        let bytes: Vec<u8> = script_ref.into();
+        assert_eq!(bytes, script_data);
+    }
+
+    #[test]
+    fn test_scriptpubkey_ref_ref_into_vec() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let script_ref = script.as_ref();
+
+        let bytes: Vec<u8> = (&script_ref).into();
+        assert_eq!(bytes, script_data);
+    }
+
+    #[test]
+    fn test_owned_and_ref_polymorphism() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let owned_script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+        let script_ref = owned_script.as_ref();
+
+        fn get_bytes_generic(script: &impl ScriptPubkeyExt) -> Vec<u8> {
+            script.to_bytes()
+        }
+
+        let bytes_from_owned = get_bytes_generic(&owned_script);
+        let bytes_from_ref = get_bytes_generic(&script_ref);
+
+        assert_eq!(bytes_from_owned, script_data);
+        assert_eq!(bytes_from_ref, script_data);
+        assert_eq!(bytes_from_owned, bytes_from_ref);
+    }
+
+    #[test]
+    fn test_large_script() {
+        let script_data = vec![0xFF; 10000];
+        let script = ScriptPubkey::new(&script_data);
+        assert!(script.is_ok());
+
+        let script = script.unwrap();
+        assert_eq!(script.to_bytes(), script_data);
+    }
+
+    #[test]
+    fn test_single_byte_script() {
+        let script_data = vec![0x51];
+        let script = ScriptPubkey::new(&script_data).unwrap();
+        assert_eq!(script.to_bytes(), script_data);
+    }
+
+    #[test]
+    fn test_multiple_conversions() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::try_from(script_data.as_slice()).unwrap();
+
+        let bytes1 = script.to_bytes();
+        let bytes2 = script.to_bytes();
+        let bytes3 = script.to_bytes();
+
+        assert_eq!(bytes1, script_data);
+        assert_eq!(bytes2, script_data);
+        assert_eq!(bytes3, script_data);
+    }
+
+    #[test]
+    fn test_scriptpubkey_ref_multiple_to_bytes() {
+        let script_data = vec![0x76, 0xa9];
+        let script = ScriptPubkey::new(&script_data).unwrap();
+        let script_ref = script.as_ref();
+
+        let bytes1 = script_ref.to_bytes();
+        let bytes2 = script_ref.to_bytes();
+
+        assert_eq!(bytes1, script_data);
+        assert_eq!(bytes2, script_data);
+    }
+
+    #[test]
+    fn test_p2pkh_script() {
+        // Standard P2PKH script: OP_DUP OP_HASH160 <pubKeyHash> OP_EQUALVERIFY OP_CHECKSIG
+        let p2pkh = hex::decode("76a914deadbeefdeadbeefdeadbeefdeadbeefdeadbeef88ac").unwrap();
+        let script = ScriptPubkey::new(&p2pkh).unwrap();
+        assert_eq!(script.to_bytes(), p2pkh);
+    }
+
+    #[test]
+    fn test_p2sh_script() {
+        // Standard P2SH script: OP_HASH160 <scriptHash> OP_EQUAL
+        let p2sh = hex::decode("a914deadbeefdeadbeefdeadbeefdeadbeefdeadbeef87").unwrap();
+        let script = ScriptPubkey::new(&p2sh).unwrap();
+        assert_eq!(script.to_bytes(), p2sh);
+    }
+
+    #[test]
+    fn test_p2wpkh_script() {
+        // Native SegWit P2WPKH: OP_0 <20-byte-pubkey-hash>
+        let p2wpkh = hex::decode("0014deadbeefdeadbeefdeadbeefdeadbeefdeadbeef").unwrap();
+        let script = ScriptPubkey::new(&p2wpkh).unwrap();
+        assert_eq!(script.to_bytes(), p2wpkh);
+    }
+
+    #[test]
+    fn test_p2wsh_script() {
+        // Native SegWit P2WSH: OP_0 <32-byte-script-hash>
+        let p2wsh =
+            hex::decode("0020deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+                .unwrap();
+        let script = ScriptPubkey::new(&p2wsh).unwrap();
+        assert_eq!(script.to_bytes(), p2wsh);
+    }
+
+    #[test]
+    fn test_op_return_script() {
+        let op_return = hex::decode("6a0548656c6c6f").unwrap(); // OP_RETURN "Hello"
+        let script = ScriptPubkey::new(&op_return).unwrap();
+        assert_eq!(script.to_bytes(), op_return);
+    }
+
+    #[test]
+    fn test_multisig_script() {
+        let multisig = vec![0x51, 0x21, 0x03];
+        let script = ScriptPubkey::new(&multisig).unwrap();
+        assert_eq!(script.to_bytes(), multisig);
+    }
 }
