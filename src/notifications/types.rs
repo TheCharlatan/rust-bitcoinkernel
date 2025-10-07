@@ -2,12 +2,14 @@ use std::marker::PhantomData;
 
 use libbitcoinkernel_sys::{
     btck_BlockValidationResult, btck_BlockValidationState, btck_SynchronizationState,
-    btck_ValidationMode, btck_Warning, btck_block_validation_state_get_block_validation_result,
+    btck_ValidationMode, btck_Warning, btck_block_validation_state_copy,
+    btck_block_validation_state_create, btck_block_validation_state_destroy,
+    btck_block_validation_state_get_block_validation_result,
     btck_block_validation_state_get_validation_mode,
 };
 
 use crate::{
-    ffi::sealed::{AsPtr, FromPtr},
+    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
     BTCK_BLOCK_VALIDATION_RESULT_CACHED_INVALID, BTCK_BLOCK_VALIDATION_RESULT_CONSENSUS,
     BTCK_BLOCK_VALIDATION_RESULT_HEADER_LOW_WORK, BTCK_BLOCK_VALIDATION_RESULT_INVALID_HEADER,
     BTCK_BLOCK_VALIDATION_RESULT_INVALID_PREV, BTCK_BLOCK_VALIDATION_RESULT_MISSING_PREV,
@@ -191,6 +193,49 @@ pub trait BlockValidationStateExt: AsPtr<btck_BlockValidationState> {
     }
 }
 
+pub struct BlockValidationState {
+    inner: *mut btck_BlockValidationState,
+}
+
+unsafe impl Send for BlockValidationState {}
+unsafe impl Sync for BlockValidationState {}
+
+impl BlockValidationState {
+    pub fn new() -> BlockValidationState {
+        BlockValidationState {
+            inner: unsafe { btck_block_validation_state_create() },
+        }
+    }
+}
+
+impl AsPtr<btck_BlockValidationState> for BlockValidationState {
+    fn as_ptr(&self) -> *const btck_BlockValidationState {
+        self.inner as *const _
+    }
+}
+
+impl FromMutPtr<btck_BlockValidationState> for BlockValidationState {
+    unsafe fn from_ptr(ptr: *mut btck_BlockValidationState) -> Self {
+        BlockValidationState { inner: ptr }
+    }
+}
+
+impl BlockValidationStateExt for BlockValidationState {}
+
+impl Clone for BlockValidationState {
+    fn clone(&self) -> Self {
+        BlockValidationState {
+            inner: unsafe { btck_block_validation_state_copy(self.inner) },
+        }
+    }
+}
+
+impl Drop for BlockValidationState {
+    fn drop(&mut self) {
+        unsafe { btck_block_validation_state_destroy(self.inner) }
+    }
+}
+
 pub struct BlockValidationStateRef<'a> {
     inner: *const btck_BlockValidationState,
     marker: PhantomData<&'a ()>,
@@ -228,10 +273,18 @@ impl<'a> BlockValidationStateExt for BlockValidationStateRef<'a> {}
 mod tests {
     use libbitcoinkernel_sys::btck_BlockValidationState;
 
-    use crate::ffi::test_utils::test_ref_trait_requirements;
+    use crate::{
+        ffi::test_utils::{test_owned_trait_requirements, test_ref_trait_requirements},
+        notifications::types::{BlockValidationState, BlockValidationStateRef},
+    };
 
     use super::*;
 
+    test_owned_trait_requirements!(
+        test_block_validation_state_requirements,
+        BlockValidationState,
+        btck_BlockValidationState
+    );
     test_ref_trait_requirements!(
         test_block_validation_state_ref_requirements,
         BlockValidationStateRef<'static>,
