@@ -178,3 +178,159 @@ pub enum ScriptVerifyError {
     SpentOutputsRequired,
     Invalid,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_verify_constants() {
+        assert_eq!(VERIFY_NONE, BTCK_SCRIPT_VERIFICATION_FLAGS_NONE);
+        assert_eq!(VERIFY_P2SH, BTCK_SCRIPT_VERIFICATION_FLAGS_P2SH);
+        assert_eq!(VERIFY_DERSIG, BTCK_SCRIPT_VERIFICATION_FLAGS_DERSIG);
+        assert_eq!(VERIFY_NULLDUMMY, BTCK_SCRIPT_VERIFICATION_FLAGS_NULLDUMMY);
+        assert_eq!(
+            VERIFY_CHECKLOCKTIMEVERIFY,
+            BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKLOCKTIMEVERIFY
+        );
+        assert_eq!(
+            VERIFY_CHECKSEQUENCEVERIFY,
+            BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKSEQUENCEVERIFY
+        );
+        assert_eq!(VERIFY_WITNESS, BTCK_SCRIPT_VERIFICATION_FLAGS_WITNESS);
+        assert_eq!(VERIFY_TAPROOT, BTCK_SCRIPT_VERIFICATION_FLAGS_TAPROOT);
+        assert_eq!(VERIFY_ALL, BTCK_SCRIPT_VERIFICATION_FLAGS_ALL);
+    }
+
+    #[test]
+    fn test_verify_all_pre_taproot() {
+        let expected = VERIFY_P2SH
+            | VERIFY_DERSIG
+            | VERIFY_NULLDUMMY
+            | VERIFY_CHECKLOCKTIMEVERIFY
+            | VERIFY_CHECKSEQUENCEVERIFY
+            | VERIFY_WITNESS;
+
+        assert_eq!(VERIFY_ALL_PRE_TAPROOT, expected);
+
+        assert_eq!(VERIFY_ALL_PRE_TAPROOT & VERIFY_TAPROOT, 0);
+    }
+
+    #[test]
+    fn test_verification_flag_combinations() {
+        let flags = VERIFY_P2SH | VERIFY_WITNESS;
+        assert!(flags & VERIFY_P2SH != 0);
+        assert!(flags & VERIFY_WITNESS != 0);
+        assert!(flags & VERIFY_TAPROOT == 0);
+    }
+
+    #[test]
+    #[allow(clippy::assertions_on_constants)]
+    fn test_verify_all_includes_all_flags() {
+        assert!((VERIFY_ALL & VERIFY_P2SH) != 0);
+        assert!((VERIFY_ALL & VERIFY_DERSIG) != 0);
+        assert!((VERIFY_ALL & VERIFY_NULLDUMMY) != 0);
+        assert!((VERIFY_ALL & VERIFY_CHECKLOCKTIMEVERIFY) != 0);
+        assert!((VERIFY_ALL & VERIFY_CHECKSEQUENCEVERIFY) != 0);
+        assert!((VERIFY_ALL & VERIFY_WITNESS) != 0);
+        assert!((VERIFY_ALL & VERIFY_TAPROOT) != 0);
+    }
+
+    #[test]
+    fn test_script_verify_status_from_kernel() {
+        let ok: ScriptVerifyStatus = BTCK_SCRIPT_VERIFY_STATUS_OK.into();
+        assert_eq!(ok, ScriptVerifyStatus::Ok);
+
+        let invalid_flags: ScriptVerifyStatus =
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION.into();
+        assert_eq!(
+            invalid_flags,
+            ScriptVerifyStatus::ErrorInvalidFlagsCombination
+        );
+
+        let spent_required: ScriptVerifyStatus =
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED.into();
+        assert_eq!(
+            spent_required,
+            ScriptVerifyStatus::ErrorSpentOutputsRequired
+        );
+    }
+
+    #[test]
+    fn test_script_verify_status_to_kernel() {
+        let ok: btck_ScriptVerifyStatus = ScriptVerifyStatus::Ok.into();
+        assert_eq!(ok, BTCK_SCRIPT_VERIFY_STATUS_OK);
+
+        let invalid_flags: btck_ScriptVerifyStatus =
+            ScriptVerifyStatus::ErrorInvalidFlagsCombination.into();
+        assert_eq!(
+            invalid_flags,
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION
+        );
+
+        let spent_required: btck_ScriptVerifyStatus =
+            ScriptVerifyStatus::ErrorSpentOutputsRequired.into();
+        assert_eq!(
+            spent_required,
+            BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED
+        );
+    }
+
+    #[test]
+    fn test_script_verify_status_round_trip() {
+        let statuses = vec![
+            ScriptVerifyStatus::Ok,
+            ScriptVerifyStatus::ErrorInvalidFlagsCombination,
+            ScriptVerifyStatus::ErrorSpentOutputsRequired,
+        ];
+
+        for status in statuses {
+            let kernel: btck_ScriptVerifyStatus = status.into();
+            let back: ScriptVerifyStatus = kernel.into();
+            assert_eq!(status, back);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown script verify status")]
+    fn test_script_verify_status_invalid_value() {
+        let _: ScriptVerifyStatus = 255.into();
+    }
+
+    #[test]
+    fn test_script_verify_status_traits() {
+        let status1 = ScriptVerifyStatus::Ok;
+        let status2 = ScriptVerifyStatus::Ok;
+
+        let cloned = status1.clone();
+        assert_eq!(cloned, status2);
+
+        let copied = status1;
+        assert_eq!(copied, status2);
+
+        assert_eq!(status1, status2);
+        assert_ne!(status1, ScriptVerifyStatus::ErrorInvalidFlagsCombination);
+
+        let debug_str = format!("{:?}", status1);
+        assert!(debug_str.contains("Ok"));
+    }
+
+    #[test]
+    fn test_script_verify_error_debug() {
+        let errors = vec![
+            ScriptVerifyError::TxInputIndex,
+            ScriptVerifyError::TxSizeMismatch,
+            ScriptVerifyError::TxDeserialize,
+            ScriptVerifyError::InvalidFlags,
+            ScriptVerifyError::InvalidFlagsCombination,
+            ScriptVerifyError::SpentOutputsMismatch,
+            ScriptVerifyError::SpentOutputsRequired,
+            ScriptVerifyError::Invalid,
+        ];
+
+        for err in errors {
+            let debug_str = format!("{:?}", err);
+            assert!(!debug_str.is_empty());
+        }
+    }
+}
