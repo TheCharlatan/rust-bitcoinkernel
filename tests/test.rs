@@ -1,12 +1,9 @@
 #[cfg(test)]
 mod tests {
     use bitcoin::consensus::deserialize;
-    use bitcoinkernel::notifications::types::BlockValidationStateRef;
+    use bitcoinkernel::notifications::types::{BlockValidationStateExt, BlockValidationStateRef};
     use bitcoinkernel::{
-        prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
-        ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder,
-        KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction,
-        TransactionSpentOutputs, TxOut, TxOutRef, VERIFY_ALL_PRE_TAPROOT,
+        prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams, ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder, KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction, TransactionSpentOutputs, TxOut, TxOutRef, ValidationMode, VERIFY_ALL_PRE_TAPROOT
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -403,6 +400,24 @@ mod tests {
             result,
             Err(KernelError::ScriptVerify(ScriptVerifyError::InvalidFlags))
         ));
+    }
+
+    #[test]
+    fn test_header_validation() {
+        let (context, data_dir) = testing_setup();
+        let blocks_dir = data_dir.clone() + "/blocks";
+        let block_data = read_block_data();
+        let chainman = ChainstateManager::new(
+            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
+        )
+        .unwrap();
+
+        for raw_block in block_data.iter() {
+            let block = Block::new(raw_block.as_slice()).unwrap();
+            let (accepted, state) = chainman.process_header(&block.header());
+            assert!(accepted);
+            assert_eq!(state.mode(), ValidationMode::Valid);
+        }
     }
 
     #[test]
