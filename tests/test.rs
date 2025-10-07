@@ -1,11 +1,7 @@
 #[cfg(test)]
 mod tests {
     use bitcoinkernel::{
-        prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry,
-        BlockValidationStateRef, ChainParams, ChainType, ChainstateManager,
-        ChainstateManagerBuilder, Coin, Context, ContextBuilder, KernelError, Log, Logger,
-        ScriptPubkey, ScriptVerifyError, Transaction, TransactionSpentOutputs, TxIn, TxOut,
-        TxOutRef, VERIFY_ALL_PRE_TAPROOT, VERIFY_TAPROOT, VERIFY_WITNESS,
+        Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, BlockValidationStateRef, ChainParams, ChainType, ChainstateManager, ChainstateManagerBuilder, Coin, Context, ContextBuilder, KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction, TransactionSpentOutputs, TxIn, TxOut, TxOutRef, VERIFY_ALL_PRE_TAPROOT, VERIFY_TAPROOT, VERIFY_WITNESS, ValidationMode, prelude::*, verify
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -368,6 +364,21 @@ mod tests {
                 ScriptVerifyError::SpentOutputsRequired
             ))
         ));
+    }
+
+    #[test]
+    fn test_header_validation() {
+        let (context, data_dir) = testing_setup();
+        let blocks_dir = data_dir.clone() + "/blocks";
+        let block_data = read_block_data();
+        let chainman = ChainstateManager::new(&context, &data_dir, &blocks_dir).unwrap();
+
+        for raw_block in block_data.iter() {
+            let block = Block::new(raw_block.as_slice()).unwrap();
+            let (accepted, state) = chainman.process_header(&block.header());
+            assert!(accepted);
+            assert_eq!(state.mode(), ValidationMode::Valid);
+        }
     }
 
     #[test]
