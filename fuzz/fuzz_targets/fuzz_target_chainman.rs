@@ -7,8 +7,10 @@ use libfuzzer_sys::fuzz_target;
 use arbitrary::Arbitrary;
 
 use bitcoinkernel::{
-    disable_logging, Block, ChainType, ChainstateManager, ChainstateManagerOptions, Context,
-    ContextBuilder, KernelError,
+    disable_logging,
+    notifications::types::{BlockValidationStateExt, BlockValidationStateRef},
+    Block, ChainType, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder,
+    KernelError, ValidationMode,
 };
 
 fn create_context(chain_type: ChainType) -> Arc<Context> {
@@ -22,7 +24,9 @@ fn create_context(chain_type: ChainType) -> Arc<Context> {
             .with_warning_unset_notification(|_warning| {})
             .with_flush_error_notification(|_message| {})
             .with_fatal_error_notification(|_message| {})
-            .with_block_checked_validation(|_block, _mode, _result| {})
+            .with_block_checked_validation(|_block, state: BlockValidationStateRef<'_>| {
+                assert!(state.mode() != ValidationMode::InternalError)
+            })
             .build()
             .unwrap(),
     )

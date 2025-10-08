@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use bitcoin::consensus::deserialize;
+    use bitcoinkernel::notifications::types::BlockValidationStateRef;
     use bitcoinkernel::{
         prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
         ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder,
@@ -73,7 +74,7 @@ mod tests {
             .with_fatal_error_notification(|message| {
                 log::info!("Fatal error! {}", message);
             })
-            .with_block_checked_validation(|_block, _mode, _result| {
+            .with_block_checked_validation(|_block, _state: BlockValidationStateRef<'_>| {
                 log::info!("Block checked!");
             })
             .with_new_pow_valid_block(pow_handler)

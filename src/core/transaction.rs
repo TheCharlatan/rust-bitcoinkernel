@@ -295,7 +295,7 @@ impl<'a> Copy for TxOutRef<'a> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::test_utils::{
+    use crate::ffi::test_utils::{
         test_owned_clone_and_send, test_owned_trait_requirements, test_ref_copy,
         test_ref_trait_requirements,
     };
