@@ -1,29 +1,24 @@
 use std::ffi::c_void;
 
-use libbitcoinkernel_sys::{
-    btck_Block, btck_BlockTreeEntry, btck_BlockValidationState,
-    btck_block_validation_state_get_block_validation_result,
-    btck_block_validation_state_get_validation_mode,
-};
+use libbitcoinkernel_sys::{btck_Block, btck_BlockTreeEntry, btck_BlockValidationState};
 
 use crate::{
     ffi::sealed::{FromMutPtr, FromPtr},
+    notifications::types::BlockValidationStateRef,
     Block, BlockTreeEntry,
 };
 
-use super::{BlockValidationResult, ValidationMode};
-
 /// Exposes the result after validating a block.
 pub trait BlockCheckedCallback: Send + Sync {
-    fn on_block_checked(&self, block: Block, mode: ValidationMode, result: BlockValidationResult);
+    fn on_block_checked(&self, block: Block, state: BlockValidationStateRef);
 }
 
 impl<F> BlockCheckedCallback for F
 where
-    F: Fn(Block, ValidationMode, BlockValidationResult) + Send + Sync + 'static,
+    F: Fn(Block, BlockValidationStateRef) + Send + Sync + 'static,
 {
-    fn on_block_checked(&self, block: Block, mode: ValidationMode, result: BlockValidationResult) {
-        self(block, mode, result)
+    fn on_block_checked(&self, block: Block, state: BlockValidationStateRef) {
+        self(block, state)
     }
 }
 
@@ -127,15 +122,13 @@ pub(crate) unsafe extern "C" fn validation_user_data_destroy_wrapper(user_data: 
 pub(crate) unsafe extern "C" fn validation_block_checked_wrapper(
     user_data: *mut c_void,
     block: *mut btck_Block,
-    stateIn: *const btck_BlockValidationState,
+    state: *const btck_BlockValidationState,
 ) {
     let block = Block::from_ptr(block);
     let registry = &*(user_data as *mut ValidationCallbackRegistry);
 
     if let Some(ref handler) = registry.block_checked_handler {
-        let result = btck_block_validation_state_get_block_validation_result(stateIn);
-        let mode = btck_block_validation_state_get_validation_mode(stateIn);
-        handler.on_block_checked(block, mode.into(), result.into());
+        handler.on_block_checked(block, BlockValidationStateRef::from_ptr(state));
     }
 }
 
@@ -189,14 +182,16 @@ pub(crate) unsafe extern "C" fn validation_block_disconnected_wrapper(
 
 #[cfg(test)]
 mod tests {
+    use crate::{notifications::types::BlockValidationStateExt, BlockValidationResult};
+
     use super::*;
 
     #[test]
     fn test_registry_stores_single_handler() {
         let mut registry = ValidationCallbackRegistry::new();
 
-        registry.register_block_checked(|_block, _mode, result| {
-            assert_eq!(result, BlockValidationResult::Consensus);
+        registry.register_block_checked(|_block, state: BlockValidationStateRef| {
+            assert_eq!(state.result(), BlockValidationResult::Consensus);
         });
 
         assert!(registry.block_checked_handler.is_some());
@@ -204,14 +199,14 @@ mod tests {
 
     #[test]
     fn test_closure_trait_implementation() {
-        let handler = |_block, _mode, _result| {};
+        let handler = |_block, _state: BlockValidationStateRef<'_>| {};
         let _: Box<dyn BlockCheckedCallback> = Box::new(handler);
     }
 
     #[test]
     fn test_block_checked_registration() {
         let mut registry = ValidationCallbackRegistry::new();
-        registry.register_block_checked(|_block, _mode, _result| {});
+        registry.register_block_checked(|_block, _state: BlockValidationStateRef<'_>| {});
         assert!(registry.block_checked_handler.is_some());
     }
 

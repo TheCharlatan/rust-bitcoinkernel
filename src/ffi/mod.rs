@@ -1,5 +1,7 @@
 pub mod c_helpers;
 pub mod constants;
+#[cfg(test)]
+pub mod test_utils;
 
 pub(crate) mod sealed {
     pub trait AsPtr<T> {

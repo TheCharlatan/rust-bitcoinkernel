@@ -351,6 +351,8 @@ impl From<btck_ChainType> for ChainType {
 
 #[cfg(test)]
 mod tests {
+    use crate::notifications::types::BlockValidationStateRef;
+
     use super::*;
 
     #[test]
@@ -373,7 +375,8 @@ mod tests {
     fn test_validation_callback_registration_method() {
         let mut builder = ContextBuilder::new();
 
-        builder = builder.with_block_checked_validation(|_block, _mode, _result| {});
+        builder =
+            builder.with_block_checked_validation(|_block, _state: BlockValidationStateRef<'_>| {});
 
         assert!(builder.validation_registry.is_some());
     }
@@ -399,7 +402,7 @@ mod tests {
         let mut builder = ContextBuilder::new();
 
         builder = builder.validation(|registry| {
-            registry.register_block_checked(|_block, _mode, _result| {});
+            registry.register_block_checked(|_block, _state: BlockValidationStateRef<'_>| {});
             registry.register_new_pow_valid_block(pow_handler);
             registry.register_block_connected(connected_handler);
             registry.register_block_disconnected(disconnected_handler);
@@ -414,7 +417,7 @@ mod tests {
 
         builder = builder
             .with_progress_notification(|_title, _percent, _resume| {})
-            .with_block_checked_validation(|_block, _mode, _result| {})
+            .with_block_checked_validation(|_block, _state: BlockValidationStateRef<'_>| {})
             .chain_type(ChainType::Testnet);
 
         assert!(builder.notification_registry.is_some());
@@ -434,7 +437,7 @@ mod tests {
         let builder = ContextBuilder::new()
             .chain_type(ChainType::Regtest)
             .with_progress_notification(|_title, _percent, _resume| {})
-            .with_block_checked_validation(|_block, _mode, _result| {});
+            .with_block_checked_validation(|_block, _state: BlockValidationStateRef<'_>| {});
 
         assert!(builder.notification_registry.is_some());
         assert!(builder.validation_registry.is_some());
@@ -444,7 +447,7 @@ mod tests {
     fn test_build_with_callbacks() {
         let context_result = ContextBuilder::new()
             .with_progress_notification(|_title, _percent, _resume| {})
-            .with_block_checked_validation(|_block, _mode, _result| {})
+            .with_block_checked_validation(|_block, _state: BlockValidationStateRef<'_>| {})
             .chain_type(ChainType::Testnet)
             .build();
 

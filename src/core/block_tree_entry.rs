@@ -76,7 +76,7 @@ impl<'a> Copy for BlockTreeEntry<'a> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::test_utils::test_ref_trait_requirements;
+    use crate::ffi::test_utils::test_ref_trait_requirements;
 
     test_ref_trait_requirements!(
         test_blocktreeentry_implementations,

@@ -1,8 +1,13 @@
+use std::marker::PhantomData;
+
 use libbitcoinkernel_sys::{
-    btck_BlockValidationResult, btck_SynchronizationState, btck_ValidationMode, btck_Warning,
+    btck_BlockValidationResult, btck_BlockValidationState, btck_SynchronizationState,
+    btck_ValidationMode, btck_Warning, btck_block_validation_state_get_block_validation_result,
+    btck_block_validation_state_get_validation_mode,
 };
 
 use crate::{
+    ffi::sealed::{AsPtr, FromPtr},
     BTCK_BLOCK_VALIDATION_RESULT_CACHED_INVALID, BTCK_BLOCK_VALIDATION_RESULT_CONSENSUS,
     BTCK_BLOCK_VALIDATION_RESULT_HEADER_LOW_WORK, BTCK_BLOCK_VALIDATION_RESULT_INVALID_HEADER,
     BTCK_BLOCK_VALIDATION_RESULT_INVALID_PREV, BTCK_BLOCK_VALIDATION_RESULT_MISSING_PREV,
@@ -161,4 +166,62 @@ impl From<btck_BlockValidationResult> for BlockValidationResult {
             _ => panic!("Unknown block validation result: {}", value),
         }
     }
+}
+
+pub trait BlockValidationStateExt: AsPtr<btck_BlockValidationState> {
+    fn mode(&self) -> ValidationMode {
+        unsafe { btck_block_validation_state_get_validation_mode(self.as_ptr()).into() }
+    }
+
+    fn result(&self) -> BlockValidationResult {
+        unsafe { btck_block_validation_state_get_block_validation_result(self.as_ptr()).into() }
+    }
+}
+
+pub struct BlockValidationStateRef<'a> {
+    inner: *const btck_BlockValidationState,
+    marker: PhantomData<&'a ()>,
+}
+
+unsafe impl<'a> Send for BlockValidationStateRef<'a> {}
+unsafe impl<'a> Sync for BlockValidationStateRef<'a> {}
+
+impl<'a> AsPtr<btck_BlockValidationState> for BlockValidationStateRef<'a> {
+    fn as_ptr(&self) -> *const btck_BlockValidationState {
+        self.inner
+    }
+}
+
+impl<'a> FromPtr<btck_BlockValidationState> for BlockValidationStateRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_BlockValidationState) -> Self {
+        BlockValidationStateRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'a> Copy for BlockValidationStateRef<'a> {}
+
+impl<'a> Clone for BlockValidationStateRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a> BlockValidationStateExt for BlockValidationStateRef<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use libbitcoinkernel_sys::btck_BlockValidationState;
+
+    use crate::{
+        ffi::test_utils::test_ref_trait_requirements, notifications::types::BlockValidationStateRef,
+    };
+
+    test_ref_trait_requirements!(
+        test_block_validation_state_ref_requirements,
+        BlockValidationStateRef<'static>,
+        btck_BlockValidationState
+    );
 }
