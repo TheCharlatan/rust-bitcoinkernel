@@ -217,3 +217,60 @@ impl Drop for ChainstateManagerOptions {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ChainType, ContextBuilder};
+    use tempdir::TempDir;
+
+    fn create_test_context() -> Context {
+        ContextBuilder::new()
+            .chain_type(ChainType::Regtest)
+            .build()
+            .unwrap()
+    }
+
+    fn create_test_dirs() -> (TempDir, String, String) {
+        let temp_dir = TempDir::new("test_chainman").unwrap();
+        let data_dir = temp_dir.path().to_str().unwrap().to_string();
+        let blocks_dir = format!("{}/blocks", data_dir);
+        (temp_dir, data_dir, blocks_dir)
+    }
+
+    #[test]
+    fn test_chainstate_manager_options_new() {
+        let context = create_test_context();
+        let (_temp_dir, data_dir, blocks_dir) = create_test_dirs();
+
+        let opts = ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir);
+        assert!(opts.is_ok());
+    }
+
+    #[test]
+    fn test_chainstate_manager_options_invalid_path() {
+        let context = create_test_context();
+
+        let invalid_path = "test\0path";
+        let blocks_dir = "blocks";
+
+        let opts = ChainstateManagerOptions::new(&context, invalid_path, blocks_dir);
+        assert!(opts.is_err());
+    }
+
+    #[test]
+    fn test_chainstate_manager_creation() {
+        let context = create_test_context();
+        let (_temp_dir, data_dir, blocks_dir) = create_test_dirs();
+
+        let opts = ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir)
+            .unwrap()
+            .set_block_tree_db_in_memory(true)
+            .set_chainstate_db_in_memory(true)
+            .set_wipe_db(false, true)
+            .set_worker_threads(4);
+
+        let chainman = ChainstateManager::new(opts);
+        assert!(chainman.is_ok());
+    }
+}
