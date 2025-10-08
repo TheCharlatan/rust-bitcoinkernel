@@ -649,4 +649,44 @@ mod tests {
         Block::new(&read_block_data()[0]).unwrap(),
         Block::new(&read_block_data()[1]).unwrap()
     );
+
+    #[test]
+    fn test_blockhash_equality() {
+        let hash1 = BlockHash::from(VALID_HASH_BYTES1);
+        let hash2 = BlockHash::from(VALID_HASH_BYTES2);
+        let hash1_copy = BlockHash::from(VALID_HASH_BYTES1);
+
+        assert_eq!(hash1, hash1_copy);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_blockhash_from_blocks() {
+        let block_data = read_block_data();
+
+        let block1 = Block::new(&block_data[0]).unwrap();
+        let block2 = Block::new(&block_data[1]).unwrap();
+
+        let hash1 = block1.hash();
+        let hash2 = block2.hash();
+        let hash1_again = block1.hash();
+
+        assert_eq!(hash1, hash1_again);
+
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_blockhash_bytes_roundtrip() {
+        let original_bytes = VALID_HASH_BYTES1;
+        let hash = BlockHash::from(original_bytes);
+        let converted_bytes: [u8; 32] = hash.into();
+
+        assert_eq!(original_bytes, converted_bytes);
+
+        let hash2 = BlockHash::from(converted_bytes);
+        let hash1_recreated = BlockHash::from(original_bytes);
+
+        assert_eq!(hash1_recreated, hash2);
+    }
 }
