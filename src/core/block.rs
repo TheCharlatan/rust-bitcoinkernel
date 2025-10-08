@@ -651,6 +651,55 @@ mod tests {
     );
 
     #[test]
+    fn test_blockhash_new() {
+        let bytes = [42u8; 32];
+        let hash = BlockHash::new(bytes.as_slice());
+        assert!(hash.is_ok());
+    }
+
+    #[test]
+    fn test_blockhash_new_invalid_length() {
+        let bytes = [1u8; 31];
+        let hash = BlockHash::new(bytes.as_slice());
+        assert!(matches!(hash, Err(KernelError::InvalidLength { .. })));
+    }
+
+    #[test]
+    fn test_blockhash_try_from() {
+        let bytes = [7u8; 32];
+        let hash = BlockHash::try_from(bytes.as_slice());
+        assert!(hash.is_ok());
+
+        let short_bytes = [1u8; 16];
+        let hash_err = BlockHash::try_from(short_bytes.as_slice());
+        assert!(hash_err.is_err());
+    }
+
+    #[test]
+    fn test_blockhash_into_array() {
+        let original_bytes = VALID_HASH_BYTES1;
+        let hash = BlockHash::from(original_bytes);
+        let bytes: [u8; 32] = hash.into();
+        assert_eq!(bytes, original_bytes);
+    }
+
+    #[test]
+    fn test_blockhash_ref_into_array() {
+        let original_bytes = VALID_HASH_BYTES1;
+        let hash = BlockHash::from(original_bytes);
+        let bytes: [u8; 32] = (&hash).into();
+        assert_eq!(bytes, original_bytes);
+    }
+
+    #[test]
+    fn test_blockhash_to_bytes() {
+        let original_bytes = VALID_HASH_BYTES1;
+        let hash = BlockHash::from(original_bytes);
+        let bytes = hash.to_bytes();
+        assert_eq!(bytes, original_bytes);
+    }
+
+    #[test]
     fn test_blockhash_equality() {
         let hash1 = BlockHash::from(VALID_HASH_BYTES1);
         let hash2 = BlockHash::from(VALID_HASH_BYTES2);
@@ -688,5 +737,142 @@ mod tests {
         let hash1_recreated = BlockHash::from(original_bytes);
 
         assert_eq!(hash1_recreated, hash2);
+    }
+
+    #[test]
+    fn test_blockhash_debug() {
+        let bytes = [5u8; 32];
+        let hash = BlockHash::from(bytes);
+        let debug_str = format!("{:?}", hash);
+        assert!(debug_str.contains("BlockHash"));
+    }
+
+    #[test]
+    fn test_multiple_conversions() {
+        let original_bytes = VALID_HASH_BYTES1;
+        let hash = BlockHash::from(original_bytes);
+
+        let bytes1: [u8; 32] = (&hash).into();
+        let bytes2: [u8; 32] = (&hash).into();
+        let bytes3: [u8; 32] = (&hash).into();
+
+        assert_eq!(bytes1, original_bytes);
+        assert_eq!(bytes2, original_bytes);
+        assert_eq!(bytes3, original_bytes);
+    }
+
+    #[test]
+    fn test_block_new() {
+        let block_data = read_block_data();
+        let block = Block::new(&block_data[0]);
+        assert!(block.is_ok());
+    }
+
+    #[test]
+    fn test_block_new_invalid() {
+        let invalid_data = [0u8; 10];
+        let block = Block::new(invalid_data.as_slice());
+        assert!(block.is_err());
+    }
+
+    #[test]
+    fn test_block_empty() {
+        let block = Block::new([].as_slice());
+        assert!(block.is_err());
+    }
+
+    #[test]
+    fn test_block_try_from() {
+        let block_data = read_block_data();
+        let block = Block::try_from(block_data[0].as_slice());
+        assert!(block.is_ok());
+    }
+
+    #[test]
+    fn test_block_transaction_count() {
+        let block_data = read_block_data();
+        let block = Block::new(&block_data[0]).unwrap();
+        let count = block.transaction_count();
+        assert!(count > 0);
+    }
+
+    #[test]
+    fn test_block_transaction() {
+        let block_data = read_block_data();
+        let block = Block::new(&block_data[0]).unwrap();
+        let tx = block.transaction(0);
+        assert!(tx.is_ok());
+    }
+
+    #[test]
+    fn test_block_transaction_out_of_bounds() {
+        let block_data = read_block_data();
+        let block = Block::new(&block_data[0]).unwrap();
+        let count = block.transaction_count();
+        let tx = block.transaction(count);
+        assert!(matches!(tx, Err(KernelError::OutOfBounds)));
+    }
+
+    #[test]
+    fn test_block_consensus_encode() {
+        let block_data = read_block_data();
+        let block = Block::new(&block_data[0]).unwrap();
+        let encoded = block.consensus_encode();
+        assert!(encoded.is_ok());
+        let encoded_bytes = encoded.unwrap();
+        assert!(!encoded_bytes.is_empty());
+        assert_eq!(encoded_bytes.len(), block_data[0].len());
+    }
+
+    #[test]
+    fn test_block_multiple_consensus_encode() {
+        let block_data = read_block_data();
+        let block = Block::new(&block_data[0]).unwrap();
+
+        let bytes1 = block.consensus_encode().unwrap();
+        let bytes2 = block.consensus_encode().unwrap();
+        let bytes3 = block.consensus_encode().unwrap();
+
+        assert_eq!(bytes1, block_data[0]);
+        assert_eq!(bytes2, block_data[0]);
+        assert_eq!(bytes3, block_data[0]);
+    }
+
+    #[test]
+    fn test_block_try_into_vec() {
+        let block_data = read_block_data();
+        let block = Block::new(&block_data[0]).unwrap();
+        let vec_result: Result<Vec<u8>, _> = block.clone().try_into();
+        assert!(vec_result.is_ok());
+    }
+
+    #[test]
+    fn test_block_try_into_vec_ref() {
+        let block_data = read_block_data();
+        let block = Block::new(&block_data[0]).unwrap();
+        let vec_result: Result<Vec<u8>, _> = (&block).try_into();
+        assert!(vec_result.is_ok());
+    }
+
+    #[test]
+    fn test_block_multiple_transactions() {
+        let block_data = read_block_data();
+        let block = Block::new(&block_data[0]).unwrap();
+        let count = block.transaction_count();
+
+        for i in 0..count {
+            let tx = block.transaction(i);
+            assert!(tx.is_ok());
+        }
+    }
+
+    #[test]
+    fn test_different_blocks_different_hashes() {
+        let block_data = read_block_data();
+
+        let block1 = Block::new(&block_data[0]).unwrap();
+        let block2 = Block::new(&block_data[1]).unwrap();
+
+        assert_ne!(block1.hash(), block2.hash());
     }
 }
