@@ -767,6 +767,313 @@ mod tests {
     test_ref_copy!(test_txid_ref_copy, get_test_txids().0);
 
     #[test]
+    fn test_transaction_new() {
+        let (tx, _) = get_test_transactions();
+        let encoded = tx.consensus_encode().unwrap();
+        let new_tx = Transaction::new(&encoded);
+        assert!(new_tx.is_ok());
+    }
+
+    #[test]
+    fn test_transaction_new_invalid() {
+        let invalid_data = [0xFF; 10];
+        let tx = Transaction::new(invalid_data.as_slice());
+        assert!(tx.is_err());
+    }
+
+    #[test]
+    fn test_transaction_empty() {
+        let tx = Transaction::new([].as_slice());
+        assert!(tx.is_err());
+    }
+
+    #[test]
+    fn test_transaction_try_from() {
+        let (tx, _) = get_test_transactions();
+        let encoded = tx.consensus_encode().unwrap();
+        let new_tx = Transaction::try_from(encoded.as_slice());
+        assert!(new_tx.is_ok());
+    }
+
+    #[test]
+    fn test_transaction_output_count() {
+        let (tx, _) = get_test_transactions();
+        let count = tx.output_count();
+        assert!(count > 0);
+    }
+
+    #[test]
+    fn test_transaction_input_count() {
+        let (tx, _) = get_test_transactions();
+        let count = tx.input_count();
+        assert!(count > 0);
+    }
+
+    #[test]
+    fn test_transaction_output() {
+        let (tx, _) = get_test_transactions();
+        let output = tx.output(0);
+        assert!(output.is_ok());
+    }
+
+    #[test]
+    fn test_transaction_output_out_of_bounds() {
+        let (tx, _) = get_test_transactions();
+        let count = tx.output_count();
+        let output = tx.output(count);
+        assert!(matches!(output, Err(KernelError::OutOfBounds)));
+    }
+
+    #[test]
+    fn test_transaction_input() {
+        let (tx, _) = get_test_transactions();
+        let input = tx.input(0);
+        assert!(input.is_ok());
+    }
+
+    #[test]
+    fn test_transaction_input_out_of_bounds() {
+        let (tx, _) = get_test_transactions();
+        let count = tx.input_count();
+        let input = tx.input(count);
+        assert!(matches!(input, Err(KernelError::OutOfBounds)));
+    }
+
+    #[test]
+    fn test_transaction_txid() {
+        let (tx, _) = get_test_transactions();
+        let txid1 = tx.txid();
+        let txid2 = tx.txid();
+        assert_eq!(txid1, txid2);
+    }
+
+    #[test]
+    fn test_transaction_consensus_encode() {
+        let (tx, _) = get_test_transactions();
+        let encoded = tx.consensus_encode();
+        assert!(encoded.is_ok());
+        let encoded_bytes = encoded.unwrap();
+        assert!(!encoded_bytes.is_empty());
+    }
+
+    #[test]
+    fn test_transaction_multiple_consensus_encode() {
+        let (tx, _) = get_test_transactions();
+
+        let bytes1 = tx.consensus_encode().unwrap();
+        let bytes2 = tx.consensus_encode().unwrap();
+        let bytes3 = tx.consensus_encode().unwrap();
+
+        assert_eq!(bytes1, bytes2);
+        assert_eq!(bytes2, bytes3);
+    }
+
+    #[test]
+    fn test_transaction_try_into_vec() {
+        let (tx, _) = get_test_transactions();
+        let vec_result: Result<Vec<u8>, _> = tx.clone().try_into();
+        assert!(vec_result.is_ok());
+    }
+
+    #[test]
+    fn test_transaction_try_into_vec_ref() {
+        let (tx, _) = get_test_transactions();
+        let vec_result: Result<Vec<u8>, _> = (&tx).try_into();
+        assert!(vec_result.is_ok());
+    }
+
+    #[test]
+    fn test_transaction_as_ref() {
+        let (tx, _) = get_test_transactions();
+        let tx_ref = tx.as_ref();
+
+        assert_eq!(tx.output_count(), tx_ref.output_count());
+        assert_eq!(tx.input_count(), tx_ref.input_count());
+    }
+
+    #[test]
+    fn test_transaction_ref_to_owned() {
+        let (tx, _) = get_test_transactions();
+        let tx_ref = tx.as_ref();
+        let owned_tx = tx_ref.to_owned();
+
+        assert_eq!(tx.output_count(), owned_tx.output_count());
+        assert_eq!(tx.input_count(), owned_tx.input_count());
+    }
+
+    #[test]
+    fn test_transaction_multiple_outputs() {
+        let (tx, _) = get_test_transactions();
+        let count = tx.output_count();
+
+        for i in 0..count {
+            let output = tx.output(i);
+            assert!(output.is_ok());
+        }
+    }
+
+    #[test]
+    fn test_transaction_multiple_inputs() {
+        let (tx, _) = get_test_transactions();
+        let count = tx.input_count();
+
+        for i in 0..count {
+            let input = tx.input(i);
+            assert!(input.is_ok());
+        }
+    }
+
+    #[test]
+    fn test_different_transactions_different_txids() {
+        let (tx1, tx2) = get_test_transactions();
+        assert_ne!(tx1.txid(), tx2.txid());
+    }
+
+    // TxOut tests
+    #[test]
+    fn test_txout_new() {
+        let script = ScriptPubkey::new([0x76, 0xa9].as_slice()).unwrap();
+        let txout = TxOut::new(&script, 100);
+        assert_eq!(txout.value(), 100);
+    }
+
+    #[test]
+    fn test_txout_value() {
+        let script = ScriptPubkey::new([0x51].as_slice()).unwrap();
+        let amount = 50000;
+        let txout = TxOut::new(&script, amount);
+        assert_eq!(txout.value(), amount);
+    }
+
+    #[test]
+    fn test_txout_script_pubkey() {
+        let script_data = vec![0x76, 0xa9, 0x14];
+        let script = ScriptPubkey::new(&script_data).unwrap();
+        let txout = TxOut::new(&script, 100);
+
+        let retrieved_script = txout.script_pubkey();
+        assert_eq!(retrieved_script.to_bytes(), script_data);
+    }
+
+    #[test]
+    fn test_txout_as_ref() {
+        let script = ScriptPubkey::new([0x76, 0xa9].as_slice()).unwrap();
+        let txout = TxOut::new(&script, 100);
+        let txout_ref = txout.as_ref();
+
+        assert_eq!(txout.value(), txout_ref.value());
+    }
+
+    #[test]
+    fn test_txout_ref_to_owned() {
+        let script = ScriptPubkey::new([0x76, 0xa9].as_slice()).unwrap();
+        let txout = TxOut::new(&script, 100);
+        let txout_ref = txout.as_ref();
+        let owned_txout = txout_ref.to_owned();
+
+        assert_eq!(txout.value(), owned_txout.value());
+    }
+
+    #[test]
+    fn test_txout_zero_value() {
+        let script = ScriptPubkey::new([0x51].as_slice()).unwrap();
+        let txout = TxOut::new(&script, 0);
+        assert_eq!(txout.value(), 0);
+    }
+
+    #[test]
+    fn test_txout_large_value() {
+        let script = ScriptPubkey::new([0x51].as_slice()).unwrap();
+        let amount = 21_000_000 * 100_000_000i64;
+        let txout = TxOut::new(&script, amount);
+        assert_eq!(txout.value(), amount);
+    }
+
+    #[test]
+    fn test_txout_from_transaction() {
+        let (tx, _) = get_test_transactions();
+        let txout = tx.output(0).unwrap();
+
+        assert!(txout.value() >= 0);
+        let script_bytes = txout.script_pubkey().to_bytes();
+        assert!(!script_bytes.is_empty());
+    }
+
+    // TxIn tests
+    #[test]
+    fn test_txin_from_transaction() {
+        let (tx, _) = get_test_transactions();
+        let txin = tx.input(0).unwrap();
+        let outpoint = txin.outpoint();
+
+        let _ = outpoint.index();
+        let _ = outpoint.txid();
+    }
+
+    #[test]
+    fn test_txin_as_ref() {
+        let (tx, _) = get_test_transactions();
+        let txin = tx.input(0).unwrap().to_owned();
+        let txin_ref = txin.as_ref();
+
+        assert_eq!(txin.outpoint().index(), txin_ref.outpoint().index());
+    }
+
+    #[test]
+    fn test_txin_ref_to_owned() {
+        let (tx, _) = get_test_transactions();
+        let txin = tx.input(0).unwrap().to_owned();
+        let txin_ref = txin.as_ref();
+        let owned_txin = txin_ref.to_owned();
+
+        assert_eq!(txin.outpoint().index(), owned_txin.outpoint().index());
+    }
+
+    // TxOutPoint tests
+    #[test]
+    fn test_txoutpoint_index() {
+        let (tx, _) = get_test_transactions();
+        let txin = tx.input(0).unwrap();
+        let outpoint = txin.outpoint();
+
+        let index = outpoint.index();
+        assert_eq!(index, u32::MAX);
+    }
+
+    #[test]
+    fn test_txoutpoint_txid() {
+        let (tx, _) = get_test_transactions();
+        let txin = tx.input(0).unwrap();
+        let outpoint = txin.outpoint();
+
+        let txid1 = outpoint.txid();
+        let txid2 = outpoint.txid();
+        assert_eq!(txid1, txid2);
+    }
+
+    #[test]
+    fn test_txoutpoint_as_ref() {
+        let (tx, _) = get_test_transactions();
+        let txin = tx.input(0).unwrap();
+        let outpoint = txin.outpoint().to_owned();
+        let outpoint_ref = outpoint.as_ref();
+
+        assert_eq!(outpoint.index(), outpoint_ref.index());
+    }
+
+    #[test]
+    fn test_txoutpoint_ref_to_owned() {
+        let (tx, _) = get_test_transactions();
+        let txin = tx.input(0).unwrap();
+        let outpoint = txin.outpoint().to_owned();
+        let outpoint_ref = outpoint.as_ref();
+        let owned_outpoint = outpoint_ref.to_owned();
+
+        assert_eq!(outpoint.index(), owned_outpoint.index());
+    }
+
+    // Txid tests
+    #[test]
     fn test_txid_equality() {
         let (tx1, tx2) = get_test_transactions();
 
@@ -784,5 +1091,94 @@ mod tests {
         let txid2_ref = txid2.as_ref();
         assert_eq!(txid1_ref, txid1_ref);
         assert_ne!(txid1_ref, txid2_ref,);
+    }
+
+    #[test]
+    fn test_txid_to_bytes() {
+        let (tx, _) = get_test_transactions();
+        let txid = tx.txid().to_owned();
+        let bytes = txid.to_bytes();
+
+        assert_eq!(bytes.len(), 32);
+    }
+
+    #[test]
+    fn test_txid_multiple_to_bytes() {
+        let (tx, _) = get_test_transactions();
+        let txid = tx.txid().to_owned();
+
+        let bytes1 = txid.to_bytes();
+        let bytes2 = txid.to_bytes();
+        let bytes3 = txid.to_bytes();
+
+        assert_eq!(bytes1, bytes2);
+        assert_eq!(bytes2, bytes3);
+    }
+
+    #[test]
+    fn test_txid_as_ref() {
+        let (tx, _) = get_test_transactions();
+        let txid = tx.txid().to_owned();
+        let txid_ref = txid.as_ref();
+
+        assert_eq!(txid.to_bytes(), txid_ref.to_bytes());
+    }
+
+    #[test]
+    fn test_txid_ref_to_owned() {
+        let (tx, _) = get_test_transactions();
+        let txid = tx.txid().to_owned();
+        let txid_ref = txid.as_ref();
+        let owned_txid = txid_ref.to_owned();
+
+        assert_eq!(txid.to_bytes(), owned_txid.to_bytes());
+    }
+
+    // Polymorphism tests
+    #[test]
+    fn test_transaction_polymorphism() {
+        let (tx, _) = get_test_transactions();
+        let tx_ref = tx.as_ref();
+
+        fn get_output_count(transaction: &impl TransactionExt) -> usize {
+            transaction.output_count()
+        }
+
+        let count_from_owned = get_output_count(&tx);
+        let count_from_ref = get_output_count(&tx_ref);
+
+        assert_eq!(count_from_owned, count_from_ref);
+    }
+
+    #[test]
+    fn test_txout_polymorphism() {
+        let script = ScriptPubkey::new([0x76, 0xa9].as_slice()).unwrap();
+        let txout = TxOut::new(&script, 100);
+        let txout_ref = txout.as_ref();
+
+        fn get_value(output: &impl TxOutExt) -> i64 {
+            output.value()
+        }
+
+        let value_from_owned = get_value(&txout);
+        let value_from_ref = get_value(&txout_ref);
+
+        assert_eq!(value_from_owned, value_from_ref);
+    }
+
+    #[test]
+    fn test_txid_polymorphism() {
+        let (tx, _) = get_test_transactions();
+        let txid = tx.txid().to_owned();
+        let txid_ref = txid.as_ref();
+
+        fn get_bytes(txid: &impl TxidExt) -> [u8; 32] {
+            txid.to_bytes()
+        }
+
+        let bytes_from_owned = get_bytes(&txid);
+        let bytes_from_ref = get_bytes(&txid_ref);
+
+        assert_eq!(bytes_from_owned, bytes_from_ref);
     }
 }
