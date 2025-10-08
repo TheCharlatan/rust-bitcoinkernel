@@ -166,10 +166,11 @@ impl ChainstateManagerOptions {
     }
 
     /// Set the number of worker threads used by script validation
-    pub fn set_worker_threads(&self, worker_threads: i32) {
+    pub fn set_worker_threads(self, worker_threads: i32) -> Self {
         unsafe {
             btck_chainstate_manager_options_set_worker_threads_num(self.inner, worker_threads);
         }
+        self
     }
 
     /// Wipe the block tree or chainstate dbs. When wiping the block tree db the
