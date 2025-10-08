@@ -4,8 +4,8 @@ use libbitcoinkernel_sys::{
     btck_Block, btck_BlockHash, btck_BlockSpentOutputs, btck_Coin, btck_TransactionSpentOutputs,
     btck_block_copy, btck_block_count_transactions, btck_block_create, btck_block_destroy,
     btck_block_get_hash, btck_block_get_transaction_at, btck_block_hash_copy,
-    btck_block_hash_create, btck_block_hash_destroy, btck_block_hash_to_bytes,
-    btck_block_spent_outputs_copy, btck_block_spent_outputs_count,
+    btck_block_hash_create, btck_block_hash_destroy, btck_block_hash_equals,
+    btck_block_hash_to_bytes, btck_block_spent_outputs_copy, btck_block_spent_outputs_count,
     btck_block_spent_outputs_destroy, btck_block_spent_outputs_get_transaction_spent_outputs_at,
     btck_block_to_bytes, btck_coin_confirmation_height, btck_coin_copy, btck_coin_destroy,
     btck_coin_get_output, btck_coin_is_coinbase, btck_transaction_spent_outputs_copy,
@@ -15,7 +15,10 @@ use libbitcoinkernel_sys::{
 
 use crate::{
     c_helpers, c_serialize,
-    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
+    ffi::{
+        c_helpers::present,
+        sealed::{AsPtr, FromMutPtr, FromPtr},
+    },
     KernelError,
 };
 
@@ -110,17 +113,17 @@ impl From<&BlockHash> for [u8; 32] {
 
 impl PartialEq for BlockHash {
     fn eq(&self, other: &Self) -> bool {
-        self.to_bytes() == other.to_bytes()
+        present(unsafe { btck_block_hash_equals(self.inner, other.inner) })
     }
 }
+
+impl Eq for BlockHash {}
 
 impl std::fmt::Debug for BlockHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BlockHash({:?})", self.to_bytes())
     }
 }
-
-impl Eq for BlockHash {}
 
 /// A Bitcoin block containing a header and transactions.
 ///
@@ -646,4 +649,44 @@ mod tests {
         Block::new(&read_block_data()[0]).unwrap(),
         Block::new(&read_block_data()[1]).unwrap()
     );
+
+    #[test]
+    fn test_blockhash_equality() {
+        let hash1 = BlockHash::from(VALID_HASH_BYTES1);
+        let hash2 = BlockHash::from(VALID_HASH_BYTES2);
+        let hash1_copy = BlockHash::from(VALID_HASH_BYTES1);
+
+        assert_eq!(hash1, hash1_copy);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_blockhash_from_blocks() {
+        let block_data = read_block_data();
+
+        let block1 = Block::new(&block_data[0]).unwrap();
+        let block2 = Block::new(&block_data[1]).unwrap();
+
+        let hash1 = block1.hash();
+        let hash2 = block2.hash();
+        let hash1_again = block1.hash();
+
+        assert_eq!(hash1, hash1_again);
+
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_blockhash_bytes_roundtrip() {
+        let original_bytes = VALID_HASH_BYTES1;
+        let hash = BlockHash::from(original_bytes);
+        let converted_bytes: [u8; 32] = hash.into();
+
+        assert_eq!(original_bytes, converted_bytes);
+
+        let hash2 = BlockHash::from(converted_bytes);
+        let hash1_recreated = BlockHash::from(original_bytes);
+
+        assert_eq!(hash1_recreated, hash2);
+    }
 }
