@@ -765,4 +765,24 @@ mod tests {
     test_ref_trait_requirements!(test_txid_ref_requirements, TxidRef<'static>, btck_Txid);
     test_owned_clone_and_send!(test_txid_clone_send, get_test_txids().0, get_test_txids().1);
     test_ref_copy!(test_txid_ref_copy, get_test_txids().0);
+
+    #[test]
+    fn test_txid_equality() {
+        let (tx1, tx2) = get_test_transactions();
+
+        let txid1 = tx1.txid().to_owned();
+        let txid2 = tx2.txid().to_owned();
+        let txid1_copy = tx1.txid().to_owned();
+
+        assert_eq!(txid1, txid1_copy,);
+        assert_ne!(txid1, txid2,);
+
+        let txid1_ref = txid1.as_ref();
+        assert_eq!(txid1, txid1_ref,);
+        assert_eq!(txid1_ref, txid1,);
+
+        let txid2_ref = txid2.as_ref();
+        assert_eq!(txid1_ref, txid1_ref);
+        assert_ne!(txid1_ref, txid2_ref,);
+    }
 }
