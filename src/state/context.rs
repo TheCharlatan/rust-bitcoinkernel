@@ -356,6 +356,109 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_chain_type_conversions() {
+        let mainnet = ChainType::Mainnet;
+        let btck_mainnet: btck_ChainType = mainnet.into();
+        let back_to_mainnet: ChainType = btck_mainnet.into();
+        assert_eq!(mainnet, back_to_mainnet);
+
+        let testnet = ChainType::Testnet;
+        let btck_testnet: btck_ChainType = testnet.into();
+        let back_to_testnet: ChainType = btck_testnet.into();
+        assert_eq!(testnet, back_to_testnet);
+
+        let testnet4 = ChainType::Testnet4;
+        let btck_testnet4: btck_ChainType = testnet4.into();
+        let back_to_testnet4: ChainType = btck_testnet4.into();
+        assert_eq!(testnet4, back_to_testnet4);
+
+        let signet = ChainType::Signet;
+        let btck_signet: btck_ChainType = signet.into();
+        let back_to_signet: ChainType = btck_signet.into();
+        assert_eq!(signet, back_to_signet);
+
+        let regtest = ChainType::Regtest;
+        let btck_regtest: btck_ChainType = regtest.into();
+        let back_to_regtest: ChainType = btck_regtest.into();
+        assert_eq!(regtest, back_to_regtest);
+    }
+
+    #[test]
+    fn test_chain_type_equality() {
+        assert_eq!(ChainType::Mainnet, ChainType::Mainnet);
+        assert_ne!(ChainType::Mainnet, ChainType::Testnet);
+        assert_ne!(ChainType::Testnet, ChainType::Testnet4);
+        assert_ne!(ChainType::Signet, ChainType::Regtest);
+    }
+
+    #[test]
+    fn test_chain_type_clone() {
+        let mainnet = ChainType::Mainnet;
+        let cloned = mainnet;
+        assert_eq!(mainnet, cloned);
+    }
+
+    // ChainParams tests
+    #[test]
+    fn test_chain_params_creation() {
+        let _mainnet_params = ChainParams::new(ChainType::Mainnet);
+        let _testnet_params = ChainParams::new(ChainType::Testnet);
+        let _testnet4_params = ChainParams::new(ChainType::Testnet4);
+        let _signet_params = ChainParams::new(ChainType::Signet);
+        let _regtest_params = ChainParams::new(ChainType::Regtest);
+    }
+
+    // Context tests
+    #[test]
+    fn test_context_creation_default() {
+        let context = ContextBuilder::new().build();
+        assert!(context.is_ok());
+    }
+
+    #[test]
+    fn test_context_creation_with_chain_types() {
+        let mainnet = ContextBuilder::new().chain_type(ChainType::Mainnet).build();
+        assert!(mainnet.is_ok());
+
+        let testnet = ContextBuilder::new().chain_type(ChainType::Testnet).build();
+        assert!(testnet.is_ok());
+
+        let testnet4 = ContextBuilder::new()
+            .chain_type(ChainType::Testnet4)
+            .build();
+        assert!(testnet4.is_ok());
+
+        let signet = ContextBuilder::new().chain_type(ChainType::Signet).build();
+        assert!(signet.is_ok());
+
+        let regtest = ContextBuilder::new().chain_type(ChainType::Regtest).build();
+        assert!(regtest.is_ok());
+    }
+
+    #[test]
+    fn test_context_interrupt() {
+        let context = ContextBuilder::new()
+            .chain_type(ChainType::Regtest)
+            .build()
+            .unwrap();
+
+        let result = context.interrupt();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_context_builder_default() {
+        let builder1 = ContextBuilder::default();
+        let builder2 = ContextBuilder::new();
+
+        assert!(builder1.notification_registry.is_none());
+        assert!(builder2.notification_registry.is_none());
+        assert!(builder1.validation_registry.is_none());
+        assert!(builder2.validation_registry.is_none());
+    }
+
+    // Callback tests
+    #[test]
     fn test_notification_callback_registration_methods() {
         let mut builder = ContextBuilder::new();
 
