@@ -116,8 +116,9 @@ use libbitcoinkernel_sys::{
     btck_block_hash_destroy, btck_block_hash_equals, btck_block_hash_to_bytes,
     btck_block_header_copy, btck_block_header_create, btck_block_header_destroy,
     btck_block_header_get_hash, btck_block_spent_outputs_copy, btck_block_spent_outputs_count,
-    btck_block_spent_outputs_destroy, btck_block_spent_outputs_get_transaction_spent_outputs_at,
-    btck_block_to_bytes, btck_coin_confirmation_height, btck_coin_copy, btck_coin_destroy,
+    btck_block_spent_outputs_create, btck_block_spent_outputs_destroy,
+    btck_block_spent_outputs_get_transaction_spent_outputs_at, btck_block_to_bytes,
+    btck_coin_confirmation_height, btck_coin_copy, btck_coin_create, btck_coin_destroy,
     btck_coin_get_output, btck_coin_is_coinbase, btck_transaction_spent_outputs_copy,
     btck_transaction_spent_outputs_count, btck_transaction_spent_outputs_destroy,
     btck_transaction_spent_outputs_get_coin_at,
@@ -129,7 +130,7 @@ use crate::{
         c_helpers::present,
         sealed::{AsPtr, FromMutPtr, FromPtr},
     },
-    KernelError,
+    KernelError, TxOut,
 };
 
 use super::transaction::{TransactionRef, TxOutRef};
@@ -486,6 +487,14 @@ impl Clone for BlockHeader {
 impl Drop for BlockHeader {
     fn drop(&mut self) {
         unsafe { btck_block_header_destroy(self.inner) }
+    }
+}
+
+impl TryFrom<&[u8]> for BlockHeader {
+    type Error = KernelError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        BlockHeader::new(bytes)
     }
 }
 
@@ -1004,6 +1013,36 @@ impl BlockSpentOutputs {
     /// The returned reference is valid for the lifetime of the [`BlockSpentOutputs`].
     pub fn as_ref(&self) -> BlockSpentOutputsRef<'_> {
         unsafe { BlockSpentOutputsRef::from_ptr(self.inner as *const _) }
+    }
+
+    pub fn new(coins: &[Vec<Coin>]) -> Self {
+        struct CallbackContext<'a> {
+            coins: &'a [Vec<Coin>],
+        }
+
+        extern "C" fn coin_getter(
+            context: *mut c_void,
+            tx_index: usize,
+            coin_index: usize,
+        ) -> *const btck_Coin {
+            let ctx = unsafe { &*(context as *const CallbackContext) };
+            ctx.coins[tx_index][coin_index].as_ptr()
+        }
+
+        extern "C" fn count_getter(context: *mut c_void, tx_index: usize) -> usize {
+            let ctx = unsafe { &*(context as *const CallbackContext) };
+            ctx.coins[tx_index].len()
+        }
+
+        let context = CallbackContext { coins };
+        unsafe {
+            BlockSpentOutputs::from_ptr(btck_block_spent_outputs_create(
+                &context as *const CallbackContext as *mut c_void,
+                Some(coin_getter),
+                Some(count_getter),
+                coins.len(),
+            ))
+        }
     }
 }
 
@@ -1560,6 +1599,10 @@ unsafe impl Send for Coin {}
 unsafe impl Sync for Coin {}
 
 impl Coin {
+    pub fn new(output: &TxOut) -> Coin {
+        unsafe { Coin::from_ptr(btck_coin_create(output.as_ptr(), 0, 0)) }
+    }
+
     /// Creates a borrowed reference to this coin.
     ///
     /// This allows converting from owned [`Coin`] to [`CoinRef`] without

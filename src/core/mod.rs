@@ -5,7 +5,7 @@ pub mod transaction;
 pub mod verify;
 
 pub use block::{
-    Block, BlockHash, BlockSpentOutputs, BlockSpentOutputsRef, Coin, CoinRef,
+    Block, BlockHash, BlockHeader, BlockSpentOutputs, BlockSpentOutputsRef, Coin, CoinRef,
     TransactionSpentOutputs, TransactionSpentOutputsRef,
 };
 pub use block_tree_entry::BlockTreeEntry;
