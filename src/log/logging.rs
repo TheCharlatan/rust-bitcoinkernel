@@ -203,3 +203,217 @@ impl From<btck_LogLevel> for LogLevel {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // LogCategory tests
+    #[test]
+    fn test_log_category_conversions() {
+        let all = LogCategory::All;
+        let btck_all: btck_LogCategory = all.into();
+        let back_to_all: LogCategory = btck_all.into();
+        assert_eq!(all, back_to_all);
+
+        let bench = LogCategory::Bench;
+        let btck_bench: btck_LogCategory = bench.into();
+        let back_to_bench: LogCategory = btck_bench.into();
+        assert_eq!(bench, back_to_bench);
+
+        let block_storage = LogCategory::BlockStorage;
+        let btck_block_storage: btck_LogCategory = block_storage.into();
+        let back_to_block_storage: LogCategory = btck_block_storage.into();
+        assert_eq!(block_storage, back_to_block_storage);
+
+        let coin_db = LogCategory::CoinDb;
+        let btck_coin_db: btck_LogCategory = coin_db.into();
+        let back_to_coin_db: LogCategory = btck_coin_db.into();
+        assert_eq!(coin_db, back_to_coin_db);
+
+        let level_db = LogCategory::LevelDb;
+        let btck_level_db: btck_LogCategory = level_db.into();
+        let back_to_level_db: LogCategory = btck_level_db.into();
+        assert_eq!(level_db, back_to_level_db);
+
+        let mempool = LogCategory::Mempool;
+        let btck_mempool: btck_LogCategory = mempool.into();
+        let back_to_mempool: LogCategory = btck_mempool.into();
+        assert_eq!(mempool, back_to_mempool);
+
+        let prune = LogCategory::Prune;
+        let btck_prune: btck_LogCategory = prune.into();
+        let back_to_prune: LogCategory = btck_prune.into();
+        assert_eq!(prune, back_to_prune);
+
+        let rand = LogCategory::Rand;
+        let btck_rand: btck_LogCategory = rand.into();
+        let back_to_rand: LogCategory = btck_rand.into();
+        assert_eq!(rand, back_to_rand);
+
+        let reindex = LogCategory::Reindex;
+        let btck_reindex: btck_LogCategory = reindex.into();
+        let back_to_reindex: LogCategory = btck_reindex.into();
+        assert_eq!(reindex, back_to_reindex);
+
+        let validation = LogCategory::Validation;
+        let btck_validation: btck_LogCategory = validation.into();
+        let back_to_validation: LogCategory = btck_validation.into();
+        assert_eq!(validation, back_to_validation);
+
+        let kernel = LogCategory::Kernel;
+        let btck_kernel: btck_LogCategory = kernel.into();
+        let back_to_kernel: LogCategory = btck_kernel.into();
+        assert_eq!(kernel, back_to_kernel);
+    }
+
+    #[test]
+    fn test_log_category_equality() {
+        assert_eq!(LogCategory::All, LogCategory::All);
+        assert_ne!(LogCategory::All, LogCategory::Bench);
+        assert_ne!(LogCategory::Validation, LogCategory::Kernel);
+    }
+
+    #[test]
+    fn test_log_category_clone() {
+        let validation = LogCategory::Validation;
+        let cloned = validation;
+        assert_eq!(validation, cloned);
+    }
+
+    // LogLevel tests
+    #[test]
+    fn test_log_level_conversions() {
+        let trace = LogLevel::Trace;
+        let btck_trace: btck_LogLevel = trace.into();
+        let back_to_trace: LogLevel = btck_trace.into();
+        assert_eq!(trace, back_to_trace);
+
+        let debug = LogLevel::Debug;
+        let btck_debug: btck_LogLevel = debug.into();
+        let back_to_debug: LogLevel = btck_debug.into();
+        assert_eq!(debug, back_to_debug);
+
+        let info = LogLevel::Info;
+        let btck_info: btck_LogLevel = info.into();
+        let back_to_info: LogLevel = btck_info.into();
+        assert_eq!(info, back_to_info);
+    }
+
+    #[test]
+    fn test_log_level_equality() {
+        assert_eq!(LogLevel::Info, LogLevel::Info);
+        assert_ne!(LogLevel::Info, LogLevel::Debug);
+        assert_ne!(LogLevel::Debug, LogLevel::Trace);
+    }
+
+    #[test]
+    fn test_log_level_clone() {
+        let info = LogLevel::Info;
+        let cloned = info;
+        assert_eq!(info, cloned);
+    }
+
+    // Logger tests
+    struct TestLog {
+        messages: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl Log for TestLog {
+        fn log(&self, message: &str) {
+            self.messages.lock().unwrap().push(message.to_string());
+        }
+    }
+
+    #[test]
+    fn test_logger_creation() {
+        let messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_log = TestLog {
+            messages: messages.clone(),
+        };
+
+        let _logger = Logger::new(test_log);
+        assert!(_logger.is_ok());
+    }
+
+    #[test]
+    fn test_logger_set_level_category() {
+        let messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_log = TestLog {
+            messages: messages.clone(),
+        };
+
+        let logger = Logger::new(test_log).unwrap();
+        logger.set_level_category(LogCategory::Validation, LogLevel::Debug);
+        logger.set_level_category(LogCategory::Kernel, LogLevel::Info);
+    }
+
+    #[test]
+    fn test_logger_enable_category() {
+        let messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_log = TestLog {
+            messages: messages.clone(),
+        };
+
+        let logger = Logger::new(test_log).unwrap();
+        logger.enable_category(LogCategory::Validation);
+        logger.enable_category(LogCategory::Kernel);
+    }
+
+    #[test]
+    fn test_logger_disable_category() {
+        let messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_log = TestLog {
+            messages: messages.clone(),
+        };
+
+        let logger = Logger::new(test_log).unwrap();
+        logger.disable_category(LogCategory::Validation);
+        logger.disable_category(LogCategory::Kernel);
+    }
+
+    #[test]
+    fn test_all_log_categories() {
+        let categories = [
+            LogCategory::All,
+            LogCategory::Bench,
+            LogCategory::BlockStorage,
+            LogCategory::CoinDb,
+            LogCategory::LevelDb,
+            LogCategory::Mempool,
+            LogCategory::Prune,
+            LogCategory::Rand,
+            LogCategory::Reindex,
+            LogCategory::Validation,
+            LogCategory::Kernel,
+        ];
+
+        let messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_log = TestLog {
+            messages: messages.clone(),
+        };
+
+        let logger = Logger::new(test_log).unwrap();
+
+        for category in categories {
+            logger.enable_category(category);
+            logger.set_level_category(category, LogLevel::Debug);
+        }
+    }
+
+    #[test]
+    fn test_all_log_levels() {
+        let levels = [LogLevel::Trace, LogLevel::Debug, LogLevel::Info];
+
+        let messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_log = TestLog {
+            messages: messages.clone(),
+        };
+
+        let logger = Logger::new(test_log).unwrap();
+
+        for level in levels {
+            logger.set_level_category(LogCategory::Validation, level);
+        }
+    }
+}
