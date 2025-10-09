@@ -39,6 +39,7 @@ use libbitcoinkernel_sys::{
     btck_chainstate_manager_options_update_block_tree_db_in_memory,
     btck_chainstate_manager_options_update_chainstate_db_in_memory,
     btck_chainstate_manager_process_block, btck_chainstate_manager_process_block_header,
+    btck_chainstate_manager_validate_block,
 };
 
 use crate::{
@@ -269,6 +270,23 @@ impl ChainstateManager {
         (c_helpers::success(accepted), state)
     }
 
+    pub fn validate_block(
+        &self,
+        block: &Block,
+        block_spent_outputs: &BlockSpentOutputs,
+    ) -> (bool, BlockValidationState) {
+        let state = BlockValidationState::new();
+        let accepted = unsafe {
+            btck_chainstate_manager_validate_block(
+                self.inner,
+                block.as_ptr(),
+                block_spent_outputs.as_ptr(),
+                state.as_ptr() as *mut btck_BlockValidationState,
+            )
+        };
+        (c_helpers::success(accepted), state)
+    }
+
     /// Initialize the chainstate manager and optionally trigger a reindex.
     ///
     /// This should be called after creating the chainstate manager to complete
@@ -277,6 +295,7 @@ impl ChainstateManager {
     ///
     /// # Errors
     /// Returns [`KernelError::Internal`] if initialization fails.
+
     pub fn import_blocks(&self) -> Result<(), KernelError> {
         let result = unsafe {
             btck_chainstate_manager_import_blocks(
