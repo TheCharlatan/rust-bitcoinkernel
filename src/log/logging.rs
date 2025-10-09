@@ -54,6 +54,10 @@ impl Drop for Logger {
 }
 
 /// Permanently disable logging and stop buffering.
+///
+/// # Warning
+///
+/// This should only be called once during the lifetime of the program.
 pub fn disable_logging() {
     unsafe {
         btck_logging_disable();
