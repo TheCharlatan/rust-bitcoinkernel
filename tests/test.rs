@@ -1,9 +1,13 @@
 #[cfg(test)]
 mod tests {
     use bitcoin::consensus::deserialize;
+    use bitcoinkernel::core::transaction::{TxInExt, TxOutPointExt as _, TxOutPointRef};
     use bitcoinkernel::notifications::types::{BlockValidationStateExt, BlockValidationStateRef};
     use bitcoinkernel::{
-        prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams, ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder, KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction, TransactionSpentOutputs, TxOut, TxOutRef, ValidationMode, VERIFY_ALL_PRE_TAPROOT
+        prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
+        ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder,
+        KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction,
+        TransactionSpentOutputs, TxOut, TxOutRef, ValidationMode, VERIFY_ALL_PRE_TAPROOT,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -407,15 +411,79 @@ mod tests {
         let (context, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
+        let blocks: Vec<Block> = block_data
+            .iter()
+            .map(|data| Block::new(data.as_slice()).unwrap())
+            .collect();
         let chainman = ChainstateManager::new(
             ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
         )
         .unwrap();
 
-        for raw_block in block_data.iter() {
-            let block = Block::new(raw_block.as_slice()).unwrap();
+        for block in blocks.iter() {
             let (accepted, state) = chainman.process_header(&block.header());
             assert!(accepted);
+            assert_eq!(state.mode(), ValidationMode::Valid);
+        }
+    }
+
+    fn find_output<'a>(blocks: &'a [Block], outpoint: TxOutPointRef) -> Option<TxOut> {
+        for block in blocks.iter() {
+            for i in 0..block.transaction_count() {
+                let tx = block.transaction(i).unwrap();
+                if tx.txid() != outpoint.txid() {
+                    continue;
+                }
+                return tx
+                    .output(outpoint.index() as usize)
+                    .ok()
+                    .map(|out| out.to_owned());
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn test_block_validation() {
+        let (context, data_dir) = testing_setup();
+        let blocks_dir = data_dir.clone() + "/blocks";
+        let block_data = read_block_data();
+        let blocks: Vec<Block> = block_data
+            .iter()
+            .map(|data| Block::new(data.as_slice()).unwrap())
+            .collect();
+        let chainman = ChainstateManager::new(
+            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
+        )
+        .unwrap();
+
+        let mut block_spent_outputs: Vec<BlockSpentOutputs> = vec![];
+
+        for block in blocks.iter() {
+            let mut coins: Vec<Vec<Coin>> = vec![];
+            for i in 0..block.transaction_count() {
+                let tx = block.transaction(i).unwrap();
+                if tx.is_coinbase() {
+                    println!("tx is coinbase!");
+                    continue;
+                }
+                coins.push(Vec::new());
+                for j in 0..tx.input_count() {
+                    let output = find_output(&blocks, tx.input(j).unwrap().outpoint()).unwrap();
+                    println!("Accessing coins i {i}");
+                    coins[i - 1].push(Coin::new(&output));
+                }
+            }
+            block_spent_outputs.push(BlockSpentOutputs::new(&coins));
+        }
+
+        for (block, block_spent_outputs) in blocks.iter().zip(block_spent_outputs.iter()) {
+            let (accepted, state) = chainman.process_header(&block.header());
+            assert!(accepted);
+            assert_eq!(state.mode(), ValidationMode::Valid);
+
+            let (result, state) = chainman.validate_block(block, &block_spent_outputs);
+            assert!(result);
             assert_eq!(state.mode(), ValidationMode::Valid);
         }
     }

@@ -11,7 +11,7 @@ use libbitcoinkernel_sys::{
     btck_chainstate_manager_options_set_chainstate_db_in_memory,
     btck_chainstate_manager_options_set_wipe_dbs,
     btck_chainstate_manager_options_set_worker_threads_num, btck_chainstate_manager_process_block,
-    btck_chainstate_manager_process_block_header,
+    btck_chainstate_manager_process_block_header, btck_chainstate_manager_validate_block,
 };
 
 use crate::{
@@ -72,6 +72,23 @@ impl ChainstateManager {
             btck_chainstate_manager_process_block_header(
                 self.inner,
                 header.as_ptr(),
+                state.as_ptr() as *mut btck_BlockValidationState,
+            )
+        };
+        (c_helpers::success(accepted), state)
+    }
+
+    pub fn validate_block(
+        &self,
+        block: &Block,
+        block_spent_outputs: &BlockSpentOutputs,
+    ) -> (bool, BlockValidationState) {
+        let state = BlockValidationState::new();
+        let accepted = unsafe {
+            btck_chainstate_manager_validate_block(
+                self.inner,
+                block.as_ptr(),
+                block_spent_outputs.as_ptr(),
                 state.as_ptr() as *mut btck_BlockValidationState,
             )
         };
