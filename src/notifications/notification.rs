@@ -300,7 +300,21 @@ pub(crate) unsafe extern "C" fn notification_fatal_error_wrapper(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use super::*;
+
+    #[test]
+    fn test_registry_default() {
+        let registry = NotificationCallbackRegistry::default();
+        assert!(registry.block_tip_handler.is_none());
+        assert!(registry.header_tip_handler.is_none());
+        assert!(registry.progress_handler.is_none());
+        assert!(registry.warning_set_handler.is_none());
+        assert!(registry.warning_unset_handler.is_none());
+        assert!(registry.flush_error_handler.is_none());
+        assert!(registry.fatal_error_handler.is_none());
+    }
 
     #[test]
     fn test_registry_stores_single_handler() {
@@ -365,5 +379,138 @@ mod tests {
 
         let fatal_error_handler = |_message| {};
         let _: Box<dyn FatalErrorCallback> = Box::new(fatal_error_handler);
+    }
+
+    #[test]
+    fn test_block_tip_callback_invocation() {
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = called.clone();
+
+        let mut registry = NotificationCallbackRegistry::new();
+        registry.register_block_tip(move |_state, _hash, progress| {
+            *called_clone.lock().unwrap() = true;
+            assert_eq!(progress, 0.75)
+        });
+
+        if let Some(ref handler) = registry.block_tip_handler {
+            let hash = BlockHash::from([1u8; 32]);
+            handler.on_block_tip(SynchronizationState::PostInit, hash, 0.75);
+        }
+
+        assert!(*called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_header_tip_callback_invocation() {
+        let called = Arc::new(Mutex::new(false));
+
+        let called_clone = called.clone();
+
+        let mut registry = NotificationCallbackRegistry::new();
+        registry.register_header_tip(move |_state, height, timestamp, presync: bool| {
+            *called_clone.lock().unwrap() = true;
+            assert_eq!(height, 12345);
+            assert_eq!(timestamp, 1234567890);
+            assert!(presync)
+        });
+
+        if let Some(ref handler) = registry.header_tip_handler {
+            handler.on_header_tip(SynchronizationState::InitDownload, 12345, 1234567890, true);
+        }
+
+        assert!(*called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_progress_callback_invocation() {
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = called.clone();
+
+        let mut registry = NotificationCallbackRegistry::new();
+        registry.register_progress(move |title, percent, resume: bool| {
+            *called_clone.lock().unwrap() = true;
+            assert_eq!(title, "Syncing");
+            assert_eq!(percent, 75);
+            assert!(resume);
+        });
+
+        if let Some(ref handler) = registry.progress_handler {
+            handler.on_progress("Syncing".to_string(), 75, true);
+        }
+
+        assert!(*called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_warning_set_callback_invocation() {
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = called.clone();
+
+        let mut registry = NotificationCallbackRegistry::new();
+        registry.register_warning_set(move |_warning, message| {
+            *called_clone.lock().unwrap() = true;
+            assert_eq!(message, "Test warning");
+        });
+
+        if let Some(ref handler) = registry.warning_set_handler {
+            handler.on_warning_set(Warning::LargeWorkInvalidChain, "Test warning".to_string());
+        }
+
+        assert!(*called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_warning_unset_callback_invocation() {
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = called.clone();
+
+        let mut registry = NotificationCallbackRegistry::new();
+        registry.register_warning_unset(move |warning| {
+            *called_clone.lock().unwrap() = true;
+            assert_eq!(warning, Warning::UnknownNewRulesActivated)
+        });
+
+        if let Some(ref handler) = registry.warning_unset_handler {
+            handler.on_warning_unset(Warning::UnknownNewRulesActivated);
+        }
+
+        assert!(*called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_flush_error_callback_invocation() {
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = called.clone();
+
+        let mut registry = NotificationCallbackRegistry::new();
+        registry.register_flush_error(move |message| {
+            *called_clone.lock().unwrap() = true;
+            assert_eq!(message, "Disk error");
+        });
+
+        if let Some(ref handler) = registry.flush_error_handler {
+            handler.on_flush_error("Disk error".to_string());
+        }
+
+        assert!(*called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_fatal_error_callback_invocation() {
+        let called = Arc::new(Mutex::new(false));
+
+        let called_clone = called.clone();
+
+        let mut registry = NotificationCallbackRegistry::new();
+        registry.register_fatal_error(move |message| {
+            *called_clone.lock().unwrap() = true;
+            assert_eq!(message, "Critical failure");
+        });
+
+        if let Some(ref handler) = registry.fatal_error_handler {
+            handler.on_fatal_error("Critical failure".to_string());
+        }
+
+        assert!(*called.lock().unwrap());
     }
 }
