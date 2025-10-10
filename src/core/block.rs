@@ -490,6 +490,13 @@ pub trait TransactionSpentOutputsExt: AsPtr<btck_TransactionSpentOutputs> {
             unsafe { btck_transaction_spent_outputs_get_coin_at(self.as_ptr(), coin_index) };
         Ok(unsafe { CoinRef::from_ptr(coin_ptr) })
     }
+
+    /// Returns an iterator over the coins spent by this transaction.
+    fn coins(&self) -> TransactionSpentOutputsIter<'_> {
+        TransactionSpentOutputsIter::new(unsafe {
+            TransactionSpentOutputsRef::from_ptr(self.as_ptr())
+        })
+    }
 }
 
 /// Spent output data for a single transaction.
@@ -578,6 +585,55 @@ impl<'a> Clone for TransactionSpentOutputsRef<'a> {
 }
 
 impl<'a> Copy for TransactionSpentOutputsRef<'a> {}
+
+pub struct TransactionSpentOutputsIter<'a> {
+    tx_spent_outputs: TransactionSpentOutputsRef<'a>,
+    current_index: usize,
+}
+
+impl<'a> TransactionSpentOutputsIter<'a> {
+    fn new(tx_spent_outputs: TransactionSpentOutputsRef<'a>) -> Self {
+        Self {
+            tx_spent_outputs,
+            current_index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for TransactionSpentOutputsIter<'a> {
+    type Item = CoinRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_index >= self.tx_spent_outputs.count() {
+            return None;
+        }
+
+        let index = self.current_index;
+        self.current_index += 1;
+
+        let coin_ptr = unsafe {
+            btck_transaction_spent_outputs_get_coin_at(self.tx_spent_outputs.as_ptr(), index)
+        };
+
+        Some(unsafe { CoinRef::from_ptr(coin_ptr) })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self
+            .tx_spent_outputs
+            .count()
+            .saturating_sub(self.current_index);
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for TransactionSpentOutputsIter<'a> {
+    fn len(&self) -> usize {
+        self.tx_spent_outputs
+            .count()
+            .saturating_sub(self.current_index)
+    }
+}
 
 /// Common operations for coins, implemented by both owned and borrowed types.
 pub trait CoinExt: AsPtr<btck_Coin> {
