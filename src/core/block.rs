@@ -22,7 +22,10 @@ use crate::{
     KernelError,
 };
 
-use super::transaction::{TransactionRef, TxOutRef};
+use super::{
+    transaction::{TransactionRef, TxOutRef},
+    Iter,
+};
 
 /// A type for a Block hash.
 pub struct BlockHash {
@@ -185,6 +188,16 @@ impl Block {
             btck_block_to_bytes(self.inner, Some(callback), user_data)
         })
     }
+
+    pub fn transactions(
+        &self,
+    ) -> impl Iterator<Item = TransactionRef<'_>> + ExactSizeIterator + '_ {
+        Iter::new(
+            self,
+            |block| block.transaction_count(),
+            |block, i| block.transaction(i).ok(),
+        )
+    }
 }
 
 impl AsPtr<btck_Block> for Block {
@@ -272,6 +285,9 @@ pub trait BlockSpentOutputsExt: AsPtr<btck_BlockSpentOutputs> {
         }
         Ok(unsafe { TransactionSpentOutputsRef::from_ptr(tx_out_ptr) })
     }
+
+    fn iter(&self)
+        -> impl Iterator<Item = TransactionSpentOutputsRef<'_>> + ExactSizeIterator + '_;
 }
 
 /// Spent output data for all transactions in a block.
@@ -304,7 +320,17 @@ impl AsPtr<btck_BlockSpentOutputs> for BlockSpentOutputs {
     }
 }
 
-impl BlockSpentOutputsExt for BlockSpentOutputs {}
+impl BlockSpentOutputsExt for BlockSpentOutputs {
+    fn iter(
+        &self,
+    ) -> impl Iterator<Item = TransactionSpentOutputsRef<'_>> + ExactSizeIterator + '_ {
+        Iter::new(
+            self,
+            |parent| parent.count(),
+            |parent, idx| parent.transaction_spent_outputs(idx).ok(),
+        )
+    }
+}
 
 impl Clone for BlockSpentOutputs {
     fn clone(&self) -> Self {
@@ -351,7 +377,17 @@ impl<'a> FromPtr<btck_BlockSpentOutputs> for BlockSpentOutputsRef<'a> {
     }
 }
 
-impl<'a> BlockSpentOutputsExt for BlockSpentOutputsRef<'a> {}
+impl<'a> BlockSpentOutputsExt for BlockSpentOutputsRef<'a> {
+    fn iter(
+        &self,
+    ) -> impl Iterator<Item = TransactionSpentOutputsRef<'_>> + ExactSizeIterator + '_ {
+        Iter::new(
+            self,
+            |parent| parent.count(),
+            |parent, idx| parent.transaction_spent_outputs(idx).ok(),
+        )
+    }
+}
 
 impl<'a> Clone for BlockSpentOutputsRef<'a> {
     fn clone(&self) -> Self {
@@ -384,6 +420,8 @@ pub trait TransactionSpentOutputsExt: AsPtr<btck_TransactionSpentOutputs> {
             unsafe { btck_transaction_spent_outputs_get_coin_at(self.as_ptr(), coin_index) };
         Ok(unsafe { CoinRef::from_ptr(coin_ptr) })
     }
+
+    fn coins(&self) -> impl Iterator<Item = CoinRef<'_>> + ExactSizeIterator + '_;
 }
 
 /// Spent output data for a single transaction.
@@ -416,7 +454,15 @@ impl FromMutPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputs {
     }
 }
 
-impl TransactionSpentOutputsExt for TransactionSpentOutputs {}
+impl TransactionSpentOutputsExt for TransactionSpentOutputs {
+    fn coins(&self) -> impl Iterator<Item = CoinRef<'_>> + ExactSizeIterator + '_ {
+        Iter::new(
+            self,
+            |parent| parent.count(),
+            |parent, idx| parent.coin(idx).ok(),
+        )
+    }
+}
 
 impl Clone for TransactionSpentOutputs {
     fn clone(&self) -> Self {
@@ -463,7 +509,15 @@ impl<'a> FromPtr<btck_TransactionSpentOutputs> for TransactionSpentOutputsRef<'a
     }
 }
 
-impl<'a> TransactionSpentOutputsExt for TransactionSpentOutputsRef<'a> {}
+impl<'a> TransactionSpentOutputsExt for TransactionSpentOutputsRef<'a> {
+    fn coins(&self) -> impl Iterator<Item = CoinRef<'_>> + ExactSizeIterator + '_ {
+        Iter::new(
+            self,
+            |parent| parent.count(),
+            |parent, idx| parent.coin(idx).ok(),
+        )
+    }
+}
 
 impl<'a> Clone for TransactionSpentOutputsRef<'a> {
     fn clone(&self) -> Self {
