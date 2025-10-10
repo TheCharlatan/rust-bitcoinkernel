@@ -61,7 +61,7 @@ static const kernel::Context btck_context_static{};
 
 namespace {
 
-bool is_valid_flag_combination(unsigned int flags)
+bool is_valid_flag_combination(script_verify_flags flags)
 {
     if (flags & SCRIPT_VERIFY_CLEANSTACK && ~flags & (SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS)) return false;
     if (flags & SCRIPT_VERIFY_WITNESS && ~flags & SCRIPT_VERIFY_P2SH) return false;
@@ -501,6 +501,7 @@ struct btck_BlockHash : Handle<btck_BlockHash, uint256> {};
 struct btck_TransactionInput : Handle<btck_TransactionInput, CTxIn> {};
 struct btck_TransactionOutPoint: Handle<btck_TransactionOutPoint, COutPoint> {};
 struct btck_Txid: Handle<btck_Txid, Txid> {};
+struct btck_BlockHeader : Handle<btck_BlockHeader, CBlockHeader> {};
 
 btck_Transaction* btck_transaction_create(const void* raw_transaction, size_t raw_transaction_len)
 {
@@ -621,7 +622,7 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
     // Assert that all specified flags are part of the interface before continuing
     assert((flags & ~btck_ScriptVerificationFlags_ALL) == 0);
 
-    if (!is_valid_flag_combination(flags)) {
+    if (!is_valid_flag_combination(script_verify_flags::from_int(flags))) {
         if (status) *status = btck_ScriptVerifyStatus_ERROR_INVALID_FLAGS_COMBINATION;
         return 0;
     }
@@ -652,7 +653,7 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
     bool result = VerifyScript(tx.vin[input_index].scriptSig,
                                btck_ScriptPubkey::get(script_pubkey),
                                &tx.vin[input_index].scriptWitness,
-                               flags,
+                               script_verify_flags::from_int(flags),
                                TransactionSignatureChecker(&tx, input_index, amount, txdata, MissingDataBehavior::FAIL),
                                nullptr);
     return result ? 1 : 0;
@@ -851,6 +852,21 @@ const btck_BlockTreeEntry* btck_block_tree_entry_get_previous(const btck_BlockTr
     return btck_BlockTreeEntry::ref(btck_BlockTreeEntry::get(entry).pprev);
 }
 
+btck_BlockValidationState* btck_block_validation_state_create()
+{
+    return btck_BlockValidationState::create(BlockValidationState{});
+}
+
+btck_BlockValidationState* btck_block_validation_state_copy(const btck_BlockValidationState* state)
+{
+    return btck_BlockValidationState::copy(state);
+}
+
+void btck_block_validation_state_destroy(btck_BlockValidationState* state)
+{
+    delete state;
+}
+
 btck_ValidationMode btck_block_validation_state_get_validation_mode(const btck_BlockValidationState* block_validation_state_)
 {
     auto& block_validation_state = btck_BlockValidationState::get(block_validation_state_);
@@ -995,6 +1011,12 @@ const btck_BlockTreeEntry* btck_chainstate_manager_get_block_tree_entry_by_hash(
     return btck_BlockTreeEntry::ref(block_index);
 }
 
+const btck_BlockTreeEntry* btck_chainstate_manager_get_best_entry(const btck_ChainstateManager* chainstate_manager)
+{
+    auto& chainman = *btck_ChainstateManager::get(chainstate_manager).m_chainman;
+    return btck_BlockTreeEntry::ref(WITH_LOCK(chainman.GetMutex(), return chainman.m_best_header));
+}
+
 void btck_chainstate_manager_destroy(btck_ChainstateManager* chainman)
 {
     {
@@ -1061,6 +1083,11 @@ const btck_Transaction* btck_block_get_transaction_at(const btck_Block* block, s
     return btck_Transaction::ref(&btck_Block::get(block)->vtx[index]);
 }
 
+btck_BlockHeader* btck_block_get_header(const btck_Block* block)
+{
+    return btck_BlockHeader::create(btck_Block::get(block)->GetBlockHeader());
+}
+
 int btck_block_to_bytes(const btck_Block* block, btck_WriteBytes writer, void* user_data)
 {
     try {
@@ -1090,6 +1117,11 @@ btck_Block* btck_block_read(const btck_ChainstateManager* chainman, const btck_B
         return nullptr;
     }
     return btck_Block::create(block);
+}
+
+btck_BlockHeader* btck_block_tree_entry_get_block_header(const btck_BlockTreeEntry* entry)
+{
+    return btck_BlockHeader::create(btck_BlockTreeEntry::get(entry).GetBlockHeader());
 }
 
 int32_t btck_block_tree_entry_get_height(const btck_BlockTreeEntry* entry)
@@ -1144,6 +1176,19 @@ btck_BlockSpentOutputs* btck_block_spent_outputs_read(const btck_ChainstateManag
     return btck_BlockSpentOutputs::create(block_undo);
 }
 
+btck_BlockSpentOutputs* btck_block_spent_outputs_create(void* context, btck_coin_getter coin_getter, btck_coins_count count_getter, size_t num_txs)
+{
+    auto block_undo{std::make_shared<CBlockUndo>()};
+    block_undo->vtxundo.reserve(num_txs);
+    for (uint64_t i{0}; i < num_txs; ++i) {
+        block_undo->vtxundo.emplace_back();
+        for (uint64_t j{0}; j < count_getter(context, i); ++j) {
+            block_undo->vtxundo[i].vprevout.emplace_back(btck_Coin::get(coin_getter(context, i, j)));
+        }
+    }
+    return btck_BlockSpentOutputs::create(block_undo);
+}
+
 btck_BlockSpentOutputs* btck_block_spent_outputs_copy(const btck_BlockSpentOutputs* block_spent_outputs)
 {
     return btck_BlockSpentOutputs::copy(block_spent_outputs);
@@ -1188,6 +1233,11 @@ const btck_Coin* btck_transaction_spent_outputs_get_coin_at(const btck_Transacti
     return btck_Coin::ref(coin);
 }
 
+btck_Coin* btck_coin_create(const btck_TransactionOutput* output, int height, int is_coinbase)
+{
+    return btck_Coin::create(btck_TransactionOutput::get(output), height, is_coinbase == 1);
+}
+
 btck_Coin* btck_coin_copy(const btck_Coin* coin)
 {
     return btck_Coin::copy(coin);
@@ -1226,6 +1276,35 @@ int btck_chainstate_manager_process_block(
     return result ? 0 : -1;
 }
 
+int btck_chainstate_manager_process_block_header(
+    btck_ChainstateManager* chainstate_manager,
+    const btck_BlockHeader* header,
+    btck_BlockValidationState* state)
+{
+    auto& chainman = btck_ChainstateManager::get(chainstate_manager).m_chainman;
+    auto result = chainman->ProcessNewBlockHeaders({&btck_BlockHeader::get(header), 1}, true, btck_BlockValidationState::get(state), nullptr);
+    return result ? 0 : -1;
+}
+
+int btck_chainstate_manager_validate_block(
+    btck_ChainstateManager* chainstate_manager,
+    const btck_Block* block,
+    const btck_BlockSpentOutputs* block_spent_outputs,
+    btck_BlockValidationState* state)
+{
+    auto& chainman = *btck_ChainstateManager::get(chainstate_manager).m_chainman;
+    LOCK(cs_main);
+
+    btck_BlockValidationState::get(state) = chainman.ValidateBlock(*btck_Block::get(block), *btck_BlockSpentOutputs::get(block_spent_outputs));
+
+    return btck_BlockValidationState::get(state).IsValid() ? 0 : -1;
+}
+
+int btck_transaction_is_coinbase(const btck_Transaction* tx)
+{
+    return btck_Transaction::get(tx)->IsCoinBase() ? 1 : 0;
+}
+
 const btck_Chain* btck_chainstate_manager_get_active_chain(const btck_ChainstateManager* chainman)
 {
     return btck_Chain::ref(&WITH_LOCK(btck_ChainstateManager::get(chainman).m_chainman->GetMutex(), return btck_ChainstateManager::get(chainman).m_chainman->ActiveChain()));
@@ -1256,4 +1335,34 @@ int btck_chain_contains(const btck_Chain* chain, const btck_BlockTreeEntry* entr
 {
     LOCK(::cs_main);
     return btck_Chain::get(chain).Contains(&btck_BlockTreeEntry::get(entry)) ? 1 : 0;
+}
+
+btck_BlockHeader* btck_block_header_create(const void* raw_block_header, size_t raw_block_header_length)
+{
+    auto header{std::make_unique<CBlockHeader>()};
+    DataStream stream{std::span{reinterpret_cast<const std::byte*>(raw_block_header), raw_block_header_length}};
+
+    try {
+        stream >> *header;
+    } catch (...) {
+        LogDebug(BCLog::KERNEL, "Block header decode failed.");
+        return nullptr;
+    }
+
+    return btck_BlockHeader::ref(header.release());
+}
+
+btck_BlockHash* btck_block_header_get_hash(const btck_BlockHeader* block_header)
+{
+    return btck_BlockHash::create(btck_BlockHeader::get(block_header).GetHash());
+}
+
+btck_BlockHeader* btck_block_header_copy(const btck_BlockHeader* block_header)
+{
+    return btck_BlockHeader::copy(block_header);
+}
+
+void btck_block_header_destroy(btck_BlockHeader* header)
+{
+    delete header;
 }
