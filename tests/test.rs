@@ -105,6 +105,25 @@ mod tests {
         lines
     }
 
+    fn setup_chainman_with_blocks(context: &Arc<Context>, data_dir: &str) -> ChainstateManager {
+        let blocks_dir = data_dir.to_string() + "/blocks";
+        let block_data = read_block_data();
+
+        let chainman = ChainstateManager::new(
+            ChainstateManagerOptions::new(context, data_dir, &blocks_dir).unwrap(),
+        )
+        .unwrap();
+
+        for raw_block in block_data.iter() {
+            let block = Block::new(raw_block.as_slice()).unwrap();
+            let (accepted, new_block) = chainman.process_block(&block);
+            assert!(accepted);
+            assert!(new_block);
+        }
+
+        chainman
+    }
+
     #[test]
     fn test_reindex() {
         let (context, data_dir) = testing_setup();
@@ -183,19 +202,7 @@ mod tests {
         }
 
         let (context, data_dir) = testing_setup();
-        let blocks_dir = data_dir.clone() + "/blocks";
-        let block_data = read_block_data();
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
-
-        for raw_block in block_data.iter() {
-            let block = Block::try_from(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
-        }
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
 
         let active_chain = chainman.active_chain();
 
@@ -408,20 +415,8 @@ mod tests {
     #[test]
     fn test_chain_operations() {
         let (context, data_dir) = testing_setup();
-        let blocks_dir = data_dir.clone() + "/blocks";
-        let block_data = read_block_data();
 
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
-
-        for raw_block in block_data.iter() {
-            let block = Block::new(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
-        }
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
 
         let chain = chainman.active_chain();
 
@@ -466,23 +461,9 @@ mod tests {
 
     #[test]
     fn test_block_transactions_iterator() {
-        let (context, data_dir) = testing_setup();
-        let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
 
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
-
-        for raw_block in block_data.iter() {
-            let block = Block::try_from(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
-        }
-
-        let block = Block::try_from(block_data[0].as_slice()).unwrap();
+        let block = Block::try_from(block_data[5].as_slice()).unwrap();
 
         let tx_count_via_iterator = block.transactions().count();
         assert_eq!(tx_count_via_iterator, block.transaction_count());
@@ -510,20 +491,8 @@ mod tests {
     #[test]
     fn test_block_spent_outputs_iterator() {
         let (context, data_dir) = testing_setup();
-        let blocks_dir = data_dir.clone() + "/blocks";
-        let block_data = read_block_data();
 
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
-
-        for raw_block in block_data.iter() {
-            let block = Block::try_from(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
-        }
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
 
         let active_chain = chainman.active_chain();
         let block_index_tip = active_chain.tip();
@@ -553,20 +522,8 @@ mod tests {
     #[test]
     fn test_transaction_spent_outputs_iterator() {
         let (context, data_dir) = testing_setup();
-        let blocks_dir = data_dir.clone() + "/blocks";
-        let block_data = read_block_data();
 
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
-
-        for raw_block in block_data.iter() {
-            let block = Block::try_from(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
-        }
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
 
         let active_chain = chainman.active_chain();
         let block_index_tip = active_chain.tip();
@@ -608,20 +565,8 @@ mod tests {
     #[test]
     fn test_nested_iteration() {
         let (context, data_dir) = testing_setup();
-        let blocks_dir = data_dir.clone() + "/blocks";
-        let block_data = read_block_data();
 
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
-
-        for raw_block in block_data.iter() {
-            let block = Block::try_from(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
-        }
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
 
         let active_chain = chainman.active_chain();
         let block_index = active_chain.at_height(1).unwrap();
@@ -642,20 +587,8 @@ mod tests {
     #[test]
     fn test_iterator_with_block_transactions() {
         let (context, data_dir) = testing_setup();
-        let blocks_dir = data_dir.clone() + "/blocks";
-        let block_data = read_block_data();
 
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
-
-        for raw_block in block_data.iter() {
-            let block = Block::try_from(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
-        }
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
 
         let active_chain = chainman.active_chain();
         let block_index = active_chain.at_height(1).unwrap();
