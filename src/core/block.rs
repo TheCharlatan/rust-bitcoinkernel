@@ -185,6 +185,11 @@ impl Block {
             btck_block_to_bytes(self.inner, Some(callback), user_data)
         })
     }
+
+    /// Returns an iterator over all transactions in this block.
+    pub fn transactions(&self) -> BlockTransactionIter<'_> {
+        BlockTransactionIter::new(self)
+    }
 }
 
 impl AsPtr<btck_Block> for Block {
@@ -234,6 +239,46 @@ impl TryFrom<&Block> for Vec<u8> {
 
     fn try_from(block: &Block) -> Result<Self, Self::Error> {
         block.consensus_encode()
+    }
+}
+
+pub struct BlockTransactionIter<'a> {
+    block: &'a Block,
+    current_index: usize,
+}
+
+impl<'a> BlockTransactionIter<'a> {
+    fn new(block: &'a Block) -> Self {
+        Self {
+            block,
+            current_index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for BlockTransactionIter<'a> {
+    type Item = TransactionRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let index = self.current_index;
+        self.current_index += 1;
+        self.block.transaction(index).ok()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self
+            .block
+            .transaction_count()
+            .saturating_sub(self.current_index);
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for BlockTransactionIter<'a> {
+    fn len(&self) -> usize {
+        self.block
+            .transaction_count()
+            .saturating_sub(self.current_index)
     }
 }
 
