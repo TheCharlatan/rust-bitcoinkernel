@@ -182,6 +182,8 @@ pub(crate) unsafe extern "C" fn validation_block_disconnected_wrapper(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use crate::{notifications::types::BlockValidationStateExt, BlockValidationResult};
 
     use super::*;
@@ -235,5 +237,90 @@ mod tests {
         let mut registry = ValidationCallbackRegistry::new();
         registry.register_block_disconnected(handler);
         assert!(registry.block_disconnected_handler.is_some());
+    }
+
+    #[test]
+    fn test_registry_default() {
+        let registry = ValidationCallbackRegistry::default();
+        assert!(registry.block_checked_handler.is_none());
+        assert!(registry.new_pow_valid_block_handler.is_none());
+        assert!(registry.block_connected_handler.is_none());
+        assert!(registry.block_disconnected_handler.is_none());
+    }
+
+    #[test]
+    fn test_block_checked_invocation() {
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = Arc::clone(&called);
+
+        let mut registry = ValidationCallbackRegistry::new();
+        registry.register_block_checked(move |_block, _state: BlockValidationStateRef<'_>| {
+            *called_clone.lock().unwrap() = true;
+        });
+
+        if let Some(ref handler) = registry.block_checked_handler {
+            let block = unsafe { Block::from_ptr(std::ptr::null_mut()) };
+            let state = unsafe { BlockValidationStateRef::from_ptr(std::ptr::null()) };
+            handler.on_block_checked(block, state);
+        }
+
+        assert!(*called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_new_pow_valid_block_invocation() {
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = Arc::clone(&called);
+
+        let mut registry = ValidationCallbackRegistry::new();
+        registry.register_new_pow_valid_block(move |_pindex: BlockTreeEntry, _block: Block| {
+            *called_clone.lock().unwrap() = true;
+        });
+
+        if let Some(ref handler) = registry.new_pow_valid_block_handler {
+            let block = unsafe { Block::from_ptr(std::ptr::null_mut()) };
+            let pindex = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
+            handler.on_new_pow_valid_block(pindex, block);
+        }
+
+        assert!(*called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_block_connected_invocation() {
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = Arc::clone(&called);
+
+        let mut registry = ValidationCallbackRegistry::new();
+        registry.register_block_connected(move |_block: Block, _pindex: BlockTreeEntry| {
+            *called_clone.lock().unwrap() = true;
+        });
+
+        if let Some(ref handler) = registry.block_connected_handler {
+            let block = unsafe { Block::from_ptr(std::ptr::null_mut()) };
+            let pindex = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
+            handler.on_block_connected(block, pindex);
+        }
+
+        assert!(*called.lock().unwrap());
+    }
+
+    #[test]
+    fn test_block_disconnected_invocation() {
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = Arc::clone(&called);
+
+        let mut registry = ValidationCallbackRegistry::new();
+        registry.register_block_disconnected(move |_block: Block, _pindex: BlockTreeEntry| {
+            *called_clone.lock().unwrap() = true;
+        });
+
+        if let Some(ref handler) = registry.block_disconnected_handler {
+            let block = unsafe { Block::from_ptr(std::ptr::null_mut()) };
+            let pindex = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
+            handler.on_block_disconnected(block, pindex);
+        }
+
+        assert!(*called.lock().unwrap());
     }
 }
