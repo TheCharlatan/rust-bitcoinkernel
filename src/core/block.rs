@@ -317,6 +317,11 @@ pub trait BlockSpentOutputsExt: AsPtr<btck_BlockSpentOutputs> {
         }
         Ok(unsafe { TransactionSpentOutputsRef::from_ptr(tx_out_ptr) })
     }
+
+    /// Returns an iterator over spent outputs for transactions in the block.
+    fn iter(&self) -> BlockSpentOutputsIter<'_> {
+        BlockSpentOutputsIter::new(unsafe { BlockSpentOutputsRef::from_ptr(self.as_ptr()) })
+    }
 }
 
 /// Spent output data for all transactions in a block.
@@ -405,6 +410,62 @@ impl<'a> Clone for BlockSpentOutputsRef<'a> {
 }
 
 impl<'a> Copy for BlockSpentOutputsRef<'a> {}
+
+pub struct BlockSpentOutputsIter<'a> {
+    block_spent_outputs: BlockSpentOutputsRef<'a>,
+    current_index: usize,
+}
+
+impl<'a> BlockSpentOutputsIter<'a> {
+    fn new(block_spent_outputs: BlockSpentOutputsRef<'a>) -> Self {
+        Self {
+            block_spent_outputs,
+            current_index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for BlockSpentOutputsIter<'a> {
+    type Item = TransactionSpentOutputsRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_index >= self.block_spent_outputs.count() {
+            return None;
+        }
+
+        let index = self.current_index;
+        self.current_index += 1;
+
+        let tx_out_ptr = unsafe {
+            btck_block_spent_outputs_get_transaction_spent_outputs_at(
+                self.block_spent_outputs.as_ptr(),
+                index,
+            )
+        };
+
+        if tx_out_ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { TransactionSpentOutputsRef::from_ptr(tx_out_ptr) })
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self
+            .block_spent_outputs
+            .count()
+            .saturating_sub(self.current_index);
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for BlockSpentOutputsIter<'a> {
+    fn len(&self) -> usize {
+        self.block_spent_outputs
+            .count()
+            .saturating_sub(self.current_index)
+    }
+}
 
 /// Common operations for transaction spent outputs, implemented by both owned and borrowed types.
 pub trait TransactionSpentOutputsExt: AsPtr<btck_TransactionSpentOutputs> {
