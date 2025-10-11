@@ -25,6 +25,7 @@ fn main() {
         .arg(format!("-DCMAKE_BUILD_TYPE={build_config}"))
         .arg("-DBUILD_KERNEL_LIB=ON")
         .arg("-DBUILD_TESTS=OFF")
+        .arg("-DBUILD_KERNEL_TEST=OFF")
         .arg("-DBUILD_TX=OFF")
         .arg("-DBUILD_WALLET_TOOL=OFF")
         .arg("-DENABLE_WALLET=OFF")
