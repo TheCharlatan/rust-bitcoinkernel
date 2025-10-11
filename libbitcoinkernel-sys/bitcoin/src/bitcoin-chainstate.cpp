@@ -72,7 +72,7 @@ public:
                 std::cout << "the block header may be on a too-little-work chain" << std::endl;
                 break;
             case BlockValidationResult::CONSENSUS:
-                std::cout << "invalid by consensus rules (excluding any below reasons)" << std::endl;
+                std::cout << "invalid by consensus rules" << std::endl;
                 break;
             case BlockValidationResult::CACHED_INVALID:
                 std::cout << "this block was cached as being invalid and we didn't store the reason why" << std::endl;

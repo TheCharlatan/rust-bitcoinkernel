@@ -61,7 +61,7 @@ static const kernel::Context btck_context_static{};
 
 namespace {
 
-bool is_valid_flag_combination(unsigned int flags)
+bool is_valid_flag_combination(script_verify_flags flags)
 {
     if (flags & SCRIPT_VERIFY_CLEANSTACK && ~flags & (SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS)) return false;
     if (flags & SCRIPT_VERIFY_WITNESS && ~flags & SCRIPT_VERIFY_P2SH) return false;
@@ -519,8 +519,9 @@ size_t btck_transaction_count_outputs(const btck_Transaction* transaction)
 
 const btck_TransactionOutput* btck_transaction_get_output_at(const btck_Transaction* transaction, size_t output_index)
 {
-    assert(output_index < btck_Transaction::get(transaction)->vout.size());
-    return btck_TransactionOutput::ref(&btck_Transaction::get(transaction)->vout[output_index]);
+    const CTransaction& tx = *btck_Transaction::get(transaction);
+    assert(output_index < tx.vout.size());
+    return btck_TransactionOutput::ref(&tx.vout[output_index]);
 }
 
 size_t btck_transaction_count_inputs(const btck_Transaction* transaction)
@@ -584,8 +585,7 @@ void btck_script_pubkey_destroy(btck_ScriptPubkey* script_pubkey)
 
 btck_TransactionOutput* btck_transaction_output_create(const btck_ScriptPubkey* script_pubkey, int64_t amount)
 {
-    const CAmount& value{amount};
-    return btck_TransactionOutput::create(value, btck_ScriptPubkey::get(script_pubkey));
+    return btck_TransactionOutput::create(amount, btck_ScriptPubkey::get(script_pubkey));
 }
 
 btck_TransactionOutput* btck_transaction_output_copy(const btck_TransactionOutput* output)
@@ -609,19 +609,17 @@ void btck_transaction_output_destroy(btck_TransactionOutput* output)
 }
 
 int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
-                              const int64_t amount_,
+                              const int64_t amount,
                               const btck_Transaction* tx_to,
                               const btck_TransactionOutput** spent_outputs_, size_t spent_outputs_len,
                               const unsigned int input_index,
                               const btck_ScriptVerificationFlags flags,
                               btck_ScriptVerifyStatus* status)
 {
-    const CAmount amount{amount_};
-
     // Assert that all specified flags are part of the interface before continuing
     assert((flags & ~btck_ScriptVerificationFlags_ALL) == 0);
 
-    if (!is_valid_flag_combination(flags)) {
+    if (!is_valid_flag_combination(script_verify_flags::from_int(flags))) {
         if (status) *status = btck_ScriptVerifyStatus_ERROR_INVALID_FLAGS_COMBINATION;
         return 0;
     }
@@ -652,7 +650,7 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
     bool result = VerifyScript(tx.vin[input_index].scriptSig,
                                btck_ScriptPubkey::get(script_pubkey),
                                &tx.vin[input_index].scriptWitness,
-                               flags,
+                               script_verify_flags::from_int(flags),
                                TransactionSignatureChecker(&tx, input_index, amount, txdata, MissingDataBehavior::FAIL),
                                nullptr);
     return result ? 1 : 0;
@@ -923,7 +921,7 @@ int btck_chainstate_manager_options_set_wipe_dbs(btck_ChainstateManagerOptions* 
     return 0;
 }
 
-void btck_chainstate_manager_options_set_block_tree_db_in_memory(
+void btck_chainstate_manager_options_update_block_tree_db_in_memory(
     btck_ChainstateManagerOptions* chainman_opts,
     int block_tree_db_in_memory)
 {
@@ -932,7 +930,7 @@ void btck_chainstate_manager_options_set_block_tree_db_in_memory(
     opts.m_blockman_options.block_tree_db_params.memory_only = block_tree_db_in_memory == 1;
 }
 
-void btck_chainstate_manager_options_set_chainstate_db_in_memory(
+void btck_chainstate_manager_options_update_chainstate_db_in_memory(
     btck_ChainstateManagerOptions* chainman_opts,
     int chainstate_db_in_memory)
 {
@@ -1010,14 +1008,14 @@ void btck_chainstate_manager_destroy(btck_ChainstateManager* chainman)
     delete chainman;
 }
 
-int btck_chainstate_manager_import_blocks(btck_ChainstateManager* chainman, const char** block_file_paths, size_t* block_file_paths_lens, size_t block_file_paths_len)
+int btck_chainstate_manager_import_blocks(btck_ChainstateManager* chainman, const char** block_file_paths_data, size_t* block_file_paths_lens, size_t block_file_paths_data_len)
 {
     try {
         std::vector<fs::path> import_files;
-        import_files.reserve(block_file_paths_len);
-        for (uint32_t i = 0; i < block_file_paths_len; i++) {
-            if (block_file_paths[i] != nullptr) {
-                import_files.emplace_back(std::string{block_file_paths[i], block_file_paths_lens[i]}.c_str());
+        import_files.reserve(block_file_paths_data_len);
+        for (uint32_t i = 0; i < block_file_paths_data_len; i++) {
+            if (block_file_paths_data[i] != nullptr) {
+                import_files.emplace_back(std::string{block_file_paths_data[i], block_file_paths_lens[i]}.c_str());
             }
         }
         node::ImportBlocks(*btck_ChainstateManager::get(chainman).m_chainman, import_files);
