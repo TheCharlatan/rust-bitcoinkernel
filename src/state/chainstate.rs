@@ -5,11 +5,11 @@ use libbitcoinkernel_sys::{
     btck_block_spent_outputs_read, btck_chainstate_manager_create, btck_chainstate_manager_destroy,
     btck_chainstate_manager_get_active_chain, btck_chainstate_manager_get_block_tree_entry_by_hash,
     btck_chainstate_manager_import_blocks, btck_chainstate_manager_options_create,
-    btck_chainstate_manager_options_destroy,
-    btck_chainstate_manager_options_set_block_tree_db_in_memory,
-    btck_chainstate_manager_options_set_chainstate_db_in_memory,
-    btck_chainstate_manager_options_set_wipe_dbs,
-    btck_chainstate_manager_options_set_worker_threads_num, btck_chainstate_manager_process_block,
+    btck_chainstate_manager_options_destroy, btck_chainstate_manager_options_set_wipe_dbs,
+    btck_chainstate_manager_options_set_worker_threads_num,
+    btck_chainstate_manager_options_update_block_tree_db_in_memory,
+    btck_chainstate_manager_options_update_chainstate_db_in_memory,
+    btck_chainstate_manager_process_block,
 };
 
 use crate::{
@@ -166,7 +166,7 @@ impl ChainstateManagerOptions {
     }
 
     /// Set the number of worker threads used by script validation
-    pub fn set_worker_threads(self, worker_threads: i32) -> Self {
+    pub fn worker_threads(self, worker_threads: i32) -> Self {
         unsafe {
             btck_chainstate_manager_options_set_worker_threads_num(self.inner, worker_threads);
         }
@@ -176,7 +176,7 @@ impl ChainstateManagerOptions {
     /// Wipe the block tree or chainstate dbs. When wiping the block tree db the
     /// chainstate db has to be wiped too. Wiping the databases will triggere a
     /// rebase once import blocks is called.
-    pub fn set_wipe_db(self, wipe_block_tree: bool, wipe_chainstate: bool) -> Self {
+    pub fn wipe_db(self, wipe_block_tree: bool, wipe_chainstate: bool) -> Self {
         unsafe {
             btck_chainstate_manager_options_set_wipe_dbs(
                 self.inner,
@@ -188,9 +188,9 @@ impl ChainstateManagerOptions {
     }
 
     /// Run the block tree db in-memory only. No database files will be written to disk.
-    pub fn set_block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Self {
+    pub fn block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Self {
         unsafe {
-            btck_chainstate_manager_options_set_block_tree_db_in_memory(
+            btck_chainstate_manager_options_update_block_tree_db_in_memory(
                 self.inner,
                 c_helpers::to_c_bool(block_tree_db_in_memory),
             );
@@ -199,9 +199,9 @@ impl ChainstateManagerOptions {
     }
 
     /// Run the chainstate db in-memory only. No database files will be written to disk.
-    pub fn set_chainstate_db_in_memory(self, chainstate_db_in_memory: bool) -> Self {
+    pub fn chainstate_db_in_memory(self, chainstate_db_in_memory: bool) -> Self {
         unsafe {
-            btck_chainstate_manager_options_set_chainstate_db_in_memory(
+            btck_chainstate_manager_options_update_chainstate_db_in_memory(
                 self.inner,
                 c_helpers::to_c_bool(chainstate_db_in_memory),
             );
@@ -265,10 +265,10 @@ mod tests {
 
         let opts = ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir)
             .unwrap()
-            .set_block_tree_db_in_memory(true)
-            .set_chainstate_db_in_memory(true)
-            .set_wipe_db(false, true)
-            .set_worker_threads(4);
+            .block_tree_db_in_memory(true)
+            .chainstate_db_in_memory(true)
+            .wipe_db(false, true)
+            .worker_threads(4);
 
         let chainman = ChainstateManager::new(opts);
         assert!(chainman.is_ok());
