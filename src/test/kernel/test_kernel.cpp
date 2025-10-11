@@ -636,8 +636,10 @@ BOOST_AUTO_TEST_CASE(btck_chainman_tests)
 
     ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
     chainman_opts.SetWorkerThreads(4);
-    BOOST_CHECK(chainman_opts.SetWipeDbs(/*wipe_block_tree=*/false, /*wipe_chainstate=*/false));
     BOOST_CHECK(!chainman_opts.SetWipeDbs(/*wipe_block_tree=*/true, /*wipe_chainstate=*/false));
+    BOOST_CHECK(chainman_opts.SetWipeDbs(/*wipe_block_tree=*/true, /*wipe_chainstate=*/true));
+    BOOST_CHECK(chainman_opts.SetWipeDbs(/*wipe_block_tree=*/false, /*wipe_chainstate=*/true));
+    BOOST_CHECK(chainman_opts.SetWipeDbs(/*wipe_block_tree=*/false, /*wipe_chainstate=*/false));
     ChainMan chainman{context, chainman_opts};
 }
 
@@ -659,10 +661,10 @@ std::unique_ptr<ChainMan> create_chainman(TestDirectory& test_directory,
         chainman_opts.SetWipeDbs(/*wipe_block_tree=*/false, /*wipe_chainstate=*/wipe_chainstate);
     }
     if (block_tree_db_in_memory) {
-        chainman_opts.SetBlockTreeDbInMemory(block_tree_db_in_memory);
+        chainman_opts.UpdateBlockTreeDbInMemory(block_tree_db_in_memory);
     }
     if (chainstate_db_in_memory) {
-        chainman_opts.SetChainstateDbInMemory(chainstate_db_in_memory);
+        chainman_opts.UpdateChainstateDbInMemory(chainstate_db_in_memory);
     }
 
     auto chainman{std::make_unique<ChainMan>(context, chainman_opts)};
@@ -715,7 +717,7 @@ void chainman_reindex_test(TestDirectory& test_directory)
     check_equal(next_block_data, second_block_data);
 
     auto second_hash{second_index.GetHash()};
-    auto another_second_index{chainman->GetBlockTreeEntry(second_hash.get())};
+    auto another_second_index{chainman->GetBlockTreeEntry(second_hash)};
     auto another_second_height{another_second_index.GetHeight()};
     auto second_block_hash{second_block.GetHash()};
     check_equal(second_block_hash.ToBytes(), second_hash.ToBytes());
@@ -851,7 +853,7 @@ BOOST_AUTO_TEST_CASE(btck_chainman_in_memory_tests)
     BOOST_CHECK(!std::filesystem::exists(in_memory_test_directory.m_directory / "blocks" / "index"));
     BOOST_CHECK(!std::filesystem::exists(in_memory_test_directory.m_directory / "chainstate"));
 
-    context.interrupt();
+    BOOST_CHECK(context.interrupt());
 }
 
 BOOST_AUTO_TEST_CASE(btck_chainman_regtest_tests)

@@ -426,7 +426,7 @@ typedef struct {
  */
 typedef uint8_t btck_ScriptVerifyStatus;
 #define btck_ScriptVerifyStatus_SCRIPT_VERIFY_OK ((btck_ScriptVerifyStatus)(0))
-#define btck_ScriptVerifyStatus_ERROR_INVALID_FLAGS_COMBINATION ((btck_ScriptVerifyStatus)(2)) //!< The flags very combined in an invalid way.
+#define btck_ScriptVerifyStatus_ERROR_INVALID_FLAGS_COMBINATION ((btck_ScriptVerifyStatus)(2)) //!< The flags were combined in an invalid way.
 #define btck_ScriptVerifyStatus_ERROR_SPENT_OUTPUTS_REQUIRED ((btck_ScriptVerifyStatus)(3))    //!< The taproot flag was set, so valid spent_outputs have to be provided.
 
 /**
@@ -964,7 +964,7 @@ BITCOINKERNEL_API int btck_chainstate_manager_options_set_wipe_dbs(
  * @param[in] chainstate_manager_options   Non-null, created by @ref btck_chainstate_manager_options_create.
  * @param[in] block_tree_db_in_memory      Set block tree db in memory.
  */
-BITCOINKERNEL_API void btck_chainstate_manager_options_set_block_tree_db_in_memory(
+BITCOINKERNEL_API void btck_chainstate_manager_options_update_block_tree_db_in_memory(
     btck_ChainstateManagerOptions* chainstate_manager_options,
     int block_tree_db_in_memory) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -974,7 +974,7 @@ BITCOINKERNEL_API void btck_chainstate_manager_options_set_block_tree_db_in_memo
  * @param[in] chainstate_manager_options Non-null, created by @ref btck_chainstate_manager_options_create.
  * @param[in] chainstate_db_in_memory    Set chainstate db in memory.
  */
-BITCOINKERNEL_API void btck_chainstate_manager_options_set_chainstate_db_in_memory(
+BITCOINKERNEL_API void btck_chainstate_manager_options_update_chainstate_db_in_memory(
     btck_ChainstateManagerOptions* chainstate_manager_options,
     int chainstate_db_in_memory) BITCOINKERNEL_ARG_NONNULL(1);
 
@@ -1006,15 +1006,16 @@ BITCOINKERNEL_API btck_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT btck_
  * the chainstate and block manager. Can also import an array of existing block
  * files selected by the user.
  *
- * @param[in] chainstate_manager   Non-null.
- * @param[in] block_file_paths     Nullable, array of block files described by their full filesystem paths.
- * @param[in] block_file_paths_len Length of the block_file_paths array.
- * @return                         0 if the import blocks call was completed successfully, non-zero otherwise.
+ * @param[in] chainstate_manager        Non-null.
+ * @param[in] block_file_paths_data     Nullable, array of block files described by their full filesystem paths.
+ * @param[in] block_file_paths_lens     Nullable, array containing the lengths of each of the paths.
+ * @param[in] block_file_paths_data_len Length of the block_file_paths_data and block_file_paths_len arrays.
+ * @return                              0 if the import blocks call was completed successfully, non-zero otherwise.
  */
 BITCOINKERNEL_API int btck_chainstate_manager_import_blocks(
     btck_ChainstateManager* chainstate_manager,
-    const char** block_file_paths, size_t* block_file_paths_lens,
-    size_t block_file_paths_len) BITCOINKERNEL_ARG_NONNULL(1, 2);
+    const char** block_file_paths_data, size_t* block_file_paths_lens,
+    size_t block_file_paths_data_len) BITCOINKERNEL_ARG_NONNULL(1, 2);
 
 /**
  * @brief Process and validate the passed in block with the chainstate
@@ -1027,7 +1028,10 @@ BITCOINKERNEL_API int btck_chainstate_manager_import_blocks(
  *
  * @param[in] chainstate_manager Non-null.
  * @param[in] block              Non-null, block to be validated.
- * @param[out] new_block         Nullable, will be set to 1 if this block was not processed before.
+ *
+ * @param[out] new_block         Nullable, will be set to 1 if this block was not processed before. Note that this means it
+ *                               might also not be 1 if processing was attempted before, but the block was found invalid
+ *                               before its data was persisted.
  * @return                       0 if processing the block was successful. Will also return 0 for valid, but duplicate blocks.
  */
 BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_chainstate_manager_process_block(
@@ -1037,11 +1041,12 @@ BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_chainstate_manager_p
 
 /**
  * @brief Returns the best known currently active chain. Its lifetime is
- * dependent on the chainstate manager and state transitions within the
- * chainstate manager, e.g. when processing blocks, will also change the chain.
- * Data retrieved from this chain is only consistent up to the point when new
- * data is processed in the chainstate manager. It is the user's responsibility
- * to guard against these inconsistencies.
+ * dependent on the chainstate manager. It can be thought of as a view on a
+ * vector of block tree entries that form the best chain. This means state
+ * transitions within the chainstate manager, e.g. processing blocks, will
+ * change the chain. Data retrieved from this chain is only consistent up to
+ * the point when new data is processed in the chainstate manager. It is the
+ * user's responsibility to guard against these inconsistencies.
  *
  * @param[in] chainstate_manager Non-null.
  * @return                       The chain.

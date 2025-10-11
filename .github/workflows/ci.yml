@@ -33,15 +33,15 @@ jobs:
     name: 'determine runners'
     runs-on: ubuntu-latest
     outputs:
-      use-cirrus-runners: ${{ steps.runners.outputs.use-cirrus-runners }}
+      provider: ${{ steps.runners.outputs.provider }}
     steps:
       - id: runners
         run: |
           if [[ "${REPO_USE_CIRRUS_RUNNERS}" == "${{ github.repository }}" ]]; then
-            echo "use-cirrus-runners=true" >> "$GITHUB_OUTPUT"
+            echo "provider=cirrus" >> "$GITHUB_OUTPUT"
             echo "::notice title=Runner Selection::Using Cirrus Runners"
           else
-            echo "use-cirrus-runners=false" >> "$GITHUB_OUTPUT"
+            echo "provider=gha" >> "$GITHUB_OUTPUT"
             echo "::notice title=Runner Selection::Using GitHub-hosted runners"
           fi
 
@@ -105,7 +105,7 @@ jobs:
     name: ${{ matrix.job-name }}
     # Use any image to support the xcode-select below, but hardcode version to avoid silent upgrades (and breaks).
     # See: https://github.com/actions/runner-images#available-images.
-    runs-on: macos-14
+    runs-on: macos-15
 
     # When a contributor maintains a fork of the repo, any pull request they make
     # to their own fork, or to the main repository, will trigger two CI runs:
@@ -123,10 +123,10 @@ jobs:
         include:
           - job-type: standard
             file-env: './ci/test/00_setup_env_mac_native.sh'
-            job-name: 'macOS 14 native, arm64, no depends, sqlite only, gui'
+            job-name: 'macOS native, no depends, sqlite only, gui'
           - job-type: fuzz
             file-env: './ci/test/00_setup_env_mac_native_fuzz.sh'
-            job-name: 'macOS 14 native, arm64, fuzz'
+            job-name: 'macOS native, fuzz'
 
     env:
       DANGER_RUN_CI_ON_HOST: 1
@@ -145,8 +145,8 @@ jobs:
           # Use the earliest Xcode supported by the version of macOS denoted in
           # doc/release-notes-empty-template.md and providing at least the
           # minimum clang version denoted in doc/dependencies.md.
-          # See: https://developer.apple.com/documentation/xcode-release-notes/xcode-15-release-notes
-          sudo xcode-select --switch /Applications/Xcode_15.0.app
+          # See: https://developer.apple.com/documentation/xcode-release-notes/xcode-16-release-notes
+          sudo xcode-select --switch /Applications/Xcode_16.0.app
           clang --version
 
       - name: Install Homebrew packages
@@ -211,11 +211,16 @@ jobs:
     steps:
       - *CHECKOUT
 
-      - name: Configure Developer Command Prompt for Microsoft Visual C++
-        # Using microsoft/setup-msbuild is not enough.
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+      - &SET_UP_VS
+        name: Set up VS Developer Prompt
+        shell: pwsh -Command "$PSVersionTable; $PSNativeCommandUseErrorActionPreference = $true; $ErrorActionPreference = 'Stop'; & '{0}'"
+        run: |
+          $vswherePath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installationPath = & $vswherePath -latest -property installationPath
+          & "${env:COMSPEC}" /s /c "`"$installationPath\Common7\Tools\vsdevcmd.bat`" -arch=x64 -no_logo && set" | foreach-object {
+            $name, $value = $_ -split '=', 2
+            echo "$name=$value" >> $env:GITHUB_ENV
+          }
 
       - name: Get tool information
         shell: pwsh
@@ -263,14 +268,26 @@ jobs:
         run: |
           cmake --build . -j $NUMBER_OF_PROCESSORS --config Release
 
-      - name: Get bitcoind manifest
+      - name: Check executable manifests
         if: matrix.job-type == 'standard'
         working-directory: build
+        shell: pwsh -Command "$PSVersionTable; $PSNativeCommandUseErrorActionPreference = $true; $ErrorActionPreference = 'Stop'; & '{0}'"
         run: |
-          mt.exe -nologo -inputresource:bin/Release/bitcoind.exe -out:bitcoind.manifest
-          cat bitcoind.manifest
-          echo
-          mt.exe -nologo -inputresource:bin/Release/bitcoind.exe -validate_manifest
+          mt.exe -nologo -inputresource:bin\Release\bitcoind.exe -out:bitcoind.manifest
+          Get-Content bitcoind.manifest
+
+          Get-ChildItem -Filter "bin\Release\*.exe" | ForEach-Object {
+            $exeName = $_.Name
+
+            # Skip as they currently do not have manifests
+            if ($exeName -eq "fuzz.exe" -or $exeName -eq "bench_bitcoin.exe" -or $exeName -eq "test_bitcoin-qt.exe" -or $exeName -eq "test_kernel.exe" -or $exeName -eq "bitcoin-chainstate.exe") {
+              Write-Host "Skipping $exeName (no manifest present)"
+              return
+            }
+
+            Write-Host "Checking $exeName"
+            & mt.exe -nologo -inputresource:$_.FullName -validate_manifest
+          }
 
       - name: Run test suite
         if: matrix.job-type == 'standard'
@@ -313,7 +330,7 @@ jobs:
   windows-cross:
     name: 'Linux->Windows cross, no tests'
     needs: runners
-    runs-on: ${{ needs.runners.outputs.use-cirrus-runners == 'true' && 'ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04-sm' || 'ubuntu-24.04' }}
+    runs-on: ${{ needs.runners.outputs.provider == 'cirrus' && 'ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04-sm' || 'ubuntu-24.04' }}
     if: ${{ vars.SKIP_BRANCH_PUSH != 'true' || github.event_name == 'pull_request' }}
 
     env:
@@ -333,7 +350,7 @@ jobs:
       - name: Configure Docker
         uses: ./.github/actions/configure-docker
         with:
-          use-cirrus: ${{ needs.runners.outputs.use-cirrus-runners }}
+          cache-provider: ${{ needs.runners.outputs.provider }}
 
       - name: CI script
         run: ./ci/test_run_all.sh
@@ -371,19 +388,26 @@ jobs:
       - name: Run bitcoind.exe
         run: ./bin/bitcoind.exe -version
 
-      - name: Find mt.exe tool
-        shell: pwsh
-        run: |
-          $sdk_dir = (Get-ItemProperty 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows Kits\Installed Roots' -Name KitsRoot10).KitsRoot10
-          $sdk_latest = (Get-ChildItem "$sdk_dir\bin" -Directory | Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } | Sort-Object Name -Descending | Select-Object -First 1).Name
-          "MT_EXE=${sdk_dir}bin\${sdk_latest}\x64\mt.exe" >> $env:GITHUB_ENV
+      - *SET_UP_VS
 
-      - name: Get bitcoind manifest
-        shell: pwsh
+      - name: Check executable manifests
+        shell: pwsh -Command "$PSVersionTable; $PSNativeCommandUseErrorActionPreference = $true; $ErrorActionPreference = 'Stop'; & '{0}'"
         run: |
-          & $env:MT_EXE -nologo -inputresource:bin\bitcoind.exe -out:bitcoind.manifest
+          mt.exe -nologo -inputresource:bin\bitcoind.exe -out:bitcoind.manifest
           Get-Content bitcoind.manifest
-          & $env:MT_EXE -nologo -inputresource:bin\bitcoind.exe -validate_manifest
+
+          Get-ChildItem -Filter "bin\*.exe" | ForEach-Object {
+            $exeName = $_.Name
+
+            # Skip as they currently do not have manifests
+            if ($exeName -eq "fuzz.exe" -or $exeName -eq "bench_bitcoin.exe" -or $exeName -eq "test_kernel.exe") {
+              Write-Host "Skipping $exeName (no manifest present)"
+              return
+            }
+
+            Write-Host "Checking $exeName"
+            & mt.exe -nologo -inputresource:$_.FullName -validate_manifest
+          }
 
       - name: Run unit tests
         # Can't use ctest here like other jobs as we don't have a CMake build tree.
@@ -423,7 +447,7 @@ jobs:
   ci-matrix:
     name: ${{ matrix.name }}
     needs: runners
-    runs-on: ${{ needs.runners.outputs.use-cirrus-runners == 'true' && matrix.cirrus-runner || matrix.fallback-runner }}
+    runs-on: ${{ needs.runners.outputs.provider == 'cirrus' && matrix.cirrus-runner || matrix.fallback-runner }}
     if: ${{ vars.SKIP_BRANCH_PUSH != 'true' || github.event_name == 'pull_request' }}
     timeout-minutes: ${{ matrix.timeout-minutes }}
 
@@ -440,6 +464,7 @@ jobs:
             fallback-runner: 'ubuntu-24.04-arm'
             timeout-minutes: 120
             file-env: './ci/test/00_setup_env_arm.sh'
+            provider: 'gha'
 
           - name: 'ASan + LSan + UBSan + integer, no depends, USDT'
             cirrus-runner: 'ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04-md' # has to match container in ci/test/00_setup_env_native_asan.sh for tracing tools
@@ -514,7 +539,7 @@ jobs:
       - name: Configure Docker
         uses: ./.github/actions/configure-docker
         with:
-          use-cirrus: ${{ needs.runners.outputs.use-cirrus-runners }}
+          cache-provider: ${{ matrix.provider || needs.runners.outputs.provider }}
 
       - name: Enable bpfcc script
         if: ${{ env.CONTAINER_NAME == 'ci_native_asan' }}
@@ -551,7 +576,7 @@ jobs:
       - name: Configure Docker
         uses: ./.github/actions/configure-docker
         with:
-          use-cirrus: ${{ needs.runners.outputs.use-cirrus-runners }}
+          cache-provider: ${{ needs.runners.outputs.provider }}
 
       - name: CI script
         run: |
