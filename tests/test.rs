@@ -126,7 +126,7 @@ mod tests {
 
         let chainman_opts = ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir)
             .unwrap()
-            .set_wipe_db(false, true);
+            .wipe_db(false, true);
 
         let chainman = ChainstateManager::new(chainman_opts).unwrap();
         chainman.import_blocks().unwrap();

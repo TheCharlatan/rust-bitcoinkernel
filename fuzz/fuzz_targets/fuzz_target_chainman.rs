@@ -86,10 +86,10 @@ fuzz_target!(|data: ChainstateManagerInput| {
         Err(KernelError::CStringCreationFailed(_)) => return,
         Err(err) => panic!("this should never happen: {}", err),
     }
-    .set_wipe_db(data.wipe_block_index, data.wipe_chainstate_index)
-    .set_block_tree_db_in_memory(data.block_tree_db_in_memory)
-    .set_chainstate_db_in_memory(data.chainstate_db_in_memory)
-    .set_worker_threads(data.worker_threads);
+    .wipe_db(data.wipe_block_index, data.wipe_chainstate_index)
+    .block_tree_db_in_memory(data.block_tree_db_in_memory)
+    .chainstate_db_in_memory(data.chainstate_db_in_memory)
+    .worker_threads(data.worker_threads);
     let chainman = match ChainstateManager::new(chainman_opts) {
         Err(KernelError::Internal(_)) => {
             return;
