@@ -657,7 +657,41 @@ bool ScriptPubkeyApi<Derived>::Verify(int64_t amount,
     return result == 1;
 }
 
-class BlockHash : public Handle<btck_BlockHash, btck_block_hash_copy, btck_block_hash_destroy>
+template <typename Derived>
+class BlockHashApi
+{
+private:
+    auto impl() const
+    {
+        return static_cast<const Derived*>(this)->get();
+    }
+
+public:
+    bool operator==(const Derived& other) const
+    {
+        return btck_block_hash_equals(impl(), other.get()) != 0;
+    }
+
+    bool operator!=(const Derived& other) const
+    {
+        return btck_block_hash_equals(impl(), other.get()) == 0;
+    }
+
+    std::array<std::byte, 32> ToBytes() const
+    {
+        std::array<std::byte, 32> hash;
+        btck_block_hash_to_bytes(impl(), reinterpret_cast<unsigned char*>(hash.data()));
+        return hash;
+    }
+};
+
+class BlockHashView: public View<btck_BlockHash>, public BlockHashApi<BlockHashView>
+{
+public:
+    explicit BlockHashView(const btck_BlockHash* ptr) : View{ptr} {}
+};
+
+class BlockHash : public Handle<btck_BlockHash, btck_block_hash_copy, btck_block_hash_destroy>, public BlockHashApi<BlockHash>
 {
 public:
     explicit BlockHash(const std::array<std::byte, 32>& hash)
@@ -666,22 +700,8 @@ public:
     explicit BlockHash(btck_BlockHash* hash)
         : Handle{hash} {}
 
-    bool operator==(const BlockHash& other) const
-    {
-        return btck_block_hash_equals(get(), other.get()) != 0;
-    }
-
-    bool operator!=(const BlockHash& other) const
-    {
-        return btck_block_hash_equals(get(), other.get()) == 0;
-    }
-
-    std::array<std::byte, 32> ToBytes() const
-    {
-        std::array<std::byte, 32> hash;
-        btck_block_hash_to_bytes(get(), reinterpret_cast<unsigned char*>(hash.data()));
-        return hash;
-    }
+    BlockHash(const BlockHashView& view)
+        : Handle{view} {}
 };
 
 class Block : public Handle<btck_Block, btck_block_copy, btck_block_destroy>
@@ -781,9 +801,9 @@ public:
         return btck_block_tree_entry_get_height(get());
     }
 
-    BlockHash GetHash() const
+    BlockHashView GetHash() const
     {
-        return BlockHash{btck_block_tree_entry_get_block_hash(get())};
+        return BlockHashView{btck_block_tree_entry_get_block_hash(get())};
     }
 
     friend class ChainMan;
@@ -902,7 +922,7 @@ public:
                 .user_data = heap_vi.release(),
                 .user_data_destroy = +[](void* user_data) { delete static_cast<user_type>(user_data); },
                 .block_checked = +[](void* user_data, btck_Block* block, const btck_BlockValidationState* state) { (*static_cast<user_type>(user_data))->BlockChecked(Block{block}, BlockValidationState{state}); },
-                .pow_valid_block = +[](void* user_data, const btck_BlockTreeEntry* entry, btck_Block* block) { (*static_cast<user_type>(user_data))->PowValidBlock(BlockTreeEntry{entry}, Block{block}); },
+                .pow_valid_block = +[](void* user_data, btck_Block* block, const btck_BlockTreeEntry* entry) { (*static_cast<user_type>(user_data))->PowValidBlock(BlockTreeEntry{entry}, Block{block}); },
                 .block_connected = +[](void* user_data, btck_Block* block, const btck_BlockTreeEntry* entry) { (*static_cast<user_type>(user_data))->BlockConnected(Block{block}, BlockTreeEntry{entry}); },
                 .block_disconnected = +[](void* user_data, btck_Block* block, const btck_BlockTreeEntry* entry) { (*static_cast<user_type>(user_data))->BlockDisconnected(Block{block}, BlockTreeEntry{entry}); },
             });

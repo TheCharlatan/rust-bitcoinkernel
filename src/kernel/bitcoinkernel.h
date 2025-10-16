@@ -266,7 +266,7 @@ typedef struct btck_TransactionInput btck_TransactionInput;
 /**
  * Opaque data structure for holding a transaction out point.
  *
- * Holds the transaction id and output index it is pointing to.
+ * Holds the txid and output index it is pointing to.
  */
 typedef struct btck_TransactionOutPoint btck_TransactionOutPoint;
 
@@ -311,7 +311,7 @@ typedef void (*btck_NotifyFatalError)(void* user_data, const char* message, size
  * Function signatures for the validation interface.
  */
 typedef void (*btck_ValidationInterfaceBlockChecked)(void* user_data, btck_Block* block, const btck_BlockValidationState* state);
-typedef void (*btck_ValidationInterfacePowValidBlock)(void* user_data, const btck_BlockTreeEntry* entry, btck_Block* block);
+typedef void (*btck_ValidationInterfacePoWValidBlock)(void* user_data, btck_Block* block, const btck_BlockTreeEntry* entry);
 typedef void (*btck_ValidationInterfaceBlockConnected)(void* user_data, btck_Block* block, const btck_BlockTreeEntry* entry);
 typedef void (*btck_ValidationInterfaceBlockDisconnected)(void* user_data, btck_Block* block, const btck_BlockTreeEntry* entry);
 
@@ -356,7 +356,7 @@ typedef struct {
     btck_DestroyCallback user_data_destroy;                       //!< Frees the provided user data structure.
     btck_ValidationInterfaceBlockChecked block_checked;           //!< Called when a new block has been fully validated. Contains the
                                                                   //!< result of its validation.
-    btck_ValidationInterfacePowValidBlock pow_valid_block;        //!< Called when a new block extends the header chain and has a valid transaction
+    btck_ValidationInterfacePoWValidBlock pow_valid_block;        //!< Called when a new block extends the header chain and has a valid transaction
                                                                   //!< and segwit merkle root.
     btck_ValidationInterfaceBlockConnected block_connected;       //!< Called when a block is valid and has now been connected to the best chain.
     btck_ValidationInterfaceBlockDisconnected block_disconnected; //!< Called during a re-org when a block has been removed from the best chain.
@@ -539,7 +539,8 @@ BITCOINKERNEL_API size_t BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_count
     const btck_Transaction* transaction) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
- * @brief Get the txid of a transaction.
+ * @brief Get the txid of a transaction. The returned txid is not owned and
+ * depends on the lifetime of the transaction.
  *
  * @param[in] transaction Non-null.
  * @return                The txid.
@@ -879,7 +880,7 @@ BITCOINKERNEL_API void btck_context_destroy(btck_Context* context);
 ///@{
 
 /**
- * @brief Returns the previous block tree entry in the chain, or null if the current
+ * @brief Returns the previous block tree entry in the tree, or null if the current
  * block tree entry is the genesis block.
  *
  * @param[in] block_tree_entry Non-null.
@@ -903,7 +904,7 @@ BITCOINKERNEL_API int32_t BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_tree_entry
  * @param[in] block_tree_entry Non-null.
  * @return                     The block hash.
  */
-BITCOINKERNEL_API btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_tree_entry_get_block_hash(
+BITCOINKERNEL_API const btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_tree_entry_get_block_hash(
     const btck_BlockTreeEntry* block_tree_entry) BITCOINKERNEL_ARG_NONNULL(1);
 
 ///@}
@@ -1387,7 +1388,7 @@ BITCOINKERNEL_API btck_TransactionOutPoint* BITCOINKERNEL_WARN_UNUSED_RESULT btc
     const btck_TransactionOutPoint* transaction_out_point) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
- * @brief Get the output position from the out point.
+ * @brief Get the output position from the transaction out point.
  *
  * @param[in] transaction_out_point Non-null.
  * @return                          The output index.
@@ -1396,7 +1397,8 @@ BITCOINKERNEL_API uint32_t btck_transaction_out_point_get_index(
     const btck_TransactionOutPoint* transaction_out_point) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
- * @brief Get the txid from the out point.
+ * @brief Get the txid from the transaction out point. The returned txid is
+ * not owned and depends on the lifetime of the transaction out point.
  *
  * @param[in] transaction_out_point Non-null.
  * @return                          The txid.
@@ -1468,7 +1470,8 @@ BITCOINKERNEL_API btck_Coin* BITCOINKERNEL_WARN_UNUSED_RESULT btck_coin_copy(
     const btck_Coin* coin) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
- * @brief Returns the height of the block that contains the coin's prevout.
+ * @brief Returns the block height where the transaction that
+ * created this coin was included in.
  *
  * @param[in] coin Non-null.
  * @return         The block height of the coin.
