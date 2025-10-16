@@ -6,7 +6,8 @@ use libbitcoinkernel_sys::{
 };
 
 use crate::{
-    ffi::{c_helpers, sealed::FromMutPtr},
+    core::block::BlockHashRef,
+    ffi::{c_helpers, sealed::FromPtr},
     BlockHash,
 };
 
@@ -217,7 +218,7 @@ pub(crate) unsafe extern "C" fn notification_block_tip_wrapper(
 
     if let Some(ref handler) = registry.block_tip_handler {
         let hash_ptr = btck_block_tree_entry_get_block_hash(entry);
-        let block_hash = BlockHash::from_ptr(hash_ptr);
+        let block_hash = BlockHashRef::from_ptr(hash_ptr).to_owned();
         handler.on_block_tip(state.into(), block_hash, verification_progress);
     }
 }

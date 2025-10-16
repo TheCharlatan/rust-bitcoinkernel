@@ -363,8 +363,8 @@ protected:
     {
         if (m_cbs.pow_valid_block) {
             m_cbs.pow_valid_block(m_cbs.user_data,
-                                  btck_BlockTreeEntry::ref(pindex),
-                                  btck_Block::ref(new std::shared_ptr<const CBlock>{block}));
+                                  btck_Block::ref(new std::shared_ptr<const CBlock>{block}),
+                                  btck_BlockTreeEntry::ref(pindex));
         }
     }
 
@@ -1095,12 +1095,9 @@ int32_t btck_block_tree_entry_get_height(const btck_BlockTreeEntry* entry)
     return btck_BlockTreeEntry::get(entry).nHeight;
 }
 
-btck_BlockHash* btck_block_tree_entry_get_block_hash(const btck_BlockTreeEntry* entry)
+const btck_BlockHash* btck_block_tree_entry_get_block_hash(const btck_BlockTreeEntry* entry)
 {
-    if (btck_BlockTreeEntry::get(entry).phashBlock == nullptr) {
-        return nullptr;
-    }
-    return btck_BlockHash::create(btck_BlockTreeEntry::get(entry).GetBlockHash());
+    return btck_BlockHash::ref(btck_BlockTreeEntry::get(entry).phashBlock);
 }
 
 btck_BlockHash* btck_block_hash_create(const unsigned char block_hash[32])
