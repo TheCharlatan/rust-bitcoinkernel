@@ -6,8 +6,9 @@ use libbitcoinkernel_sys::{
 };
 
 use crate::{
-    ffi::sealed::{AsPtr, FromMutPtr, FromPtr},
-    BlockHash, ChainstateManager,
+    core::block::BlockHashRef,
+    ffi::sealed::{AsPtr, FromPtr},
+    ChainstateManager,
 };
 
 /// A block tree entry that is tied to a specific [`ChainstateManager`].
@@ -44,9 +45,9 @@ impl<'a> BlockTreeEntry<'a> {
     }
 
     /// Returns the current block hash associated with this BlockTreeEntry.
-    pub fn block_hash(&self) -> BlockHash {
+    pub fn block_hash(&self) -> BlockHashRef<'_> {
         let hash_ptr = unsafe { btck_block_tree_entry_get_block_hash(self.inner) };
-        unsafe { BlockHash::from_ptr(hash_ptr) }
+        unsafe { BlockHashRef::from_ptr(hash_ptr) }
     }
 }
 

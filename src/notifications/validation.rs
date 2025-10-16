@@ -24,14 +24,14 @@ where
 
 /// Callback for when a new PoW valid block is found.
 pub trait NewPoWValidBlockCallback: Send + Sync {
-    fn on_new_pow_valid_block<'a>(&self, pindex: BlockTreeEntry<'a>, block: Block);
+    fn on_new_pow_valid_block<'a>(&self, block: Block, pindex: BlockTreeEntry<'a>);
 }
 
 impl<F> NewPoWValidBlockCallback for F
 where
     F: for<'a> Fn(BlockTreeEntry<'a>, Block) + Send + Sync + 'static,
 {
-    fn on_new_pow_valid_block<'a>(&self, pindex: BlockTreeEntry<'a>, block: Block) {
+    fn on_new_pow_valid_block<'a>(&self, block: Block, pindex: BlockTreeEntry<'a>) {
         self(pindex, block)
     }
 }
@@ -134,16 +134,16 @@ pub(crate) unsafe extern "C" fn validation_block_checked_wrapper(
 
 pub(crate) unsafe extern "C" fn validation_new_pow_valid_block_wrapper(
     user_data: *mut c_void,
-    pindex: *const btck_BlockTreeEntry,
     block: *mut btck_Block,
+    pindex: *const btck_BlockTreeEntry,
 ) {
     let block = Block::from_ptr(block);
     let registry = &*(user_data as *mut ValidationCallbackRegistry);
 
     if let Some(ref handler) = registry.new_pow_valid_block_handler {
         handler.on_new_pow_valid_block(
-            BlockTreeEntry::from_ptr(pindex as *mut btck_BlockTreeEntry),
             block,
+            BlockTreeEntry::from_ptr(pindex as *mut btck_BlockTreeEntry),
         );
     }
 }
@@ -280,7 +280,7 @@ mod tests {
         if let Some(ref handler) = registry.new_pow_valid_block_handler {
             let block = unsafe { Block::from_ptr(std::ptr::null_mut()) };
             let pindex = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
-            handler.on_new_pow_valid_block(pindex, block);
+            handler.on_new_pow_valid_block(block, pindex);
         }
 
         assert!(*called.lock().unwrap());

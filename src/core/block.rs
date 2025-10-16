@@ -24,6 +24,16 @@ use crate::{
 
 use super::transaction::{TransactionRef, TxOutRef};
 
+/// Common operations for block hashes, implemented by both owned and borrowed types.
+pub trait BlockHashExt: AsPtr<btck_BlockHash> {
+    /// Serializes the block hash to raw bytes.
+    fn to_bytes(&self) -> [u8; 32] {
+        let mut output = [0u8; 32];
+        unsafe { btck_block_hash_to_bytes(self.as_ptr(), output.as_mut_ptr()) };
+        output
+    }
+}
+
 /// A type for a Block hash.
 pub struct BlockHash {
     inner: *mut btck_BlockHash,
@@ -50,13 +60,6 @@ impl BlockHash {
             Ok(BlockHash { inner })
         }
     }
-
-    /// Serializes the block hash to raw bytes.
-    fn to_bytes(&self) -> [u8; 32] {
-        let mut output = [0u8; 32];
-        unsafe { btck_block_hash_to_bytes(self.inner, output.as_mut_ptr()) };
-        output
-    }
 }
 
 impl AsPtr<btck_BlockHash> for BlockHash {
@@ -70,6 +73,8 @@ impl FromMutPtr<btck_BlockHash> for BlockHash {
         BlockHash { inner: ptr }
     }
 }
+
+impl BlockHashExt for BlockHash {}
 
 impl Clone for BlockHash {
     fn clone(&self) -> Self {
@@ -124,6 +129,61 @@ impl std::fmt::Debug for BlockHash {
         write!(f, "BlockHash({:?})", self.to_bytes())
     }
 }
+
+pub struct BlockHashRef<'a> {
+    inner: *const btck_BlockHash,
+    marker: PhantomData<&'a ()>,
+}
+
+unsafe impl<'a> Send for BlockHashRef<'a> {}
+unsafe impl<'a> Sync for BlockHashRef<'a> {}
+
+impl<'a> BlockHashRef<'a> {
+    pub fn to_owned(&self) -> BlockHash {
+        BlockHash {
+            inner: unsafe { btck_block_hash_copy(self.inner) },
+        }
+    }
+}
+
+impl<'a> AsPtr<btck_BlockHash> for BlockHashRef<'a> {
+    fn as_ptr(&self) -> *const btck_BlockHash {
+        self.inner
+    }
+}
+
+impl<'a> FromPtr<btck_BlockHash> for BlockHashRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_BlockHash) -> Self {
+        BlockHashRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'a> BlockHashExt for BlockHashRef<'a> {}
+
+impl<'a> Clone for BlockHashRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a> PartialEq for BlockHashRef<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        present(unsafe { btck_block_hash_equals(self.inner, other.inner) })
+    }
+}
+
+impl<'a> std::fmt::Debug for BlockHashRef<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BlockHash({:?})", self.to_bytes())
+    }
+}
+
+impl<'a> Eq for BlockHashRef<'a> {}
+
+impl<'a> Copy for BlockHashRef<'a> {}
 
 /// A Bitcoin block containing a header and transactions.
 ///
@@ -184,6 +244,12 @@ impl Block {
         c_serialize(|callback, user_data| unsafe {
             btck_block_to_bytes(self.inner, Some(callback), user_data)
         })
+    }
+}
+
+impl BlockHash {
+    pub fn as_ref(&self) -> BlockHashRef<'_> {
+        unsafe { BlockHashRef::from_ptr(self.inner as *const _) }
     }
 }
 
@@ -610,6 +676,11 @@ mod tests {
     const VALID_HASH_BYTES2: [u8; 32] = [2u8; 32];
 
     test_owned_trait_requirements!(test_block_hash_requirements, BlockHash, btck_BlockHash);
+    test_ref_trait_requirements!(
+        test_block_hash_ref_requirements,
+        BlockHashRef<'static>,
+        btck_BlockHash
+    );
 
     test_owned_trait_requirements!(test_block_requirements, Block, btck_Block);
 
