@@ -105,6 +105,25 @@ mod tests {
         lines
     }
 
+    fn setup_chainman_with_blocks(context: &Arc<Context>, data_dir: &str) -> ChainstateManager {
+        let blocks_dir = data_dir.to_string() + "/blocks";
+        let block_data = read_block_data();
+
+        let chainman = ChainstateManager::new(
+            ChainstateManagerOptions::new(context, data_dir, &blocks_dir).unwrap(),
+        )
+        .unwrap();
+
+        for raw_block in block_data.iter() {
+            let block = Block::new(raw_block.as_slice()).unwrap();
+            let (accepted, new_block) = chainman.process_block(&block);
+            assert!(accepted);
+            assert!(new_block);
+        }
+
+        chainman
+    }
+
     #[test]
     fn test_reindex() {
         let (context, data_dir) = testing_setup();
@@ -183,19 +202,7 @@ mod tests {
         }
 
         let (context, data_dir) = testing_setup();
-        let blocks_dir = data_dir.clone() + "/blocks";
-        let block_data = read_block_data();
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
-
-        for raw_block in block_data.iter() {
-            let block = Block::try_from(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
-        }
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
 
         let active_chain = chainman.active_chain();
 
@@ -408,20 +415,8 @@ mod tests {
     #[test]
     fn test_chain_operations() {
         let (context, data_dir) = testing_setup();
-        let blocks_dir = data_dir.clone() + "/blocks";
-        let block_data = read_block_data();
 
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
-
-        for raw_block in block_data.iter() {
-            let block = Block::new(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
-        }
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
 
         let chain = chainman.active_chain();
 
@@ -462,6 +457,147 @@ mod tests {
 
         assert_eq!(last_height, tip_height as usize);
         assert_eq!(last_block_index.unwrap().block_hash(), tip_hash);
+    }
+
+    #[test]
+    fn test_block_transactions_iterator() {
+        let block_data = read_block_data();
+
+        let block = Block::try_from(block_data[5].as_slice()).unwrap();
+
+        let tx_count_via_iterator = block.transactions().count();
+        assert_eq!(tx_count_via_iterator, block.transaction_count());
+
+        let txs: Vec<_> = block.transactions().collect();
+        assert_eq!(txs.len(), block.transaction_count());
+
+        for (i, tx) in block.transactions().enumerate() {
+            let tx_via_index = block.transaction(i).unwrap();
+            assert_eq!(tx.input_count(), tx_via_index.input_count());
+            assert_eq!(tx.output_count(), tx_via_index.output_count());
+        }
+
+        let mut iter = block.transactions();
+        let initial_len = iter.len();
+        assert_eq!(initial_len, block.transaction_count());
+
+        iter.next();
+        assert_eq!(iter.len(), initial_len - 1);
+
+        let non_coinbase_txs: Vec<_> = block.transactions().skip(1).collect();
+        assert_eq!(non_coinbase_txs.len(), block.transaction_count() - 1);
+    }
+
+    #[test]
+    fn test_block_spent_outputs_iterator() {
+        let (context, data_dir) = testing_setup();
+
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+
+        let active_chain = chainman.active_chain();
+        let block_index_tip = active_chain.tip();
+        let spent_outputs = chainman.read_spent_outputs(&block_index_tip).unwrap();
+
+        let count_via_iterator = spent_outputs.iter().count();
+        assert_eq!(count_via_iterator, spent_outputs.count());
+
+        let tx_spent_vec: Vec<_> = spent_outputs.iter().collect();
+        assert_eq!(tx_spent_vec.len(), spent_outputs.count());
+
+        for (i, tx_spent) in spent_outputs.iter().enumerate() {
+            let tx_spent_via_index = spent_outputs.transaction_spent_outputs(i).unwrap();
+            assert_eq!(tx_spent.count(), tx_spent_via_index.count());
+        }
+
+        let mut iter = spent_outputs.iter();
+        let initial_len = iter.len();
+        assert_eq!(initial_len, spent_outputs.count());
+
+        if initial_len > 0 {
+            iter.next();
+            assert_eq!(iter.len(), initial_len - 1);
+        }
+    }
+
+    #[test]
+    fn test_transaction_spent_outputs_iterator() {
+        let (context, data_dir) = testing_setup();
+
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+
+        let active_chain = chainman.active_chain();
+        let block_index_tip = active_chain.tip();
+        let spent_outputs = chainman.read_spent_outputs(&block_index_tip).unwrap();
+
+        let tx_spent = spent_outputs.transaction_spent_outputs(0).unwrap();
+
+        let count_via_iterator = tx_spent.coins().count();
+        assert_eq!(count_via_iterator, tx_spent.count());
+
+        let coins: Vec<_> = tx_spent.coins().collect();
+        assert_eq!(coins.len(), tx_spent.count());
+
+        for (i, coin) in tx_spent.coins().enumerate() {
+            let coin_via_index = tx_spent.coin(i).unwrap();
+            assert_eq!(
+                coin.confirmation_height(),
+                coin_via_index.confirmation_height()
+            );
+            assert_eq!(coin.is_coinbase(), coin_via_index.is_coinbase());
+        }
+
+        let mut iter = tx_spent.coins();
+        let initial_len = iter.len();
+        assert_eq!(initial_len, tx_spent.count());
+
+        if initial_len > 0 {
+            iter.next();
+            assert_eq!(iter.len(), initial_len - 1);
+        }
+
+        let coinbase_coins: Vec<_> = tx_spent.coins().filter(|coin| coin.is_coinbase()).collect();
+
+        for coin in coinbase_coins {
+            assert!(coin.is_coinbase());
+        }
+    }
+
+    #[test]
+    fn test_nested_iteration() {
+        let (context, data_dir) = testing_setup();
+
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+
+        let active_chain = chainman.active_chain();
+        let block_index = active_chain.at_height(1).unwrap();
+        let spent_outputs = chainman.read_spent_outputs(&block_index).unwrap();
+
+        let mut total_coins = 0;
+        for tx_spent in spent_outputs.iter() {
+            for _ in tx_spent.coins() {
+                total_coins += 1;
+            }
+        }
+
+        let expected_total: usize = spent_outputs.iter().map(|tx_spent| tx_spent.count()).sum();
+
+        assert_eq!(total_coins, expected_total);
+    }
+
+    #[test]
+    fn test_iterator_with_block_transactions() {
+        let (context, data_dir) = testing_setup();
+
+        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+
+        let active_chain = chainman.active_chain();
+        let block_index = active_chain.at_height(1).unwrap();
+        let block = chainman.read_block_data(&block_index).unwrap();
+        let spent_outputs = chainman.read_spent_outputs(&block_index).unwrap();
+
+        for (tx, tx_spent) in block.transactions().skip(1).zip(spent_outputs.iter()) {
+            assert_eq!(tx.input_count(), tx_spent.count());
+        }
     }
 
     fn verify_test(
