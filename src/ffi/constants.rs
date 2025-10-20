@@ -49,8 +49,8 @@ pub const BTCK_LOG_LEVEL_INFO: btck_LogLevel = 2;
 
 // Script Verify Status
 pub const BTCK_SCRIPT_VERIFY_STATUS_OK: btck_ScriptVerifyStatus = 0;
-pub const BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION: btck_ScriptVerifyStatus = 2;
-pub const BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED: btck_ScriptVerifyStatus = 3;
+pub const BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION: btck_ScriptVerifyStatus = 1;
+pub const BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED: btck_ScriptVerifyStatus = 2;
 
 // Script Verification Flags
 pub const BTCK_SCRIPT_VERIFICATION_FLAGS_NONE: btck_ScriptVerificationFlags = 0;
