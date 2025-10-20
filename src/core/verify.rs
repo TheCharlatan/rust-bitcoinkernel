@@ -86,7 +86,6 @@ pub fn verify(
         VERIFY_ALL
     };
 
-    let status = ScriptVerifyStatus::Ok;
     let kernel_amount = amount.unwrap_or_default();
     let kernel_spent_outputs: Vec<*const btck_TransactionOutput> =
         spent_outputs.iter().map(|utxo| utxo.as_ptr()).collect();
@@ -97,6 +96,8 @@ pub fn verify(
         kernel_spent_outputs.as_ptr() as *mut *const btck_TransactionOutput
     };
 
+    let mut status = ScriptVerifyStatus::Ok.into();
+
     let ret = unsafe {
         btck_script_pubkey_verify(
             script_pubkey.as_ptr(),
@@ -106,7 +107,7 @@ pub fn verify(
             spent_outputs.len(),
             input_index as u32,
             kernel_flags,
-            &mut status.into(),
+            &mut status,
         )
     };
 
