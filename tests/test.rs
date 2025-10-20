@@ -6,7 +6,8 @@ mod tests {
         prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
         ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder,
         KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction,
-        TransactionSpentOutputs, TxOut, TxOutRef, VERIFY_ALL_PRE_TAPROOT,
+        TransactionSpentOutputs, TxOut, TxOutRef, VERIFY_ALL_PRE_TAPROOT, VERIFY_TAPROOT,
+        VERIFY_WITNESS,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -409,6 +410,38 @@ mod tests {
         assert!(matches!(
             result,
             Err(KernelError::ScriptVerify(ScriptVerifyError::InvalidFlags))
+        ));
+
+        // Test Invalid flags combination
+        let result = verify(
+            &script_pubkey,
+            Some(0),
+            &tx,
+            0,
+            Some(VERIFY_WITNESS),
+            std::slice::from_ref(&dummy_output),
+        );
+        assert!(matches!(
+            result,
+            Err(KernelError::ScriptVerify(
+                ScriptVerifyError::InvalidFlagsCombination
+            ))
+        ));
+
+        // Test Spent outputs required
+        let result = verify(
+            &script_pubkey,
+            Some(0),
+            &tx,
+            0,
+            Some(VERIFY_TAPROOT),
+            &Vec::<TxOut>::new(),
+        );
+        assert!(matches!(
+            result,
+            Err(KernelError::ScriptVerify(
+                ScriptVerifyError::SpentOutputsRequired
+            ))
         ));
     }
 
