@@ -629,6 +629,8 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
         return 0;
     }
 
+    if (status) *status = btck_ScriptVerifyStatus_OK;
+
     const CTransaction& tx{*btck_Transaction::get(tx_to)};
     std::vector<CTxOut> spent_outputs;
     if (spent_outputs_ != nullptr) {

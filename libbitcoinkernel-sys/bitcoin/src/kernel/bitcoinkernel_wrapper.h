@@ -21,9 +21,6 @@
 
 namespace btck {
 
-class Transaction;
-class TransactionOutput;
-
 enum class LogCategory : btck_LogCategory {
     ALL = btck_LogCategory_ALL,
     BENCH = btck_LogCategory_BENCH,
@@ -82,7 +79,7 @@ enum class BlockValidationResult : btck_BlockValidationResult {
 };
 
 enum class ScriptVerifyStatus : btck_ScriptVerifyStatus {
-    OK = btck_ScriptVerifyStatus_SCRIPT_VERIFY_OK,
+    OK = btck_ScriptVerifyStatus_OK,
     ERROR_INVALID_FLAGS_COMBINATION = btck_ScriptVerifyStatus_ERROR_INVALID_FLAGS_COMBINATION,
     ERROR_SPENT_OUTPUTS_REQUIRED = btck_ScriptVerifyStatus_ERROR_SPENT_OUTPUTS_REQUIRED,
 };
@@ -258,6 +255,12 @@ public:
     value_type front() const { return (*this)[0]; }
     value_type back() const { return (*this)[size() - 1]; }
 };
+
+#define MAKE_RANGE_METHOD(method_name, ContainerType, SizeFunc, GetFunc, container_expr) \
+    auto method_name() const & { \
+        return Range<ContainerType, SizeFunc, GetFunc>{container_expr}; \
+    } \
+    auto method_name() const && = delete;
 
 template <typename T>
 std::vector<std::byte> write_bytes(const T* object, int (*to_bytes)(const T*, btck_WriteBytes, void*))
@@ -596,15 +599,9 @@ public:
         return TxidView{btck_transaction_get_txid(impl())};
     }
 
-    auto Outputs() const
-    {
-        return Range<Derived, &TransactionApi<Derived>::CountOutputs, &TransactionApi<Derived>::GetOutput>{*static_cast<const Derived*>(this)};
-    }
+    MAKE_RANGE_METHOD(Outputs, Derived, &TransactionApi<Derived>::CountOutputs, &TransactionApi<Derived>::GetOutput, *static_cast<const Derived*>(this))
 
-    auto Inputs() const
-    {
-        return Range<Derived, &TransactionApi<Derived>::CountInputs, &TransactionApi<Derived>::GetInput>{*static_cast<const Derived*>(this)};
-    }
+    MAKE_RANGE_METHOD(Inputs, Derived, &TransactionApi<Derived>::CountInputs, &TransactionApi<Derived>::GetInput, *static_cast<const Derived*>(this))
 
     std::vector<std::byte> ToBytes() const
     {
@@ -724,10 +721,7 @@ public:
         return TransactionView{btck_block_get_transaction_at(get(), index)};
     }
 
-    auto Transactions() const
-    {
-        return Range<Block, &Block::CountTransactions, &Block::GetTransaction>{*this};
-    }
+    MAKE_RANGE_METHOD(Transactions, Block, &Block::CountTransactions, &Block::GetTransaction, *this)
 
     BlockHash GetHash() const
     {
@@ -994,6 +988,11 @@ public:
         return btck_chain_get_height(get());
     }
 
+    int CountEntries() const
+    {
+        return btck_chain_get_height(get()) + 1;
+    }
+
     BlockTreeEntry Genesis() const
     {
         return btck_chain_get_genesis(get());
@@ -1011,10 +1010,7 @@ public:
         return btck_chain_contains(get(), entry.get());
     }
 
-    auto Entries() const
-    {
-        return Range<ChainView, &ChainView::Height, &ChainView::GetByHeight>{*this};
-    }
+    MAKE_RANGE_METHOD(Entries, ChainView, &ChainView::CountEntries, &ChainView::GetByHeight, *this)
 };
 
 template <typename Derived>
@@ -1077,10 +1073,7 @@ public:
         return CoinView{btck_transaction_spent_outputs_get_coin_at(impl(), index)};
     }
 
-    auto Coins() const
-    {
-        return Range<Derived, &TransactionSpentOutputsApi<Derived>::Count, &TransactionSpentOutputsApi<Derived>::GetCoin>{*static_cast<const Derived*>(this)};
-    }
+    MAKE_RANGE_METHOD(Coins, Derived, &TransactionSpentOutputsApi<Derived>::Count, &TransactionSpentOutputsApi<Derived>::GetCoin, *static_cast<const Derived*>(this))
 };
 
 class TransactionSpentOutputsView : public View<btck_TransactionSpentOutputs>, public TransactionSpentOutputsApi<TransactionSpentOutputsView>
@@ -1116,10 +1109,7 @@ public:
         return TransactionSpentOutputsView{btck_block_spent_outputs_get_transaction_spent_outputs_at(get(), tx_undo_index)};
     }
 
-    auto TxsSpentOutputs() const
-    {
-        return Range<BlockSpentOutputs, &BlockSpentOutputs::Count, &BlockSpentOutputs::GetTxSpentOutputs>{*this};
-    }
+    MAKE_RANGE_METHOD(TxsSpentOutputs, BlockSpentOutputs, &BlockSpentOutputs::Count, &BlockSpentOutputs::GetTxSpentOutputs, *this)
 };
 
 class ChainMan : UniqueHandle<btck_ChainstateManager, btck_chainstate_manager_destroy>
