@@ -86,6 +86,16 @@ pub trait TransactionExt: AsPtr<btck_Transaction> {
             btck_transaction_to_bytes(self.as_ptr(), Some(callback), user_data)
         })
     }
+
+    /// Returns an iterator over all inputs in this transaction.
+    fn inputs(&self) -> TxInIter<'_> {
+        TxInIter::new(unsafe { TransactionRef::from_ptr(self.as_ptr()) })
+    }
+
+    /// Returns an iterator over all outputs in this transaction.
+    fn outputs(&self) -> TxOutIter<'_> {
+        TxOutIter::new(unsafe { TransactionRef::from_ptr(self.as_ptr()) })
+    }
 }
 
 /// A Bitcoin transaction.
@@ -210,6 +220,109 @@ impl<'a> Clone for TransactionRef<'a> {
 }
 
 impl<'a> Copy for TransactionRef<'a> {}
+
+pub struct TxInIter<'a> {
+    transaction: TransactionRef<'a>,
+    current_index: usize,
+}
+
+impl<'a> TxInIter<'a> {
+    fn new(transaction: TransactionRef<'a>) -> Self {
+        Self {
+            transaction,
+            current_index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for TxInIter<'a> {
+    type Item = TxInRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_index >= self.transaction.input_count() {
+            return None;
+        }
+
+        let index = self.current_index;
+        self.current_index += 1;
+
+        let tx_in_ptr = unsafe { btck_transaction_get_input_at(self.transaction.as_ptr(), index) };
+
+        if tx_in_ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { TxInRef::from_ptr(tx_in_ptr) })
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self
+            .transaction
+            .input_count()
+            .saturating_sub(self.current_index);
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for TxInIter<'a> {
+    fn len(&self) -> usize {
+        self.transaction
+            .input_count()
+            .saturating_sub(self.current_index)
+    }
+}
+
+pub struct TxOutIter<'a> {
+    transaction: TransactionRef<'a>,
+    current_index: usize,
+}
+
+impl<'a> TxOutIter<'a> {
+    fn new(transaction: TransactionRef<'a>) -> Self {
+        Self {
+            transaction,
+            current_index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for TxOutIter<'a> {
+    type Item = TxOutRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_index >= self.transaction.output_count() {
+            return None;
+        }
+
+        let index = self.current_index;
+        self.current_index += 1;
+
+        let tx_out_ptr =
+            unsafe { btck_transaction_get_output_at(self.transaction.as_ptr(), index) };
+
+        if tx_out_ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { TxOutRef::from_ptr(tx_out_ptr) })
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self
+            .transaction
+            .input_count()
+            .saturating_sub(self.current_index);
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for TxOutIter<'a> {
+    fn len(&self) -> usize {
+        self.transaction
+            .output_count()
+            .saturating_sub(self.current_index)
+    }
+}
 
 /// Common operations for transaction outputs, implemented by both owned and borrowed types.
 pub trait TxOutExt: AsPtr<btck_TransactionOutput> {
@@ -1180,5 +1293,33 @@ mod tests {
         let bytes_from_ref = get_bytes(&txid_ref);
 
         assert_eq!(bytes_from_owned, bytes_from_ref);
+    }
+
+    #[test]
+    fn test_transaction_inputs_iterator() {
+        let (tx, _) = get_test_transactions();
+        let count = tx.input_count();
+
+        let mut iter_count = 0;
+        for input in tx.inputs() {
+            let _ = input.outpoint();
+            iter_count += 1;
+        }
+
+        assert_eq!(iter_count, count);
+    }
+
+    #[test]
+    fn test_transaction_outputs_iterator() {
+        let (tx, _) = get_test_transactions();
+        let count = tx.output_count();
+
+        let mut iter_count = 0;
+        for output in tx.outputs() {
+            let _ = output.value();
+            iter_count += 1;
+        }
+
+        assert_eq!(iter_count, count);
     }
 }
