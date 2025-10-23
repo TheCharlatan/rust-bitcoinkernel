@@ -4,6 +4,7 @@ use libbitcoinkernel_sys::{
     btck_LogCategory, btck_LogLevel, btck_LoggingConnection, btck_LoggingOptions,
     btck_logging_connection_create, btck_logging_connection_destroy, btck_logging_disable,
     btck_logging_disable_category, btck_logging_enable_category, btck_logging_set_level_category,
+    btck_logging_set_options,
 };
 
 use crate::{
@@ -64,17 +65,57 @@ pub fn disable_logging() {
     }
 }
 
+/// Set global logging options.
+///
+/// This changes global settings and will override settings for all existing
+/// Logger instances.
+pub fn set_logging_options(options: LoggingOptions) {
+    let c_options = btck_LoggingOptions {
+        log_timestamps: c_helpers::to_c_bool(options.log_timestamps),
+        log_time_micros: c_helpers::to_c_bool(options.log_time_micros),
+        log_threadnames: c_helpers::to_c_bool(options.log_threadnames),
+        log_sourcelocations: c_helpers::to_c_bool(options.log_sourcelocations),
+        always_print_category_levels: c_helpers::to_c_bool(options.always_print_category_levels),
+    };
+
+    unsafe {
+        btck_logging_set_options(c_options);
+    }
+}
+
+/// Options controlling the format of log messages.
+#[derive(Debug, Clone, Copy)]
+pub struct LoggingOptions {
+    /// Prepend a timestamp to log messages.
+    pub log_timestamps: bool,
+    /// Log timestamps in microsecond precision.
+    pub log_time_micros: bool,
+    /// Prepend the name of the thread to log messages.
+    pub log_threadnames: bool,
+    /// Prepend the source location to log messages.
+    pub log_sourcelocations: bool,
+    /// Always print category and log level.
+    pub always_print_category_levels: bool,
+}
+
+impl Default for LoggingOptions {
+    fn default() -> Self {
+        Self {
+            log_timestamps: true,
+            log_time_micros: false,
+            log_threadnames: false,
+            log_sourcelocations: false,
+            always_print_category_levels: false,
+        }
+    }
+}
+
 impl Logger {
     /// Create a new Logger with the specified callback.
+    ///
+    /// Note: Logging options should be set using the global `set_logging_options`
+    /// function before or after creating the Logger.
     pub fn new<T: Log + 'static>(log: T) -> Result<Logger, KernelError> {
-        let options = btck_LoggingOptions {
-            log_timestamps: c_helpers::to_c_bool(true),
-            log_time_micros: c_helpers::to_c_bool(false),
-            log_threadnames: c_helpers::to_c_bool(false),
-            log_sourcelocations: c_helpers::to_c_bool(false),
-            always_print_category_levels: c_helpers::to_c_bool(false),
-        };
-
         let log_ptr = Box::into_raw(Box::new(log));
 
         let inner = unsafe {
@@ -82,7 +123,6 @@ impl Logger {
                 Some(log_callback::<T>),
                 log_ptr as *mut c_void,
                 Some(destroy_log_callback::<T>),
-                options,
             )
         };
 
@@ -98,7 +138,22 @@ impl Logger {
         Ok(Logger { inner })
     }
 
+    /// Create a new Logger with the specified callback and options.
+    ///
+    /// This is a convenience method that sets the global logging options
+    /// and then creates the Logger.
+    pub fn new_with_options<T: Log + 'static>(
+        log: T,
+        options: LoggingOptions,
+    ) -> Result<Logger, KernelError> {
+        set_logging_options(options);
+        Self::new(log)
+    }
+
     /// Sets the logging level for a specific category.
+    ///
+    /// This changes a global setting and will override settings for all existing
+    /// Logger instances.
     pub fn set_level_category(&self, category: LogCategory, level: LogLevel) {
         unsafe {
             btck_logging_set_level_category(category.into(), level.into());
@@ -106,6 +161,9 @@ impl Logger {
     }
 
     /// Enables logging for a specific category.
+    ///
+    /// This changes a global setting and will override settings for all existing
+    /// Logger instances.
     pub fn enable_category(&self, category: LogCategory) {
         unsafe {
             btck_logging_enable_category(category.into());
@@ -113,6 +171,9 @@ impl Logger {
     }
 
     /// Disables logging for a specific category.
+    ///
+    /// This changes a global setting and will override settings for all existing
+    /// Logger instances.
     pub fn disable_category(&self, category: LogCategory) {
         unsafe {
             btck_logging_disable_category(category.into());
@@ -318,6 +379,16 @@ mod tests {
         assert_eq!(info, cloned);
     }
 
+    #[test]
+    fn test_logging_options_default() {
+        let options = LoggingOptions::default();
+        assert!(options.log_timestamps);
+        assert!(!options.log_time_micros);
+        assert!(!options.log_threadnames);
+        assert!(!options.log_sourcelocations);
+        assert!(!options.always_print_category_levels);
+    }
+
     // Logger tests
     struct TestLog {
         messages: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -337,6 +408,25 @@ mod tests {
         };
 
         let _logger = Logger::new(test_log);
+        assert!(_logger.is_ok());
+    }
+
+    #[test]
+    fn test_logger_creation_with_options() {
+        let messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_log = TestLog {
+            messages: messages.clone(),
+        };
+
+        let options = LoggingOptions {
+            log_timestamps: true,
+            log_time_micros: true,
+            log_threadnames: true,
+            log_sourcelocations: false,
+            always_print_category_levels: true,
+        };
+
+        let _logger = Logger::new_with_options(test_log, options);
         assert!(_logger.is_ok());
     }
 
@@ -419,5 +509,18 @@ mod tests {
         for level in levels {
             logger.set_level_category(LogCategory::Validation, level);
         }
+    }
+
+    #[test]
+    fn test_global_set_logging_options() {
+        let options = LoggingOptions {
+            log_timestamps: false,
+            log_time_micros: true,
+            log_threadnames: true,
+            log_sourcelocations: true,
+            always_print_category_levels: false,
+        };
+
+        set_logging_options(options);
     }
 }
