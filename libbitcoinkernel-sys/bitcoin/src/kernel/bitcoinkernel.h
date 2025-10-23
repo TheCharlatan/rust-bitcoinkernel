@@ -483,7 +483,7 @@ BITCOINKERNEL_API btck_Transaction* BITCOINKERNEL_WARN_UNUSED_RESULT btck_transa
 
 /*
  * @brief Serializes the transaction through the passed in callback to bytes.
- * This is consensus serialization that is also used for the p2p network.
+ * This is consensus serialization that is also used for the P2P network.
  *
  * @param[in] transaction Non-null.
  * @param[in] writer      Non-null, callback to a write bytes function.
@@ -689,9 +689,19 @@ BITCOINKERNEL_API void btck_transaction_output_destroy(btck_TransactionOutput* t
  * buffered internally anymore once this is called and the buffer is cleared.
  * This function should only be called once and is not thread or re-entry safe.
  * Log messages will be buffered until this function is called, or a logging
- * connection is created.
+ * connection is created. This must not be called while a logging connection
+ * already exists.
  */
 BITCOINKERNEL_API void btck_logging_disable();
+
+/**
+ * @brief Set some options for the global internal logger. This changes global
+ * settings and will override settings for all existing @ref
+ * btck_LoggingConnection instances.
+ *
+ * @param[in] options Sets formatting options of the log messages.
+ */
+BITCOINKERNEL_API void btck_logging_set_options(const btck_LoggingOptions options);
 
 /**
  * @brief Set the log level of the global internal logger. This does not
@@ -700,9 +710,12 @@ BITCOINKERNEL_API void btck_logging_disable();
  * setting and will override settings for all existing
  * @ref btck_LoggingConnection instances.
  *
- * @param[in] category If btck_LOG_ALL is chosen, all messages at the specified level
- *                     will be logged. Otherwise only messages from the specified category
- *                     will be logged at the specified level and above.
+ * @param[in] category If btck_LogCategory_ALL is chosen, sets both the global fallback log level
+ *                     used by all categories that don't have a specific level set, and also
+ *                     sets the log level for messages logged with the btck_LogCategory_ALL category itself.
+ *                     For any other category, sets a category-specific log level that overrides
+ *                     the global fallback for that category only.
+
  * @param[in] level    Log level at which the log category is set.
  */
 BITCOINKERNEL_API void btck_logging_set_level_category(btck_LogCategory category, btck_LogLevel level);
@@ -736,14 +749,12 @@ BITCOINKERNEL_API void btck_logging_disable_category(btck_LogCategory category);
  *                                       is also defined it is assumed that ownership of the user_data is passed
  *                                       to the created logging connection.
  * @param[in] user_data_destroy_callback Nullable, function for freeing the user data.
- * @param[in] options                    Sets formatting options of the log messages.
- * @return                               A new kernel logging connection, or null on error.
+ * @return                               A new kernel logging connection.
  */
 BITCOINKERNEL_API btck_LoggingConnection* BITCOINKERNEL_WARN_UNUSED_RESULT btck_logging_connection_create(
     btck_LogCallback log_callback,
     void* user_data,
-    btck_DestroyCallback user_data_destroy_callback,
-    const btck_LoggingOptions options) BITCOINKERNEL_ARG_NONNULL(1);
+    btck_DestroyCallback user_data_destroy_callback) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * Stop logging and destroy the logging connection.
@@ -1141,7 +1152,7 @@ BITCOINKERNEL_API btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_ge
 
 /*
  * @brief Serializes the block through the passed in callback to bytes.
- * This is consensus serialization that is also used for the p2p network.
+ * This is consensus serialization that is also used for the P2P network.
  *
  * @param[in] block     Non-null.
  * @param[in] writer    Non-null, callback to a write bytes function.
