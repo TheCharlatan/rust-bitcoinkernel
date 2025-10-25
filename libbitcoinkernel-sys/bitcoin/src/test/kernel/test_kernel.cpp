@@ -537,6 +537,7 @@ BOOST_AUTO_TEST_CASE(logging_tests)
         .always_print_category_levels = true,
     };
 
+    logging_set_options(logging_options);
     logging_set_level_category(LogCategory::BENCH, LogLevel::TRACE_LEVEL);
     logging_disable_category(LogCategory::BENCH);
     logging_enable_category(LogCategory::VALIDATION);
@@ -546,10 +547,10 @@ BOOST_AUTO_TEST_CASE(logging_tests)
     {
         logging_set_level_category(LogCategory::KERNEL, LogLevel::TRACE_LEVEL);
         logging_enable_category(LogCategory::KERNEL);
-        Logger logger{std::make_unique<TestLog>(TestLog{}), logging_options};
-        Logger logger_2{std::make_unique<TestLog>(TestLog{}), logging_options};
+        Logger logger{std::make_unique<TestLog>()};
+        Logger logger_2{std::make_unique<TestLog>()};
     }
-    Logger logger{std::make_unique<TestLog>(TestLog{}), logging_options};
+    Logger logger{std::make_unique<TestLog>()};
 }
 
 BOOST_AUTO_TEST_CASE(btck_context_tests)
@@ -600,14 +601,7 @@ Context create_context(std::shared_ptr<TestKernelNotifications> notifications, C
 
 BOOST_AUTO_TEST_CASE(btck_chainman_tests)
 {
-    btck_LoggingOptions logging_options = {
-        .log_timestamps = true,
-        .log_time_micros = true,
-        .log_threadnames = false,
-        .log_sourcelocations = false,
-        .always_print_category_levels = true,
-    };
-    Logger logger{std::make_unique<TestLog>(TestLog{}), logging_options};
+    Logger logger{std::make_unique<TestLog>(TestLog{})};
     auto test_directory{TestDirectory{"chainman_test_bitcoin_kernel"}};
 
     { // test with default context
@@ -665,15 +659,6 @@ std::unique_ptr<ChainMan> create_chainman(TestDirectory& test_directory,
 
 void chainman_reindex_test(TestDirectory& test_directory)
 {
-    btck_LoggingOptions logging_options = {
-        .log_timestamps = true,
-        .log_time_micros = true,
-        .log_threadnames = false,
-        .log_sourcelocations = false,
-        .always_print_category_levels = true,
-    };
-    Logger logger{std::make_unique<TestLog>(TestLog{}), logging_options};
-
     auto mainnet_test_directory{TestDirectory{"mainnet_test_bitcoin_kernel"}};
 
     auto notifications{std::make_shared<TestKernelNotifications>()};
@@ -797,15 +782,6 @@ void chainman_mainnet_validation_test(TestDirectory& test_directory)
 
 BOOST_AUTO_TEST_CASE(btck_chainman_mainnet_tests)
 {
-    btck_LoggingOptions logging_options = {
-        .log_timestamps = true,
-        .log_time_micros = true,
-        .log_threadnames = false,
-        .log_sourcelocations = false,
-        .always_print_category_levels = true,
-    };
-    Logger logger{std::make_unique<TestLog>(TestLog{}), logging_options};
-
     auto test_directory{TestDirectory{"mainnet_test_bitcoin_kernel"}};
     chainman_mainnet_validation_test(test_directory);
     chainman_reindex_test(test_directory);

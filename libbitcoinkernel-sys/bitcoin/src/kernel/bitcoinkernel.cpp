@@ -230,30 +230,20 @@ struct LoggingConnection {
     void* m_user_data;
     std::function<void(void* user_data)> m_deleter;
 
-    LoggingConnection(btck_LogCallback callback, void* user_data, btck_DestroyCallback user_data_destroy_callback, const btck_LoggingOptions options)
+    LoggingConnection(btck_LogCallback callback, void* user_data, btck_DestroyCallback user_data_destroy_callback)
     {
         LOCK(cs_main);
 
-        LogInstance().m_log_timestamps = options.log_timestamps;
-        LogInstance().m_log_time_micros = options.log_time_micros;
-        LogInstance().m_log_threadnames = options.log_threadnames;
-        LogInstance().m_log_sourcelocations = options.log_sourcelocations;
-        LogInstance().m_always_print_category_level = options.always_print_category_levels;
-
         auto connection{LogInstance().PushBackCallback([callback, user_data](const std::string& str) { callback(user_data, str.c_str(), str.length()); })};
 
-        try {
-            // Only start logging if we just added the connection.
-            if (LogInstance().NumConnections() == 1 && !LogInstance().StartLogging()) {
-                LogError("Logger start failed.");
-                LogInstance().DeleteCallback(connection);
+        // Only start logging if we just added the connection.
+        if (LogInstance().NumConnections() == 1 && !LogInstance().StartLogging()) {
+            LogError("Logger start failed.");
+            LogInstance().DeleteCallback(connection);
+            if (user_data && user_data_destroy_callback) {
                 user_data_destroy_callback(user_data);
             }
-        } catch (std::exception& e) {
-            LogError("Logger start failed: %s", e.what());
-            LogInstance().DeleteCallback(connection);
-            user_data_destroy_callback(user_data);
-            throw;
+            throw std::runtime_error("Failed to start logging");
         }
 
         m_connection = std::make_unique<std::list<std::function<void(const std::string&)>>::iterator>(connection);
@@ -266,18 +256,19 @@ struct LoggingConnection {
     ~LoggingConnection()
     {
         LOCK(cs_main);
+        LogDebug(BCLog::KERNEL, "Logger disconnecting.");
 
-        LogDebug(BCLog::KERNEL, "Logger disconnected.");
-        LogInstance().DeleteCallback(*m_connection);
+        // Switch back to buffering by calling DisconnectTestLogger if the
+        // connection that we are about to remove is the last one.
+        if (LogInstance().NumConnections() == 1) {
+            LogInstance().DisconnectTestLogger();
+        } else {
+            LogInstance().DeleteCallback(*m_connection);
+        }
+
         m_connection.reset();
         if (m_user_data && m_deleter) {
             m_deleter(m_user_data);
-        }
-
-        // Switch back to buffering by calling DisconnectTestLogger if the
-        // connection that was just removed was the last one.
-        if (!LogInstance().Enabled()) {
-            LogInstance().DisconnectTestLogger();
         }
     }
 };
@@ -713,6 +704,16 @@ void btck_txid_destroy(btck_Txid* txid)
     delete txid;
 }
 
+void btck_logging_set_options(const btck_LoggingOptions options)
+{
+    LOCK(cs_main);
+    LogInstance().m_log_timestamps = options.log_timestamps;
+    LogInstance().m_log_time_micros = options.log_time_micros;
+    LogInstance().m_log_threadnames = options.log_threadnames;
+    LogInstance().m_log_sourcelocations = options.log_sourcelocations;
+    LogInstance().m_always_print_category_level = options.always_print_category_levels;
+}
+
 void btck_logging_set_level_category(btck_LogCategory category, btck_LogLevel level)
 {
     LOCK(cs_main);
@@ -738,12 +739,13 @@ void btck_logging_disable()
     LogInstance().DisableLogging();
 }
 
-btck_LoggingConnection* btck_logging_connection_create(btck_LogCallback callback,
-                                                       void* user_data,
-                                                       btck_DestroyCallback user_data_destroy_callback,
-                                                       const btck_LoggingOptions options)
+btck_LoggingConnection* btck_logging_connection_create(btck_LogCallback callback, void* user_data, btck_DestroyCallback user_data_destroy_callback)
 {
-    return btck_LoggingConnection::create(callback, user_data, user_data_destroy_callback, options);
+    try {
+        return btck_LoggingConnection::create(callback, user_data, user_data_destroy_callback);
+    } catch (const std::exception&) {
+        return nullptr;
+    }
 }
 
 void btck_logging_connection_destroy(btck_LoggingConnection* connection)

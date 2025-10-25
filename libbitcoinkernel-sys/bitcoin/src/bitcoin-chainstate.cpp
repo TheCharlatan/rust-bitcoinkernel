@@ -176,7 +176,9 @@ int main(int argc, char* argv[])
         .always_print_category_levels = true,
     };
 
-    Logger logger{std::make_unique<KernelLog>(KernelLog{}), logging_options};
+    logging_set_options(logging_options);
+
+    Logger logger{std::make_unique<KernelLog>(KernelLog{})};
 
     ContextOptions options{};
     ChainParams params{ChainType::MAINNET};
