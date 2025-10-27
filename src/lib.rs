@@ -121,7 +121,7 @@ pub use crate::core::verify_flags::{
 
 pub mod prelude {
     pub use crate::core::{
-        BlockSpentOutputsExt, CoinExt, ScriptPubkeyExt, TransactionExt, TransactionSpentOutputsExt,
-        TxOutExt,
+        BlockHashExt, BlockSpentOutputsExt, CoinExt, ScriptPubkeyExt, TransactionExt,
+        TransactionSpentOutputsExt, TxOutExt,
     };
 }
