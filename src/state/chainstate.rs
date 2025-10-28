@@ -22,6 +22,32 @@ use crate::{
 
 use super::{Chain, Context};
 
+/// Result of processing a block with the chainstate manager
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessBlockResult {
+    /// Whether the block was accepted
+    pub accepted: bool,
+    /// Whether this is a new block
+    pub new_block: bool,
+}
+
+impl ProcessBlockResult {
+    /// Returns true if the block was accepted and is new
+    pub fn is_new_block(&self) -> bool {
+        self.accepted && self.new_block
+    }
+
+    /// Returns true if the block was accepted but was already known
+    pub fn is_duplicate(&self) -> bool {
+        self.accepted && !self.new_block
+    }
+
+    /// Returns true if the block was rejected
+    pub fn is_rejected(&self) -> bool {
+        !self.accepted
+    }
+}
+
 /// The chainstate manager is the central object for doing validation tasks as
 /// well as retrieving data from the chain. Internally it is a complex data
 /// structure with diverse functionality.
@@ -54,12 +80,16 @@ impl ChainstateManager {
     /// also be retrieved through a registered validation interface. If the block
     /// fails to validate the `block_checked` callback's ['BlockValidationState'] will
     /// contain details.
-    pub fn process_block(&self, block: &Block) -> (bool /* accepted */, bool /* duplicate */) {
+    pub fn process_block(&self, block: &Block) -> ProcessBlockResult {
         let mut new_block: i32 = 0;
         let accepted = unsafe {
             btck_chainstate_manager_process_block(self.inner, block.as_ptr(), &mut new_block)
         };
-        (c_helpers::success(accepted), c_helpers::enabled(new_block))
+
+        ProcessBlockResult {
+            accepted: c_helpers::success(accepted),
+            new_block: c_helpers::enabled(new_block),
+        }
     }
 
     /// May be called after load_chainstate to initialize the
@@ -272,5 +302,92 @@ mod tests {
 
         let chainman = ChainstateManager::new(opts);
         assert!(chainman.is_ok());
+    }
+
+    #[test]
+    fn test_process_block_result_new_block() {
+        let result = ProcessBlockResult {
+            accepted: true,
+            new_block: true,
+        };
+
+        assert!(result.accepted);
+        assert!(result.new_block);
+        assert!(result.is_new_block());
+        assert!(!result.is_duplicate());
+        assert!(!result.is_rejected());
+    }
+
+    #[test]
+    fn test_process_block_result_duplicate() {
+        let result = ProcessBlockResult {
+            accepted: true,
+            new_block: false,
+        };
+
+        assert!(result.accepted);
+        assert!(!result.new_block);
+        assert!(!result.is_new_block());
+        assert!(result.is_duplicate());
+        assert!(!result.is_rejected());
+    }
+
+    #[test]
+    fn test_process_block_result_rejected() {
+        let result = ProcessBlockResult {
+            accepted: false,
+            new_block: false,
+        };
+
+        assert!(!result.accepted);
+        assert!(!result.is_new_block());
+        assert!(!result.is_duplicate());
+        assert!(result.is_rejected());
+    }
+
+    #[test]
+    fn test_process_block_result_rejected_new_block_flag() {
+        // Edge case: rejected but new_block=true (shouldn't happen in practice)
+        let result = ProcessBlockResult {
+            accepted: false,
+            new_block: true,
+        };
+
+        assert!(!result.accepted);
+        assert!(result.new_block);
+        assert!(!result.is_new_block()); // Not considered new if rejected
+        assert!(!result.is_duplicate()); // Not considered duplicate if rejected
+        assert!(result.is_rejected());
+    }
+
+    #[test]
+    fn test_process_block_result_equality() {
+        let result1 = ProcessBlockResult {
+            accepted: true,
+            new_block: true,
+        };
+        let result2 = ProcessBlockResult {
+            accepted: true,
+            new_block: true,
+        };
+        let result3 = ProcessBlockResult {
+            accepted: false,
+            new_block: false,
+        };
+
+        assert_eq!(result1, result2);
+        assert_ne!(result1, result3);
+    }
+
+    #[test]
+    fn test_process_block_result_debug() {
+        let result = ProcessBlockResult {
+            accepted: true,
+            new_block: true,
+        };
+
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("accepted"));
+        assert!(debug_str.contains("new_block"));
     }
 }
