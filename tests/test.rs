@@ -117,9 +117,10 @@ mod tests {
 
         for raw_block in block_data.iter() {
             let block = Block::new(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
+            let result = chainman.process_block(&block);
+            assert!(result.is_new_block());
+            assert!(!result.is_duplicate());
+            assert!(!result.is_rejected());
         }
 
         chainman
@@ -138,9 +139,10 @@ mod tests {
             .unwrap();
             for raw_block in block_data.iter() {
                 let block = Block::try_from(raw_block.as_slice()).unwrap();
-                let (accepted, new_block) = chainman.process_block(&block);
-                assert!(accepted);
-                assert!(new_block);
+                let result = chainman.process_block(&block);
+                assert!(result.is_new_block());
+                assert!(!result.is_duplicate());
+                assert!(!result.is_rejected());
             }
         }
 
@@ -178,9 +180,10 @@ mod tests {
                 1e73a82cbf2342c858eeac00000000").unwrap().as_slice()
             )
             .unwrap();
-            let (accepted, new_block) = chainman.process_block(&block_1);
-            assert!(!accepted);
-            assert!(!new_block);
+            let result = chainman.process_block(&block_1);
+            assert!(result.is_rejected());
+            assert!(!result.is_new_block());
+            assert!(!result.is_duplicate())
         }
     }
 
@@ -275,9 +278,10 @@ mod tests {
 
         for raw_block in block_data.iter() {
             let block = Block::try_from(raw_block.as_slice()).unwrap();
-            let (accepted, new_block) = chainman.process_block(&block);
-            assert!(accepted);
-            assert!(new_block);
+            let result = chainman.process_block(&block);
+            assert!(result.is_new_block());
+            assert!(!result.is_rejected());
+            assert!(!result.is_duplicate());
         }
     }
 
@@ -293,9 +297,10 @@ mod tests {
 
         chainman.import_blocks().unwrap();
         let block_2 = Block::try_from(block_data[1].clone().as_slice()).unwrap();
-        let (accepted, new_block) = chainman.process_block(&block_2);
-        assert!(!accepted);
-        assert!(!new_block);
+        let result = chainman.process_block(&block_2);
+        assert!(result.is_rejected());
+        assert!(!result.is_new_block());
+        assert!(!result.is_duplicate());
     }
 
     #[test]

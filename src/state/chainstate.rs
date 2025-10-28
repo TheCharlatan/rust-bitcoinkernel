@@ -22,6 +22,34 @@ use crate::{
 
 use super::{Chain, Context};
 
+/// Result of processing a block with the chainstate manager
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessBlockResult {
+    /// Block was accepted and is new
+    NewBlock,
+    /// Block was accepted but was already known
+    Duplicate,
+    /// Block was rejected during validation
+    Rejected,
+}
+
+impl ProcessBlockResult {
+    /// Returns true if the block was accepted and is new
+    pub fn is_new_block(&self) -> bool {
+        matches!(self, Self::NewBlock)
+    }
+
+    /// Returns true if the block was accepted but was already known
+    pub fn is_duplicate(&self) -> bool {
+        matches!(self, Self::Duplicate)
+    }
+
+    /// Returns true if the block was rejected
+    pub fn is_rejected(&self) -> bool {
+        matches!(self, Self::Rejected)
+    }
+}
+
 /// The chainstate manager is the central object for doing validation tasks as
 /// well as retrieving data from the chain. Internally it is a complex data
 /// structure with diverse functionality.
@@ -54,12 +82,20 @@ impl ChainstateManager {
     /// also be retrieved through a registered validation interface. If the block
     /// fails to validate the `block_checked` callback's ['BlockValidationState'] will
     /// contain details.
-    pub fn process_block(&self, block: &Block) -> (bool /* accepted */, bool /* duplicate */) {
+    pub fn process_block(&self, block: &Block) -> ProcessBlockResult {
         let mut new_block: i32 = 0;
         let accepted = unsafe {
             btck_chainstate_manager_process_block(self.inner, block.as_ptr(), &mut new_block)
         };
-        (c_helpers::success(accepted), c_helpers::enabled(new_block))
+
+        let is_accepted = c_helpers::success(accepted);
+        let is_new = c_helpers::enabled(new_block);
+
+        match (is_accepted, is_new) {
+            (true, true) => ProcessBlockResult::NewBlock,
+            (true, false) => ProcessBlockResult::Duplicate,
+            (false, _) => ProcessBlockResult::Rejected,
+        }
     }
 
     /// May be called after load_chainstate to initialize the
@@ -272,5 +308,62 @@ mod tests {
 
         let chainman = ChainstateManager::new(opts);
         assert!(chainman.is_ok());
+    }
+
+    #[test]
+    fn test_process_block_result_new_block() {
+        let result = ProcessBlockResult::NewBlock;
+
+        assert_eq!(result, ProcessBlockResult::NewBlock);
+        assert!(result.is_new_block());
+        assert!(!result.is_duplicate());
+        assert!(!result.is_rejected());
+    }
+
+    #[test]
+    fn test_process_block_result_duplicate() {
+        let result = ProcessBlockResult::Duplicate;
+
+        assert_eq!(result, ProcessBlockResult::Duplicate);
+        assert!(!result.is_new_block());
+        assert!(result.is_duplicate());
+        assert!(!result.is_rejected());
+    }
+
+    #[test]
+    fn test_process_block_result_rejected() {
+        let result = ProcessBlockResult::Rejected;
+
+        assert_eq!(result, ProcessBlockResult::Rejected);
+        assert!(!result.is_new_block());
+        assert!(!result.is_duplicate());
+        assert!(result.is_rejected());
+    }
+
+    #[test]
+    fn test_process_block_result_match() {
+        let result = ProcessBlockResult::NewBlock;
+
+        let message = match result {
+            ProcessBlockResult::NewBlock => "new",
+            ProcessBlockResult::Duplicate => "duplicate",
+            ProcessBlockResult::Rejected => "rejected",
+        };
+
+        assert_eq!(message, "new");
+    }
+
+    #[test]
+    fn test_process_block_result_equality() {
+        assert_eq!(ProcessBlockResult::NewBlock, ProcessBlockResult::NewBlock);
+        assert_ne!(ProcessBlockResult::NewBlock, ProcessBlockResult::Rejected);
+        assert_ne!(ProcessBlockResult::Duplicate, ProcessBlockResult::Rejected);
+    }
+
+    #[test]
+    fn test_process_block_result_debug() {
+        let result = ProcessBlockResult::NewBlock;
+        let debug_str = format!("{:?}", result);
+        assert_eq!(debug_str, "NewBlock");
     }
 }
