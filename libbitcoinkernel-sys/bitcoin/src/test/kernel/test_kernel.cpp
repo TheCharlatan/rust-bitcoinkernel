@@ -112,7 +112,7 @@ struct TestDirectory {
     }
 };
 
-class TestKernelNotifications : public KernelNotifications<TestKernelNotifications>
+class TestKernelNotifications : public KernelNotifications
 {
 public:
     void HeaderTipHandler(SynchronizationState state, int64_t height, int64_t timestamp, bool presync) override
@@ -141,7 +141,7 @@ public:
     }
 };
 
-class TestValidationInterface : public ValidationInterface<TestValidationInterface>
+class TestValidationInterface : public ValidationInterface
 {
 public:
     std::optional<std::vector<std::byte>> m_expected_valid_block = std::nullopt;
@@ -285,9 +285,9 @@ void CheckHandle(T object, T distinct_object)
 
     // Copy constructor
     T object2(distinct_object);
-    BOOST_CHECK_NE(object.get(), object2.get());
+    BOOST_CHECK_NE(distinct_object.get(), object2.get());
     if constexpr (HasToBytes<T>) {
-        BOOST_CHECK_NE(object.ToBytes().size(), object2.ToBytes().size());
+        check_equal(distinct_object.ToBytes(), object2.ToBytes());
     }
 
     // Copy assignment
@@ -295,7 +295,6 @@ void CheckHandle(T object, T distinct_object)
     object2 = object3;
     BOOST_CHECK_NE(object3.get(), object2.get());
     if constexpr (HasToBytes<T>) {
-        BOOST_CHECK_NE(object.ToBytes().size(), object2.ToBytes().size());
         check_equal(object3.ToBytes(), object2.ToBytes());
     }
 

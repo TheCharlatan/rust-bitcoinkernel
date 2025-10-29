@@ -481,7 +481,7 @@ struct btck_ScriptPubkey : Handle<btck_ScriptPubkey, CScript> {};
 struct btck_LoggingConnection : Handle<btck_LoggingConnection, LoggingConnection> {};
 struct btck_ContextOptions : Handle<btck_ContextOptions, ContextOptions> {};
 struct btck_Context : Handle<btck_Context, std::shared_ptr<const Context>> {};
-struct btck_ChainParameters : Handle<btck_ChainParameters, std::unique_ptr<const CChainParams>> {};
+struct btck_ChainParameters : Handle<btck_ChainParameters, CChainParams> {};
 struct btck_ChainstateManagerOptions : Handle<btck_ChainstateManagerOptions, ChainstateManagerOptions> {};
 struct btck_ChainstateManager : Handle<btck_ChainstateManager, ChainMan> {};
 struct btck_Chain : Handle<btck_Chain, CChain> {};
@@ -757,19 +757,19 @@ btck_ChainParameters* btck_chain_parameters_create(const btck_ChainType chain_ty
 {
     switch (chain_type) {
     case btck_ChainType_MAINNET: {
-        return btck_ChainParameters::create(CChainParams::Main());
+        return btck_ChainParameters::create(*CChainParams::Main());
     }
     case btck_ChainType_TESTNET: {
-        return btck_ChainParameters::create(CChainParams::TestNet());
+        return btck_ChainParameters::create(*CChainParams::TestNet());
     }
     case btck_ChainType_TESTNET_4: {
-        return btck_ChainParameters::create(CChainParams::TestNet4());
+        return btck_ChainParameters::create(*CChainParams::TestNet4());
     }
     case btck_ChainType_SIGNET: {
-        return btck_ChainParameters::create(CChainParams::SigNet({}));
+        return btck_ChainParameters::create(*CChainParams::SigNet({}));
     }
     case btck_ChainType_REGTEST: {
-        return btck_ChainParameters::create(CChainParams::RegTest({}));
+        return btck_ChainParameters::create(*CChainParams::RegTest({}));
     }
     }
     assert(false);
@@ -777,8 +777,7 @@ btck_ChainParameters* btck_chain_parameters_create(const btck_ChainType chain_ty
 
 btck_ChainParameters* btck_chain_parameters_copy(const btck_ChainParameters* chain_parameters)
 {
-    const auto& original = btck_ChainParameters::get(chain_parameters);
-    return btck_ChainParameters::create(std::make_unique<const CChainParams>(*original));
+    return btck_ChainParameters::copy(chain_parameters);
 }
 
 void btck_chain_parameters_destroy(btck_ChainParameters* chain_parameters)
@@ -795,7 +794,7 @@ void btck_context_options_set_chainparams(btck_ContextOptions* options, const bt
 {
     // Copy the chainparams, so the caller can free it again
     LOCK(btck_ContextOptions::get(options).m_mutex);
-    btck_ContextOptions::get(options).m_chainparams = std::make_unique<const CChainParams>(*btck_ChainParameters::get(chain_parameters));
+    btck_ContextOptions::get(options).m_chainparams = std::make_unique<const CChainParams>(btck_ChainParameters::get(chain_parameters));
 }
 
 void btck_context_options_set_notifications(btck_ContextOptions* options, btck_NotificationInterfaceCallbacks notifications)
