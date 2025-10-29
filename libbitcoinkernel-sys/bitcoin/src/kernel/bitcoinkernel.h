@@ -144,10 +144,11 @@ typedef struct btck_ChainParameters btck_ChainParameters;
  * Opaque data structure for holding options for creating a new kernel context.
  *
  * Once a kernel context has been created from these options, they may be
- * destroyed. The options hold the notification callbacks as well as the
- * selected chain type until they are passed to the context. If no options are
- * configured, the context will be instantiated with no callbacks and for
- * mainnet. Their content and scope can be expanded over time.
+ * destroyed. The options hold the notification and validation interface
+ * callbacks as well as the selected chain type until they are passed to the
+ * context. If no options are configured, the context will be instantiated with
+ * no callbacks and for mainnet. Their content and scope can be expanded over
+ * time.
  */
 typedef struct btck_ContextOptions btck_ContextOptions;
 
@@ -185,7 +186,7 @@ typedef struct btck_BlockTreeEntry btck_BlockTreeEntry;
  * manager.
  *
  * The chainstate manager options are used to set some parameters for the
- * chainstate manager. For now it just holds default options.
+ * chainstate manager.
  */
 typedef struct btck_ChainstateManagerOptions btck_ChainstateManagerOptions;
 
@@ -749,7 +750,7 @@ BITCOINKERNEL_API void btck_logging_disable_category(btck_LogCategory category);
  *                                       is also defined it is assumed that ownership of the user_data is passed
  *                                       to the created logging connection.
  * @param[in] user_data_destroy_callback Nullable, function for freeing the user data.
- * @return                               A new kernel logging connection.
+ * @return                               A new kernel logging connection, or null on error.
  */
 BITCOINKERNEL_API btck_LoggingConnection* BITCOINKERNEL_WARN_UNUSED_RESULT btck_logging_connection_create(
     btck_LogCallback log_callback,
