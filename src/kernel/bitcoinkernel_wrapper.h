@@ -808,7 +808,6 @@ public:
     friend class Chain;
 };
 
-template <typename T>
 class KernelNotifications
 {
 public:
@@ -853,7 +852,6 @@ public:
     }
 };
 
-template <typename T>
 class ValidationInterface
 {
 public:
@@ -873,8 +871,6 @@ class ChainParams : public Handle<btck_ChainParameters, btck_chain_parameters_co
 public:
     ChainParams(ChainType chain_type)
         : Handle{btck_chain_parameters_create(static_cast<btck_ChainType>(chain_type))} {}
-
-    friend class ContextOptions;
 };
 
 class ContextOptions : UniqueHandle<btck_ContextOptions, btck_context_options_destroy>
@@ -890,7 +886,7 @@ public:
     template <typename T>
     void SetNotifications(std::shared_ptr<T> notifications)
     {
-        static_assert(std::is_base_of_v<KernelNotifications<T>, T>);
+        static_assert(std::is_base_of_v<KernelNotifications, T>);
         auto heap_notifications = std::make_unique<std::shared_ptr<T>>(std::move(notifications));
         using user_type = std::shared_ptr<T>*;
         btck_context_options_set_notifications(
@@ -911,7 +907,7 @@ public:
     template <typename T>
     void SetValidationInterface(std::shared_ptr<T> validation_interface)
     {
-        static_assert(std::is_base_of_v<ValidationInterface<T>, T>);
+        static_assert(std::is_base_of_v<ValidationInterface, T>);
         auto heap_vi = std::make_unique<std::shared_ptr<T>>(std::move(validation_interface));
         using user_type = std::shared_ptr<T>*;
         btck_context_options_set_validation_interface(
@@ -942,8 +938,6 @@ public:
     {
         return btck_context_interrupt(get()) == 0;
     }
-
-    friend class ChainstateManagerOptions;
 };
 
 class ChainstateManagerOptions : UniqueHandle<btck_ChainstateManagerOptions, btck_chainstate_manager_options_destroy>
