@@ -184,8 +184,18 @@ jobs:
       run: cargo test -vv
 
   fuzzing:
-    name: Check Fuzzing Setup
+    name: Fuzz ${{ matrix.target.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false  # Continue other fuzz tests even if one fails
+      matrix:
+        target:
+          - name: fuzz_target_block
+            corpus: block_deserialize
+          - name: fuzz_target_verify
+            corpus: ""
+          - name: fuzz_target_chainman
+            corpus: ""
 
     steps:
     - uses: actions/checkout@v3
@@ -214,22 +224,44 @@ jobs:
     - name: Install cargo-fuzz
       run: cargo install cargo-fuzz
 
+    - name: Clone fuzzing corpus
+      if: matrix.target.corpus != ''
+      run: |
+        git clone --depth=1 https://github.com/bitcoin-core/qa-assets /tmp/qa-assets
+        echo "QA_ASSETS_DIR=/tmp/qa-assets" >> $GITHUB_ENV
+
     - name: Set up fuzzing directories
       run: |
         mkdir -p /tmp/rust_kernel_fuzz
         sudo mount -t tmpfs none /tmp/rust_kernel_fuzz || true
  
-    - name: Build and run fuzzing with Address Sanitizer
+    - name: Build main crate with Address Sanitizer
+      env:
+        RUSTFLAGS: "-Zsanitizer=address"
+        ASAN_OPTIONS: "detect_leaks=1"
+      run: cargo build --verbose
+
+    - name: Build fuzz target
+      env:
+        RUSTFLAGS: "-Zsanitizer=address"
+        ASAN_OPTIONS: "detect_leaks=1"
+      run: cargo fuzz build ${{ matrix.target.name }}
+
+    - name: Run fuzz target with corpus
+      if: matrix.target.corpus != ''
       env:
         RUSTFLAGS: "-Zsanitizer=address"
         ASAN_OPTIONS: "detect_leaks=1"
       run: |
-        # First compile the main crate with sanitizer flags
-        cargo build --verbose
-        # Now build and run the fuzzing targets with the same sanitizer flags
-        cargo fuzz build fuzz_target_block
-        cargo fuzz build fuzz_target_chainman
-        cargo fuzz build fuzz_target_verify
-        cargo fuzz run fuzz_target_verify -- -max_total_time=20
-        cargo fuzz run fuzz_target_chainman -- -max_total_time=20
-        cargo fuzz run fuzz_target_block -- -max_total_time=20
+        echo "Running ${{ matrix.target.name }} with corpus ${{ matrix.target.corpus }}"
+        cargo fuzz run ${{ matrix.target.name }} "$QA_ASSETS_DIR/fuzz_corpora/${{ matrix.target.corpus }}" -- -max_total_time=20
+
+    - name: Run fuzz target without corpus
+      if: matrix.target.corpus == ''
+      env:
+        RUSTFLAGS: "-Zsanitizer=address"
+        ASAN_OPTIONS: "detect_leaks=1"
+      run: |
+        echo "Running ${{ matrix.target.name }} without corpus"
+        cargo fuzz run ${{ matrix.target.name }} -- -max_total_time=20
+
