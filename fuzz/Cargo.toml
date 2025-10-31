@@ -15,22 +15,22 @@ arbitrary = { version = "1.1", features = ["derive"] }
 path = ".."
 
 [[bin]]
-name = "fuzz_target_chainman"
-path = "fuzz_targets/fuzz_target_chainman.rs"
+name = "chainman_process_block"
+path = "fuzz_targets/chainman_process_block.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "fuzz_target_verify"
-path = "fuzz_targets/fuzz_target_verify.rs"
+name = "script_verify"
+path = "fuzz_targets/script_verify.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "fuzz_target_block"
-path = "fuzz_targets/fuzz_target_block.rs"
+name = "block_roundtrip"
+path = "fuzz_targets/block_roundtrip.rs"
 test = false
 doc = false
 bench = false
