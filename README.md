@@ -40,20 +40,20 @@ payments scanner.
 
 Fuzzing is done with [cargo fuzz](https://github.com/rust-fuzz/cargo-fuzz).
 
-There are currently three supported fuzzing targets: `fuzz_target_block`,
-`fuzz_target_chainman` and `fuzz_target_verify`. The `chainman` target touches
+There are currently three supported fuzzing targets: `block_roundtrip`,
+`chainman_process_block` and `script_verify`. The `chainman` target touches
 the filesystem in `/tmp`. If `/tmp` is not already a tmpfs, the user should
 create a tmpfs in `/tmp/rust_kernel_fuzz`.
 
 To get fuzzing run (in this case the `verify` target):
 
 ```bash
-cargo fuzz run fuzz_target_verify
+cargo fuzz run script_verify
 ```
 
 Sanitizers can be turned on with e.g.
 ```bash
-RUSTFLAGS="-Zsanitizer=address" cargo fuzz run fuzz_target_block
+RUSTFLAGS="-Zsanitizer=address" cargo fuzz run block_roundtrip
 ```
 
 To get the sanitizer flags working in the libbitcoinkernel Bitcoin Core
@@ -65,11 +65,11 @@ flags.
 Once fuzzed, a coverage report can be generated with (picking the `verify`
 target as an example):
 ```
-RUSTFLAGS="-C instrument-coverage" cargo fuzz coverage fuzz_target_verify
+RUSTFLAGS="-C instrument-coverage" cargo fuzz coverage script_verify
 llvm-cov show \
   -format=html \
-  -instr-profile=fuzz/coverage/fuzz_target_verify/coverage.profdata \
-  target/x86_64-unknown-linux-gnu/coverage/x86_64-unknown-linux-gnu/release/fuzz_target_verify \
+  -instr-profile=fuzz/coverage/script_verify/coverage.profdata \
+  target/x86_64-unknown-linux-gnu/coverage/x86_64-unknown-linux-gnu/release/script_verify \
   -show-line-counts-or-regions \
   -Xdemangler=rustfilt \
   -output-dir=coverage_report \
