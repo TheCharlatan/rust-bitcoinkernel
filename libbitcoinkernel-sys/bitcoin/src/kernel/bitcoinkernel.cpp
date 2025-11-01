@@ -273,7 +273,7 @@ struct LoggingConnection {
     }
 };
 
-class KernelNotifications : public kernel::Notifications
+class KernelNotifications final : public kernel::Notifications
 {
 private:
     btck_NotificationInterfaceCallbacks m_cbs;
@@ -345,7 +345,7 @@ protected:
     {
         if (m_cbs.block_checked) {
             m_cbs.block_checked(m_cbs.user_data,
-                                btck_Block::ref(new std::shared_ptr<const CBlock>{block}),
+                                btck_Block::copy(btck_Block::ref(&block)),
                                 btck_BlockValidationState::ref(&stateIn));
         }
     }
@@ -354,7 +354,7 @@ protected:
     {
         if (m_cbs.pow_valid_block) {
             m_cbs.pow_valid_block(m_cbs.user_data,
-                                  btck_Block::ref(new std::shared_ptr<const CBlock>{block}),
+                                  btck_Block::copy(btck_Block::ref(&block)),
                                   btck_BlockTreeEntry::ref(pindex));
         }
     }
@@ -363,7 +363,7 @@ protected:
     {
         if (m_cbs.block_connected) {
             m_cbs.block_connected(m_cbs.user_data,
-                                  btck_Block::ref(new std::shared_ptr<const CBlock>{block}),
+                                  btck_Block::copy(btck_Block::ref(&block)),
                                   btck_BlockTreeEntry::ref(pindex));
         }
     }
@@ -372,7 +372,7 @@ protected:
     {
         if (m_cbs.block_disconnected) {
             m_cbs.block_disconnected(m_cbs.user_data,
-                                     btck_Block::ref(new std::shared_ptr<const CBlock>{block}),
+                                     btck_Block::copy(btck_Block::ref(&block)),
                                      btck_BlockTreeEntry::ref(pindex));
         }
     }
@@ -402,8 +402,7 @@ public:
 
     Context(const ContextOptions* options, bool& sane)
         : m_context{std::make_unique<kernel::Context>()},
-          m_interrupt{std::make_unique<util::SignalInterrupt>()},
-          m_signals{std::make_unique<ValidationSignals>(std::make_unique<ImmediateTaskRunner>())}
+          m_interrupt{std::make_unique<util::SignalInterrupt>()}
     {
         if (options) {
             LOCK(options->m_mutex);
@@ -414,6 +413,7 @@ public:
                 m_notifications = options->m_notifications;
             }
             if (options->m_validation_interface) {
+                m_signals = std::make_unique<ValidationSignals>(std::make_unique<ImmediateTaskRunner>());
                 m_validation_interface = options->m_validation_interface;
                 m_signals->RegisterSharedValidationInterface(m_validation_interface);
             }
@@ -434,7 +434,9 @@ public:
 
     ~Context()
     {
-        m_signals->UnregisterSharedValidationInterface(m_validation_interface);
+        if (m_signals) {
+            m_signals->UnregisterSharedValidationInterface(m_validation_interface);
+        }
     }
 };
 
@@ -757,19 +759,19 @@ btck_ChainParameters* btck_chain_parameters_create(const btck_ChainType chain_ty
 {
     switch (chain_type) {
     case btck_ChainType_MAINNET: {
-        return btck_ChainParameters::create(*CChainParams::Main());
+        return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::Main().release()));
     }
     case btck_ChainType_TESTNET: {
-        return btck_ChainParameters::create(*CChainParams::TestNet());
+        return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::TestNet().release()));
     }
     case btck_ChainType_TESTNET_4: {
-        return btck_ChainParameters::create(*CChainParams::TestNet4());
+        return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::TestNet4().release()));
     }
     case btck_ChainType_SIGNET: {
-        return btck_ChainParameters::create(*CChainParams::SigNet({}));
+        return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::SigNet({}).release()));
     }
     case btck_ChainType_REGTEST: {
-        return btck_ChainParameters::create(*CChainParams::RegTest({}));
+        return btck_ChainParameters::ref(const_cast<CChainParams*>(CChainParams::RegTest({}).release()));
     }
     }
     assert(false);
@@ -1022,7 +1024,6 @@ int btck_chainstate_manager_import_blocks(btck_ChainstateManager* chainman, cons
             }
         }
         node::ImportBlocks(*btck_ChainstateManager::get(chainman).m_chainman, import_files);
-        btck_ChainstateManager::get(chainman).m_chainman->ActiveChainstate().ForceFlushStateToDisk();
     } catch (const std::exception& e) {
         LogError("Failed to import blocks: %s", e.what());
         return -1;
