@@ -635,8 +635,6 @@ std::unique_ptr<ChainMan> create_chainman(TestDirectory& test_directory,
                                           bool chainstate_db_in_memory,
                                           Context& context)
 {
-    auto mainnet_test_directory{TestDirectory{"mainnet_test_bitcoin_kernel"}};
-
     ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
 
     if (reindex) {
@@ -658,8 +656,6 @@ std::unique_ptr<ChainMan> create_chainman(TestDirectory& test_directory,
 
 void chainman_reindex_test(TestDirectory& test_directory)
 {
-    auto mainnet_test_directory{TestDirectory{"mainnet_test_bitcoin_kernel"}};
-
     auto notifications{std::make_shared<TestKernelNotifications>()};
     auto context{create_context(notifications, ChainType::MAINNET)};
     auto chainman{create_chainman(test_directory, true, false, false, false, context)};
