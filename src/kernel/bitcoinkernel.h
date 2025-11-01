@@ -366,8 +366,12 @@ typedef struct {
 /**
  * A struct for holding the kernel notification callbacks. The user data
  * pointer may be used to point to user-defined structures to make processing
- * the notifications easier. Note that this makes it the user's responsibility
- * to ensure that the user_data outlives the kernel objects. Notifications can
+ * the notifications easier.
+ *
+ * If user_data_destroy is provided, the kernel will automatically call this
+ * callback to clean up user_data when the notification interface object is destroyed.
+ * If user_data_destroy is NULL, it is the user's responsibility to ensure that
+ * the user_data outlives the kernel objects. Notifications can
  * occur even as kernel objects are deleted, so care has to be taken to ensure
  * safe unwinding.
  */
@@ -873,7 +877,7 @@ BITCOINKERNEL_API btck_Context* BITCOINKERNEL_WARN_UNUSED_RESULT btck_context_co
  * when reindexing, importing or processing blocks.
  *
  * @param[in] context  Non-null.
- * @return             0 if the interrupt was successfully, non-zero otherwise.
+ * @return             0 if the interrupt was successful, non-zero otherwise.
  */
 BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_context_interrupt(
     btck_Context* context) BITCOINKERNEL_ARG_NONNULL(1);
@@ -1014,7 +1018,7 @@ BITCOINKERNEL_API btck_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT btck_
     const btck_ChainstateManagerOptions* chainstate_manager_options) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
- * @brief Triggers the start of a reindex if the option was previously set for
+ * @brief Triggers the start of a reindex if the wipe options were previously set for
  * the chainstate and block manager. Can also import an array of existing block
  * files selected by the user.
  *
@@ -1027,7 +1031,7 @@ BITCOINKERNEL_API btck_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT btck_
 BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_chainstate_manager_import_blocks(
     btck_ChainstateManager* chainstate_manager,
     const char** block_file_paths_data, size_t* block_file_paths_lens,
-    size_t block_file_paths_data_len) BITCOINKERNEL_ARG_NONNULL(1, 2);
+    size_t block_file_paths_data_len) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * @brief Process and validate the passed in block with the chainstate

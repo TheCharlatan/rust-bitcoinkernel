@@ -732,8 +732,6 @@ public:
     {
         return write_bytes(get(), btck_block_to_bytes);
     }
-
-    friend class ChainMan;
 };
 
 inline void logging_disable()
@@ -803,9 +801,6 @@ public:
     {
         return BlockHashView{btck_block_tree_entry_get_block_hash(get())};
     }
-
-    friend class ChainMan;
-    friend class Chain;
 };
 
 class KernelNotifications
@@ -873,7 +868,7 @@ public:
         : Handle{btck_chain_parameters_create(static_cast<btck_ChainType>(chain_type))} {}
 };
 
-class ContextOptions : UniqueHandle<btck_ContextOptions, btck_context_options_destroy>
+class ContextOptions : public UniqueHandle<btck_ContextOptions, btck_context_options_destroy>
 {
 public:
     ContextOptions() : UniqueHandle{btck_context_options_create()} {}
@@ -921,8 +916,6 @@ public:
                 .block_disconnected = +[](void* user_data, btck_Block* block, const btck_BlockTreeEntry* entry) { (*static_cast<user_type>(user_data))->BlockDisconnected(Block{block}, BlockTreeEntry{entry}); },
             });
     }
-
-    friend class Context;
 };
 
 class Context : public Handle<btck_Context, btck_context_copy, btck_context_destroy>
@@ -940,7 +933,7 @@ public:
     }
 };
 
-class ChainstateManagerOptions : UniqueHandle<btck_ChainstateManagerOptions, btck_chainstate_manager_options_destroy>
+class ChainstateManagerOptions : public UniqueHandle<btck_ChainstateManagerOptions, btck_chainstate_manager_options_destroy>
 {
 public:
     ChainstateManagerOptions(const Context& context, const std::string& data_dir, const std::string& blocks_dir)
@@ -967,8 +960,6 @@ public:
     {
         btck_chainstate_manager_options_update_chainstate_db_in_memory(get(), chainstate_db_in_memory);
     }
-
-    friend class ChainMan;
 };
 
 class ChainView : public View<btck_Chain>
