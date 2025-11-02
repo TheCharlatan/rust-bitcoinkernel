@@ -153,7 +153,7 @@ int main(int argc, char* argv[])
 
     logging_set_options(logging_options);
 
-    Logger logger{std::make_unique<KernelLog>(KernelLog{})};
+    Logger logger{std::make_unique<KernelLog>()};
 
     ContextOptions options{};
     ChainParams params{ChainType::MAINNET};

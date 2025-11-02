@@ -148,11 +148,9 @@ public:
 
     void BlockChecked(Block block, const BlockValidationState state) override
     {
-        {
+        if (m_expected_valid_block.has_value()) {
             auto ser_block{block.ToBytes()};
-            if (m_expected_valid_block.has_value()) {
-                check_equal(m_expected_valid_block.value(), ser_block);
-            }
+            check_equal(m_expected_valid_block.value(), ser_block);
         }
 
         auto mode{state.GetValidationMode()};
@@ -600,7 +598,7 @@ Context create_context(std::shared_ptr<TestKernelNotifications> notifications, C
 
 BOOST_AUTO_TEST_CASE(btck_chainman_tests)
 {
-    Logger logger{std::make_unique<TestLog>(TestLog{})};
+    Logger logger{std::make_unique<TestLog>()};
     auto test_directory{TestDirectory{"chainman_test_bitcoin_kernel"}};
 
     { // test with default context
@@ -690,7 +688,8 @@ void chainman_reindex_test(TestDirectory& test_directory)
 
     auto second_hash{second_index.GetHash()};
     auto another_second_index{chainman->GetBlockTreeEntry(second_hash)};
-    auto another_second_height{another_second_index.GetHeight()};
+    BOOST_CHECK(another_second_index);
+    auto another_second_height{another_second_index->GetHeight()};
     auto second_block_hash{second_block.GetHash()};
     check_equal(second_block_hash.ToBytes(), second_hash.ToBytes());
     BOOST_CHECK_EQUAL(second_height, another_second_height);
@@ -904,25 +903,34 @@ BOOST_AUTO_TEST_CASE(btck_chainman_regtest_tests)
         }
     }
 
+    // Read spent outputs for current tip and its previous block
     BlockSpentOutputs block_spent_outputs{chainman->ReadBlockSpentOutputs(tip)};
     BlockSpentOutputs block_spent_outputs_prev{chainman->ReadBlockSpentOutputs(*tip.GetPrevious())};
     CheckHandle(block_spent_outputs, block_spent_outputs_prev);
     CheckRange(block_spent_outputs_prev.TxsSpentOutputs(), block_spent_outputs_prev.Count());
     BOOST_CHECK_EQUAL(block_spent_outputs.Count(), 1);
+
+    // Get transaction spent outputs from the last transaction in the two blocks
     TransactionSpentOutputsView transaction_spent_outputs{block_spent_outputs.GetTxSpentOutputs(block_spent_outputs.Count() - 1)};
     TransactionSpentOutputs owned_transaction_spent_outputs{transaction_spent_outputs};
     TransactionSpentOutputs owned_transaction_spent_outputs_prev{block_spent_outputs_prev.GetTxSpentOutputs(block_spent_outputs_prev.Count() - 1)};
     CheckHandle(owned_transaction_spent_outputs, owned_transaction_spent_outputs_prev);
     CheckRange(transaction_spent_outputs.Coins(), transaction_spent_outputs.Count());
+
+    // Get the last coin from the transaction spent outputs
     CoinView coin{transaction_spent_outputs.GetCoin(transaction_spent_outputs.Count() - 1)};
     BOOST_CHECK(!coin.IsCoinbase());
     Coin owned_coin{coin};
     Coin owned_coin_prev{owned_transaction_spent_outputs_prev.GetCoin(owned_transaction_spent_outputs_prev.Count() - 1)};
     CheckHandle(owned_coin, owned_coin_prev);
+
+    // Validate coin properties
     TransactionOutputView output = coin.GetOutput();
     uint32_t coin_height = coin.GetConfirmationHeight();
     BOOST_CHECK_EQUAL(coin_height, 205);
     BOOST_CHECK_EQUAL(output.Amount(), 100000000);
+
+    // Test script pubkey serialization
     auto script_pubkey = output.GetScriptPubkey();
     auto script_pubkey_bytes{script_pubkey.ToBytes()};
     BOOST_CHECK_EQUAL(script_pubkey_bytes.size(), 22);
