@@ -1018,8 +1018,8 @@ BITCOINKERNEL_API btck_ChainstateManager* BITCOINKERNEL_WARN_UNUSED_RESULT btck_
     const btck_ChainstateManagerOptions* chainstate_manager_options) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
- * @brief Triggers the start of a reindex if the wipe options were previously set for
- * the chainstate and block manager. Can also import an array of existing block
+ * @brief Triggers the start of a reindex if the wipe options were previously
+ * set for the chainstate manager. Can also import an array of existing block
  * files selected by the user.
  *
  * @param[in] chainstate_manager        Non-null.
@@ -1058,11 +1058,13 @@ BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_chainstate_manager_p
 /**
  * @brief Returns the best known currently active chain. Its lifetime is
  * dependent on the chainstate manager. It can be thought of as a view on a
- * vector of block tree entries that form the best chain. This means state
- * transitions within the chainstate manager, e.g. processing blocks, will
- * change the chain. Data retrieved from this chain is only consistent up to
- * the point when new data is processed in the chainstate manager. It is the
- * user's responsibility to guard against these inconsistencies.
+ * vector of block tree entries that form the best chain. The returned chain
+ * reference always points to the currently active best chain. However, state
+ * transitions within the chainstate manager (e.g., processing blocks) will
+ * update the chain's contents. Data retrieved from this chain is only
+ * consistent up to the point when new data is processed in the chainstate
+ * manager. It is the user's responsibility to guard against these
+ * inconsistencies.
  *
  * @param[in] chainstate_manager Non-null.
  * @return                       The chain.

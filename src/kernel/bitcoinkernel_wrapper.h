@@ -1136,9 +1136,11 @@ public:
         return ChainView{btck_chainstate_manager_get_active_chain(get())};
     }
 
-    BlockTreeEntry GetBlockTreeEntry(const BlockHash& block_hash) const
+    std::optional<BlockTreeEntry> GetBlockTreeEntry(const BlockHash& block_hash) const
     {
-        return btck_chainstate_manager_get_block_tree_entry_by_hash(get(), block_hash.get());
+        auto entry{btck_chainstate_manager_get_block_tree_entry_by_hash(get(), block_hash.get())};
+        if (!entry) return std::nullopt;
+        return entry;
     }
 
     std::optional<Block> ReadBlock(const BlockTreeEntry& entry) const
