@@ -233,3 +233,95 @@ jobs:
         cargo fuzz run block_roundtrip -- -max_total_time=20
         cargo fuzz run chainman_process_block -- -max_total_time=20
         cargo fuzz run script_verify -- -max_total_time=20
+
+  fuzz-corpus:
+    name: Verify Fuzz Corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - block_roundtrip
+          - chainman_process_block
+          - script_verify
+
+    steps:
+      - name: Checkout rust-bitcoinkernel
+        uses: actions/checkout@v3
+
+      - name: Checkout qa-assets corpus
+        uses: actions/checkout@v3
+        with:
+          repository: alexanderwiederin/qa-assets
+          path: qa-assets
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Boost library
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libboost-all-dev
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Verify corpus exists
+        run: |
+          CORPUS_DIR="qa-assets/fuzz_corpora/${{ matrix.target }}"
+
+          if [ ! -d "$CORPUS_DIR" ]; then
+            echo "Error: Corpus directory does not exist: $CORPUS_DIR"
+            echo ""
+            echo "Please create corpus data for ${{ matrix.target }}"
+            exit 1
+          fi
+
+          FILE_COUNT=$(find "$CORPUS_DIR" -type f | wc -l)
+
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "Error: Corpus directory is empty: $CORPUS_DIR"
+            echo ""
+            echo "Please add corpus files for ${{ matrix.target }}"
+            exit 1
+          fi
+
+          echo "✓ Found $FILE_COUNT corpus files for ${{ matrix.target }}"
+
+      - name: Verify corpus
+        env:
+          RUSTFLAGS: "-Zsanitizer=address"
+          ASAN_OPTIONS: "detect_leaks=1"
+        run: |
+          CORPUS_DIR="qa-assets/fuzz_corpora/${{ matrix.target }}"
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Testing ${{ matrix.target }} corpus"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          FILE_COUNT=$(find "$CORPUS_DIR" -type f | wc -l)
+          echo "Testing $FILE_COUNT corpus files"
+          echo ""
+
+          # Test all corpus files without generating new inputs
+          cargo fuzz run "${{ matrix.target }}" \
+            "$CORPUS_DIR" \
+            -- \
+            -runs=0 \
+            -timeout=10 \
+            -rss_limit_mb=2048
+
+          echo ""
+          echo "✓ All $FILE_COUNT corpus files passed!"
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crashes-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
