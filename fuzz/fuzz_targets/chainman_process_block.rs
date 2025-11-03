@@ -79,11 +79,18 @@ fuzz_target!(|data: ChainstateManagerInput| {
         .take(60)
         .collect();
 
-    let data_dir = format!("/tmp/rust_kernel_fuzz/{}", sanitized_string);
+    let data_dir = format!(
+        "/tmp/rust_kernel_fuzz/{}{}",
+        sanitized_string,
+        std::process::id()
+    );
     let blocks_dir = format!("{}/blocks", data_dir);
     let chainman_opts = match ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir) {
         Ok(opts) => opts,
-        Err(KernelError::CStringCreationFailed(_)) => return,
+        Err(KernelError::CStringCreationFailed(_)) => {
+            let _ = std::fs::remove_dir_all(data_dir);
+            return;
+        }
         Err(err) => panic!("this should never happen: {}", err),
     }
     .wipe_db(data.wipe_block_index, data.wipe_chainstate_index)
