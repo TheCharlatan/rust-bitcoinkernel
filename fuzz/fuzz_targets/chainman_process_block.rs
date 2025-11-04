@@ -75,7 +75,7 @@ fuzz_target!(|data: ChainstateManagerInput| {
     let sanitized_string: String = data
         .data_dir
         .chars()
-        .filter(|c| *c != '.' && *c != '/')
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
         .take(60)
         .collect();
 
