@@ -972,7 +972,7 @@ public:
         return btck_chain_get_tip(get());
     }
 
-    int Height() const
+    int32_t Height() const
     {
         return btck_chain_get_height(get());
     }

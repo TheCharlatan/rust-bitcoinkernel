@@ -52,7 +52,7 @@ extern "C" {
  *
  * This header currently exposes an API for interacting with parts of Bitcoin
  * Core's consensus code. Users can validate blocks, iterate the block index,
- * read block und undo data from disk, and validate scripts. The header is
+ * read block and undo data from disk, and validate scripts. The header is
  * unversioned and not stable yet. Users should expect breaking changes. It is
  * also not yet included in releases of Bitcoin Core.
  *
@@ -486,7 +486,7 @@ BITCOINKERNEL_API btck_Transaction* BITCOINKERNEL_WARN_UNUSED_RESULT btck_transa
 BITCOINKERNEL_API btck_Transaction* BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_copy(
     const btck_Transaction* transaction) BITCOINKERNEL_ARG_NONNULL(1);
 
-/*
+/**
  * @brief Serializes the transaction through the passed in callback to bytes.
  * This is consensus serialization that is also used for the P2P network.
  *
@@ -516,7 +516,7 @@ BITCOINKERNEL_API size_t BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_count
  * transaction.
  *
  * @param[in] transaction  Non-null.
- * @param[in] output_index The index of the transaction to be retrieved.
+ * @param[in] output_index The index of the transaction output to be retrieved.
  * @return                 The transaction output
  */
 BITCOINKERNEL_API const btck_TransactionOutput* BITCOINKERNEL_WARN_UNUSED_RESULT btck_transaction_get_output_at(
@@ -586,7 +586,7 @@ BITCOINKERNEL_API btck_ScriptPubkey* BITCOINKERNEL_WARN_UNUSED_RESULT btck_scrip
 /**
  * @brief Verify if the input at input_index of tx_to spends the script pubkey
  * under the constraints specified by flags. If the
- * `btck_SCRIPT_FLAGS_VERIFY_WITNESS` flag is set in the flags bitfield, the
+ * `btck_ScriptVerificationFlags_WITNESS` flag is set in the flags bitfield, the
  * amount parameter is used. If the taproot flag is set, the spent outputs
  * parameter is used to validate taproot transactions.
  *
@@ -598,7 +598,7 @@ BITCOINKERNEL_API btck_ScriptPubkey* BITCOINKERNEL_WARN_UNUSED_RESULT btck_scrip
  *                              outputs spent by the transaction.
  * @param[in] spent_outputs_len Length of the spent_outputs array.
  * @param[in] input_index       Index of the input in tx_to spending the script_pubkey.
- * @param[in] flags             Bitfield of btck_ScriptFlags controlling validation constraints.
+ * @param[in] flags             Bitfield of btck_ScriptVerificationFlags controlling validation constraints.
  * @param[out] status           Nullable, will be set to an error code if the operation fails, or OK otherwise.
  * @return                      1 if the script is valid, 0 otherwise.
  */
@@ -611,7 +611,7 @@ BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_script_pubkey_verify
     unsigned int flags,
     btck_ScriptVerifyStatus* status) BITCOINKERNEL_ARG_NONNULL(1, 3);
 
-/*
+/**
  * @brief Serializes the script pubkey through the passed in callback to bytes.
  *
  * @param[in] script_pubkey Non-null.
@@ -730,7 +730,7 @@ BITCOINKERNEL_API void btck_logging_set_level_category(btck_LogCategory category
  * changes a global setting and will override settings for all existing @ref
  * btck_LoggingConnection instances.
  *
- * @param[in] category If btck_LOG_ALL is chosen, all categories will be enabled.
+ * @param[in] category If btck_LogCategory_ALL is chosen, all categories will be enabled.
  */
 BITCOINKERNEL_API void btck_logging_enable_category(btck_LogCategory category);
 
@@ -739,7 +739,7 @@ BITCOINKERNEL_API void btck_logging_enable_category(btck_LogCategory category);
  * changes a global setting and will override settings for all existing @ref
  * btck_LoggingConnection instances.
  *
- * @param[in] category If btck_LOG_ALL is chosen, all categories will be disabled.
+ * @param[in] category If btck_LogCategory_ALL is chosen, all categories will be disabled.
  */
 BITCOINKERNEL_API void btck_logging_disable_category(btck_LogCategory category);
 
@@ -1148,7 +1148,7 @@ BITCOINKERNEL_API size_t BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_count_trans
 BITCOINKERNEL_API const btck_Transaction* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_get_transaction_at(
     const btck_Block* block, size_t transaction_index) BITCOINKERNEL_ARG_NONNULL(1);
 
-/*
+/**
  * @brief Calculate and return the hash of a block.
  *
  * @param[in] block Non-null.
@@ -1157,7 +1157,7 @@ BITCOINKERNEL_API const btck_Transaction* BITCOINKERNEL_WARN_UNUSED_RESULT btck_
 BITCOINKERNEL_API btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_get_hash(
     const btck_Block* block) BITCOINKERNEL_ARG_NONNULL(1);
 
-/*
+/**
  * @brief Serializes the block through the passed in callback to bytes.
  * This is consensus serialization that is also used for the P2P network.
  *
@@ -1219,10 +1219,10 @@ BITCOINKERNEL_API const btck_BlockTreeEntry* BITCOINKERNEL_WARN_UNUSED_RESULT bt
  * @param[in] chain Non-null.
  * @return          The current height.
  */
-BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_chain_get_height(
+BITCOINKERNEL_API int32_t BITCOINKERNEL_WARN_UNUSED_RESULT btck_chain_get_height(
     const btck_Chain* chain) BITCOINKERNEL_ARG_NONNULL(1);
 
-/*
+/**
  * @brief Get the block tree entry of the genesis block.
  *
  * @param[in] chain Non-null.
