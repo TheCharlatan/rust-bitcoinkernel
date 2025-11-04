@@ -84,7 +84,7 @@ public:
     void write(std::span<const std::byte> src)
     {
         if (m_writer(std::data(src), src.size(), m_user_data) != 0) {
-            throw std::runtime_error("Failed to write serilization data");
+            throw std::runtime_error("Failed to write serialization data");
         }
     }
 
