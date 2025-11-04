@@ -46,7 +46,7 @@ impl BlockHash {
     pub fn new(raw_bytes: &[u8]) -> Result<Self, KernelError> {
         if raw_bytes.len() != 32 {
             return Err(KernelError::InvalidLength {
-                expcted: 32,
+                expected: 32,
                 actual: raw_bytes.len(),
             });
         }
