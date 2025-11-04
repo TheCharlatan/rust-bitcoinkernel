@@ -71,23 +71,21 @@ fuzz_target!(|data: ChainstateManagerInput| {
     });
 
     let context = create_context(data.chain_type.into());
-    // Sanitize the input string by removing dots and slashes
-    let sanitized_string: String = data
-        .data_dir
-        .chars()
-        .filter(|c| *c != '.' && *c != '/')
-        .take(60)
-        .collect();
 
     let data_dir = format!(
         "/tmp/rust_kernel_fuzz/{}{}",
-        sanitized_string,
+        data.data_dir,
         std::process::id()
     );
     let blocks_dir = format!("{}/blocks", data_dir);
+
     let chainman_opts = match ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir) {
         Ok(opts) => opts,
         Err(KernelError::CStringCreationFailed(_)) => {
+            let _ = std::fs::remove_dir_all(data_dir);
+            return;
+        }
+        Err(KernelError::PathValidation) => {
             let _ = std::fs::remove_dir_all(data_dir);
             return;
         }
