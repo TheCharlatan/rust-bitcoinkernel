@@ -34,3 +34,10 @@ path = "fuzz_targets/block_roundtrip.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "transaction_roundtrip"
+path = "fuzz_targets/transaction_roundtrip.rs"
+test = false
+doc = false
+bench = false
