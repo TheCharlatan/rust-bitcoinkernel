@@ -170,6 +170,37 @@ impl Drop for ChainstateManager {
     }
 }
 
+/// Sanitize a filesystem path to ensure compatibility across different filesystems.
+///
+/// Filters out control characters and non-ASCII characters that some filesystems
+/// reject (e.g., macOS/APFS is stricter than Linux/ext4). Only allows ASCII
+/// alphanumeric characters, underscores, hyphens, periods, and forward slashes.
+///
+/// # Errors
+/// Returns `PathValidation` if:
+/// - The path is longer than 255 characters
+/// - The path becomes empty after sanitization
+fn sanitize_path(path: &str) -> Result<String, KernelError> {
+    const MAX_PATH_LENGTH: usize = 255;
+
+    if path.len() > MAX_PATH_LENGTH {
+        return Err(KernelError::PathValidation);
+    }
+
+    let sanitized: String = path
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-' || *c == '.' || *c == '/')
+        .collect();
+
+    let sanitized = sanitized.trim_matches(|c| c == '.');
+
+    if sanitized.is_empty() {
+        return Err(KernelError::PathValidation);
+    }
+
+    Ok(sanitized.to_string())
+}
+
 /// Holds the configuration options for creating a new [`ChainstateManager`]
 pub struct ChainstateManagerOptions {
     inner: *mut btck_ChainstateManagerOptions,
@@ -182,8 +213,11 @@ impl ChainstateManagerOptions {
     /// * `context` -  The [`ChainstateManager`] for which these options are created has to use the same [`Context`].
     /// * `data_dir` - The directory into which the [`ChainstateManager`] will write its data.
     pub fn new(context: &Context, data_dir: &str, blocks_dir: &str) -> Result<Self, KernelError> {
-        let c_data_dir = CString::new(data_dir)?;
-        let c_blocks_dir = CString::new(blocks_dir)?;
+        let sanitized_data_dir = sanitize_path(data_dir)?;
+        let sanitized_blocks_dir = sanitize_path(blocks_dir)?;
+
+        let c_data_dir = CString::new(sanitized_data_dir)?;
+        let c_blocks_dir = CString::new(sanitized_blocks_dir)?;
         let inner = unsafe {
             btck_chainstate_manager_options_create(
                 context.as_ptr(),
@@ -287,11 +321,11 @@ mod tests {
     fn test_chainstate_manager_options_invalid_path() {
         let context = create_test_context();
 
-        let invalid_path = "test\0path";
+        let invalid_path = "!@#$%^&*()";
         let blocks_dir = "blocks";
 
         let opts = ChainstateManagerOptions::new(&context, invalid_path, blocks_dir);
-        assert!(opts.is_err());
+        assert!(matches!(opts, Err(KernelError::PathValidation)));
     }
 
     #[test]
@@ -365,5 +399,48 @@ mod tests {
         let result = ProcessBlockResult::NewBlock;
         let debug_str = format!("{:?}", result);
         assert_eq!(debug_str, "NewBlock");
+    }
+
+    #[test]
+    fn test_sanitize_path_removes_control_chars() {
+        let result = sanitize_path("/tmp/test\u{1b}\u{10}data").unwrap();
+        assert_eq!(result, "/tmp/testdata");
+    }
+
+    #[test]
+    fn test_sanitize_path_keeps_valid_chars() {
+        let result = sanitize_path("/tmp/test_dir-v2.0/data").unwrap();
+        assert_eq!(result, "/tmp/test_dir-v2.0/data");
+    }
+
+    #[test]
+    fn test_sanitize_path_rejects_empty() {
+        let result = sanitize_path("\u{1b}\u{10}");
+        assert!(matches!(result, Err(KernelError::PathValidation)));
+    }
+
+    #[test]
+    fn test_sanitize_path_rejects_too_long() {
+        let long_path = "a".repeat(256);
+        assert!(matches!(
+            sanitize_path(&long_path),
+            Err(KernelError::PathValidation)
+        ));
+    }
+
+    #[test]
+    fn test_sanitize_path_accepts_max_length() {
+        let max_path = "a".repeat(255);
+        assert!(sanitize_path(&max_path).is_ok());
+    }
+
+    #[test]
+    fn test_chainstate_manager_options_rejects_empty_path() {
+        let context = create_test_context();
+        let invalid_path = "\u{1b}\u{10}";
+        let blocks_dir = "/tmp/blocks";
+
+        let opts = ChainstateManagerOptions::new(&context, invalid_path, blocks_dir);
+        assert!(matches!(opts, Err(KernelError::PathValidation)));
     }
 }

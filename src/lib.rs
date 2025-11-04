@@ -75,6 +75,7 @@ pub enum KernelError {
     ScriptVerify(ScriptVerifyError),
     SerializationFailed,
     InvalidLength { expected: usize, actual: usize },
+    PathValidation,
 }
 
 impl From<NulError> for KernelError {
@@ -96,6 +97,9 @@ impl fmt::Display for KernelError {
             KernelError::SerializationFailed => write!(f, "Serialization failed"),
             KernelError::InvalidLength { expected, actual } => {
                 write!(f, "Invalid length: expected {}, got {}", expected, actual)
+            }
+            KernelError::PathValidation => {
+                write!(f, "Invalid path")
             }
         }
     }
