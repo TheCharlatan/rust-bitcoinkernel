@@ -194,6 +194,7 @@ jobs:
           - block_roundtrip
           - chainman_process_block
           - script_verify
+          - transaction_roundtrip
 
     steps:
       - name: Checkout rust-bitcoinkernel
