@@ -111,7 +111,7 @@ pub use crate::notifications::{
 
 pub use crate::state::{
     Chain, ChainParams, ChainType, ChainstateManager, ChainstateManagerOptions, Context,
-    ContextBuilder,
+    ContextBuilder, ProcessBlockResult,
 };
 
 pub use crate::core::verify_flags::{
