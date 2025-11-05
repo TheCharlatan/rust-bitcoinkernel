@@ -126,7 +126,7 @@ pub use crate::notifications::{
 };
 
 pub use crate::state::{
-    Chain, ChainParams, ChainType, ChainstateManager, ChainstateManagerOptions, Context,
+    Chain, ChainParams, ChainType, ChainstateManager, ChainstateManagerBuilder, Context,
     ContextBuilder, ProcessBlockResult,
 };
 

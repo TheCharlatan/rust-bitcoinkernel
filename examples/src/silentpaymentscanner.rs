@@ -12,7 +12,7 @@ use bitcoinkernel::BlockSpentOutputs;
 use bitcoinkernel::BlockTreeEntry;
 use bitcoinkernel::TransactionSpentOutputsRef;
 use bitcoinkernel::{
-    prelude::*, ChainType, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder,
+    prelude::*, ChainType, ChainstateManager, ChainstateManagerBuilder, Context, ContextBuilder,
     KernelError, Log, Logger,
 };
 use env_logger::Builder;
@@ -319,10 +319,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = args[1].clone();
     let blocks_dir = format!("{}/blocks", data_dir);
 
-    let chainman = ChainstateManager::new(
-        ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-    )
-    .unwrap();
+    let chainman = ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir)
+        .unwrap()
+        .build()
+        .unwrap();
 
     chainman.import_blocks().unwrap();
 

@@ -135,7 +135,6 @@ impl ContextBuilder {
         if inner.is_null() {
             return Err(KernelError::Internal("Invalid context.".to_string()));
         }
-        unsafe { btck_context_options_destroy(self.inner) };
         Ok(Context { inner })
     }
 
@@ -308,6 +307,14 @@ impl ContextBuilder {
             self.validation_registry = Some(ValidationCallbackRegistry::new());
         }
         self.validation_registry.as_mut().unwrap()
+    }
+}
+
+impl Drop for ContextBuilder {
+    fn drop(&mut self) {
+        unsafe {
+            btck_context_options_destroy(self.inner);
+        }
     }
 }
 

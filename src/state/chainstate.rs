@@ -66,16 +66,6 @@ unsafe impl Send for ChainstateManager {}
 unsafe impl Sync for ChainstateManager {}
 
 impl ChainstateManager {
-    pub fn new(chainman_opts: ChainstateManagerOptions) -> Result<Self, KernelError> {
-        let inner = unsafe { btck_chainstate_manager_create(chainman_opts.inner) };
-        if inner.is_null() {
-            return Err(KernelError::Internal(
-                "Failed to create chainstate manager.".to_string(),
-            ));
-        }
-        Ok(Self { inner })
-    }
-
     /// Process and validate the passed in block with the [`ChainstateManager`]
     /// If processing failed, some information can be retrieved through the status
     /// enumeration. More detailed validation information in case of a failure can
@@ -171,11 +161,11 @@ impl Drop for ChainstateManager {
 }
 
 /// Holds the configuration options for creating a new [`ChainstateManager`]
-pub struct ChainstateManagerOptions {
+pub struct ChainstateManagerBuilder {
     inner: *mut btck_ChainstateManagerOptions,
 }
 
-impl ChainstateManagerOptions {
+impl ChainstateManagerBuilder {
     /// Create a new option
     ///
     /// # Arguments
@@ -244,9 +234,19 @@ impl ChainstateManagerOptions {
         }
         self
     }
+
+    pub fn build(self) -> Result<ChainstateManager, KernelError> {
+        let inner = unsafe { btck_chainstate_manager_create(self.inner) };
+        if inner.is_null() {
+            return Err(KernelError::Internal(
+                "Failed to create chainstate manager.".to_string(),
+            ));
+        }
+        Ok(ChainstateManager { inner })
+    }
 }
 
-impl Drop for ChainstateManagerOptions {
+impl Drop for ChainstateManagerBuilder {
     fn drop(&mut self) {
         unsafe {
             btck_chainstate_manager_options_destroy(self.inner);
@@ -279,8 +279,8 @@ mod tests {
         let context = create_test_context();
         let (_temp_dir, data_dir, blocks_dir) = create_test_dirs();
 
-        let opts = ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir);
-        assert!(opts.is_ok());
+        let builder = ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir);
+        assert!(builder.is_ok());
     }
 
     #[test]
@@ -290,8 +290,8 @@ mod tests {
         let invalid_path = "test\0path";
         let blocks_dir = "blocks";
 
-        let opts = ChainstateManagerOptions::new(&context, invalid_path, blocks_dir);
-        assert!(opts.is_err());
+        let builder = ChainstateManagerBuilder::new(&context, invalid_path, blocks_dir);
+        assert!(builder.is_err());
     }
 
     #[test]
@@ -299,14 +299,14 @@ mod tests {
         let context = create_test_context();
         let (_temp_dir, data_dir, blocks_dir) = create_test_dirs();
 
-        let opts = ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir)
+        let chainman = ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir)
             .unwrap()
             .block_tree_db_in_memory(true)
             .chainstate_db_in_memory(true)
             .wipe_db(false, true)
-            .worker_threads(4);
+            .worker_threads(4)
+            .build();
 
-        let chainman = ChainstateManager::new(opts);
         assert!(chainman.is_ok());
     }
 
