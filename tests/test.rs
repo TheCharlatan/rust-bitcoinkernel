@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use bitcoin::consensus::deserialize;
+    use bitcoinkernel::core::transaction::TxIn;
     use bitcoinkernel::notifications::types::BlockValidationStateRef;
     use bitcoinkernel::{
         prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
@@ -106,24 +107,25 @@ mod tests {
         lines
     }
 
-    fn setup_chainman_with_blocks(context: &Arc<Context>, data_dir: &str) -> ChainstateManager {
+    fn setup_chainman_with_blocks(
+        context: &Arc<Context>,
+        data_dir: &str,
+    ) -> Result<ChainstateManager, KernelError> {
         let blocks_dir = data_dir.to_string() + "/blocks";
         let block_data = read_block_data();
 
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(context, data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
+        let options = ChainstateManagerOptions::new(context, data_dir, &blocks_dir)?;
+        let chainman = ChainstateManager::new(options)?;
 
         for raw_block in block_data.iter() {
-            let block = Block::new(raw_block.as_slice()).unwrap();
+            let block = Block::new(raw_block.as_slice())?;
             let result = chainman.process_block(&block);
             assert!(result.is_new_block());
             assert!(!result.is_duplicate());
             assert!(!result.is_rejected());
         }
 
-        chainman
+        Ok(chainman)
     }
 
     #[test]
@@ -206,7 +208,7 @@ mod tests {
         }
 
         let (context, data_dir) = testing_setup();
-        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+        let chainman = setup_chainman_with_blocks(&context, &data_dir).unwrap();
 
         let active_chain = chainman.active_chain();
 
@@ -454,7 +456,7 @@ mod tests {
     fn test_chain_operations() {
         let (context, data_dir) = testing_setup();
 
-        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+        let chainman = setup_chainman_with_blocks(&context, &data_dir).unwrap();
 
         let chain = chainman.active_chain();
 
@@ -530,7 +532,7 @@ mod tests {
     fn test_block_spent_outputs_iterator() {
         let (context, data_dir) = testing_setup();
 
-        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+        let chainman = setup_chainman_with_blocks(&context, &data_dir).unwrap();
 
         let active_chain = chainman.active_chain();
         let block_index_tip = active_chain.tip();
@@ -561,7 +563,7 @@ mod tests {
     fn test_transaction_spent_outputs_iterator() {
         let (context, data_dir) = testing_setup();
 
-        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+        let chainman = setup_chainman_with_blocks(&context, &data_dir).unwrap();
 
         let active_chain = chainman.active_chain();
         let block_index_tip = active_chain.tip();
@@ -604,7 +606,7 @@ mod tests {
     fn test_nested_iteration() {
         let (context, data_dir) = testing_setup();
 
-        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+        let chainman = setup_chainman_with_blocks(&context, &data_dir).unwrap();
 
         let active_chain = chainman.active_chain();
         let block_index = active_chain.at_height(1).unwrap();
@@ -626,7 +628,7 @@ mod tests {
     fn test_iterator_with_block_transactions() {
         let (context, data_dir) = testing_setup();
 
-        let chainman = setup_chainman_with_blocks(&context, &data_dir);
+        let chainman = setup_chainman_with_blocks(&context, &data_dir).unwrap();
 
         let active_chain = chainman.active_chain();
         let block_index = active_chain.at_height(1).unwrap();
@@ -655,7 +657,8 @@ mod tests {
             input,
             Some(VERIFY_ALL_PRE_TAPROOT),
             &outputs,
-        )
+        )?;
+        Ok(())
     }
 
     #[test]
@@ -668,6 +671,8 @@ mod tests {
         is_send::<ChainParams>();
         is_sync::<TxOut>();
         is_send::<TxOut>();
+        is_sync::<TxIn>();
+        is_send::<TxIn>();
         is_sync::<Transaction>();
         is_send::<Transaction>();
         is_sync::<Context>();
