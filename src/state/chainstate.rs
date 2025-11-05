@@ -57,9 +57,14 @@ pub enum ProcessBlockResult {
     /// This indicates the block is new and has been successfully validated
     /// against all consensus rules.
     NewBlock,
-    /// Block was accepted but was already known
+    /// Block was already present in the block tree.
+    ///
+    /// The block is valid but was previously processed. No action was taken.
     Duplicate,
-    /// Block was rejected during validation
+    /// Block failed validation.
+    ///
+    /// The block violated one or more consensus rules. Use a validation
+    /// interface callback to retrieve detailed error information.
     Rejected,
 }
 
