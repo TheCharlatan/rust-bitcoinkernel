@@ -114,8 +114,7 @@ mod tests {
         let blocks_dir = data_dir.to_string() + "/blocks";
         let block_data = read_block_data();
 
-        let options = ChainstateManagerBuilder::new(context, data_dir, &blocks_dir)?;
-        let chainman = options.build()?;
+        let chainman = ChainstateManager::new(context, data_dir, &blocks_dir)?;
 
         for raw_block in block_data.iter() {
             let block = Block::new(raw_block.as_slice())?;
@@ -148,7 +147,7 @@ mod tests {
             }
         }
 
-        let chainman_builder = ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir)
+        let chainman_builder = ChainstateManager::builder(&context, &data_dir, &blocks_dir)
             .unwrap()
             .wipe_db(false, true);
 

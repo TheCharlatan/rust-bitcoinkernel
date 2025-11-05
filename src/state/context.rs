@@ -69,6 +69,14 @@ unsafe impl Send for Context {}
 unsafe impl Sync for Context {}
 
 impl Context {
+    pub fn builder() -> ContextBuilder {
+        ContextBuilder::new()
+    }
+
+    pub fn new() -> Result<Context, KernelError> {
+        ContextBuilder::new().build()
+    }
+
     pub fn interrupt(&self) -> Result<(), KernelError> {
         let result = unsafe { btck_context_interrupt(self.inner) };
         if c_helpers::success(result) {
@@ -418,7 +426,11 @@ mod tests {
     // Context tests
     #[test]
     fn test_context_creation_default() {
-        let context = ContextBuilder::new().build();
+        let mut context = ContextBuilder::new().build();
+        assert!(context.is_ok());
+        context = Context::new();
+        assert!(context.is_ok());
+        context = Context::builder().build();
         assert!(context.is_ok());
     }
 

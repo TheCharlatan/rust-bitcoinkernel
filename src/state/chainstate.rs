@@ -66,6 +66,22 @@ unsafe impl Send for ChainstateManager {}
 unsafe impl Sync for ChainstateManager {}
 
 impl ChainstateManager {
+    pub fn builder(
+        context: &Context,
+        data_dir: &str,
+        blocks_dir: &str,
+    ) -> Result<ChainstateManagerBuilder, KernelError> {
+        ChainstateManagerBuilder::new(context, data_dir, blocks_dir)
+    }
+
+    pub fn new(
+        context: &Context,
+        data_dir: &str,
+        blocks_dir: &str,
+    ) -> Result<ChainstateManager, KernelError> {
+        ChainstateManagerBuilder::new(context, data_dir, blocks_dir)?.build()
+    }
+
     /// Process and validate the passed in block with the [`ChainstateManager`]
     /// If processing failed, some information can be retrieved through the status
     /// enumeration. More detailed validation information in case of a failure can
