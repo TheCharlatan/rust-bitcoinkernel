@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use libbitcoinkernel_sys::{
     btck_ScriptVerificationFlags, btck_ScriptVerifyStatus, btck_TransactionOutput,
     btck_script_pubkey_verify,
@@ -179,6 +181,27 @@ pub enum ScriptVerifyError {
     SpentOutputsRequired,
     Invalid,
 }
+
+impl Display for ScriptVerifyError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScriptVerifyError::TxInputIndex => write!(f, "Transaction input index out of bounds"),
+            ScriptVerifyError::TxSizeMismatch => write!(f, "Transaction size mismatch"),
+            ScriptVerifyError::TxDeserialize => write!(f, "Failed to deserialize transaction"),
+            ScriptVerifyError::InvalidFlags => write!(f, "Invalid verification flags"),
+            ScriptVerifyError::InvalidFlagsCombination => {
+                write!(f, "Invalid combination of verification flags")
+            }
+            ScriptVerifyError::SpentOutputsMismatch => write!(f, "Spent outputs mismatch"),
+            ScriptVerifyError::SpentOutputsRequired => {
+                write!(f, "Spent outputs required for verification")
+            }
+            ScriptVerifyError::Invalid => write!(f, "Script verification failed"),
+        }
+    }
+}
+
+impl std::error::Error for ScriptVerifyError {}
 
 #[cfg(test)]
 mod tests {
