@@ -318,17 +318,67 @@ impl Drop for ChainstateManager {
     }
 }
 
-/// Holds the configuration options for creating a new [`ChainstateManager`]
+/// Configuration options for creating a [`ChainstateManager`].
+///
+/// Provides a fluent interface for configuring how the chainstate manager
+/// will initialize and operate. Options control database locations, in-memory
+/// operation, worker thread allocation, and database initialization behavior.
+///
+/// # Usage
+/// Configure options by chaining method calls, then pass to
+/// [`ChainstateManager::new`]. Note that options are consumed and cannot
+/// be reused.
+///
+/// # Example
+/// ```no_run
+/// use bitcoinkernel::*;
+///
+/// let context = ContextBuilder::new()
+///     .chain_type(ChainType::Regtest)
+///     .build()?;
+///
+/// let opts = ChainstateManagerOptions::new(&context, "/data", "/blocks")?
+///     .worker_threads(4)
+///     .chainstate_db_in_memory(true)
+///     .block_tree_db_in_memory(true);
+///
+/// let chainman = ChainstateManager::new(opts)?;
+/// # Ok::<(), KernelError>(())
+/// ```
 pub struct ChainstateManagerOptions {
     inner: *mut btck_ChainstateManagerOptions,
 }
 
 impl ChainstateManagerOptions {
-    /// Create a new option
+    /// Creates a new chainstate manager configuration.
     ///
     /// # Arguments
-    /// * `context` -  The [`ChainstateManager`] for which these options are created has to use the same [`Context`].
-    /// * `data_dir` - The directory into which the [`ChainstateManager`] will write its data.
+    /// * `context` - The [`Context`] that configures chain parameters. Must remain
+    ///   valid for the lifetime of any [`ChainstateManager`] created from these options.
+    /// * `data_dir` - Path to the directory where chainstate data will be stored.
+    ///   This includes the UTXO set database and other chain state information.
+    /// * `blocks_dir` - Path to the directory where block data will be stored.
+    ///   This includes the raw block files and the block index database.
+    ///
+    /// # Errors
+    /// Returns [`KernelError`] if:
+    /// - The paths contain null bytes (invalid C strings)
+    /// - The underlying C++ library fails to create the options object
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use bitcoinkernel::*;
+    /// let context = ContextBuilder::new()
+    ///     .chain_type(ChainType::Regtest)
+    ///     .build()?;
+    ///
+    /// let opts = ChainstateManagerOptions::new(
+    ///     &context,
+    ///     "/var/bitcoin",
+    ///     "/var/bitcoin/blocks"
+    /// )?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn new(context: &Context, data_dir: &str, blocks_dir: &str) -> Result<Self, KernelError> {
         let c_data_dir = CString::new(data_dir)?;
         let c_blocks_dir = CString::new(blocks_dir)?;
@@ -349,7 +399,27 @@ impl ChainstateManagerOptions {
         Ok(Self { inner })
     }
 
-    /// Set the number of worker threads used by script validation
+    /// Sets the number of worker threads for validation.
+    ///
+    /// Block validation can be parallelized across multiple threads to improve
+    /// performance. More threads generally result in faster validation, but with
+    /// diminishing returns beyond the number of available CPU cores.
+    ///
+    /// # Arguments
+    /// * `worker_threads` - Number of worker threads to use for validation.
+    ///   Valid range is 0-15 (values outside this range are clamped). When set to 0,
+    ///   no parallel verification is performed.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use bitcoinkernel::*;
+    /// # let context = ContextBuilder::new()
+    /// #     .chain_type(ChainType::Regtest)
+    /// #     .build()?;
+    /// # let opts = ChainstateManagerOptions::new(&context, "/data", "/blocks")?;
+    /// let opts = opts.worker_threads(8);
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn worker_threads(self, worker_threads: i32) -> Self {
         unsafe {
             btck_chainstate_manager_options_set_worker_threads_num(self.inner, worker_threads);
@@ -357,9 +427,40 @@ impl ChainstateManagerOptions {
         self
     }
 
-    /// Wipe the block tree or chainstate dbs. When wiping the block tree db the
-    /// chainstate db has to be wiped too. Wiping the databases will triggere a
-    /// rebase once import blocks is called.
+    /// Configures database wiping behavior.
+    ///
+    /// When enabled, this will delete and recreate the specified databases on
+    /// initialization. After wiping, [`ChainstateManager::import_blocks`] will
+    /// trigger a reindex to rebuild the databases from the block files.
+    ///
+    /// # Arguments
+    /// * `wipe_block_tree` - If true, wipe the block tree database (block index).
+    ///   Should only be true if `wipe_chainstate` is also true.
+    /// * `wipe_chainstate` - If true, wipe the chainstate database (UTXO set)
+    ///
+    /// # Reindex Behavior
+    /// - Wiping both databases triggers a full reindex
+    /// - Wiping only the chainstate triggers a chainstate-only reindex
+    ///
+    /// # Important
+    /// Wiping the block tree without also wiping the chainstate is currently
+    /// unsupported. If `wipe_block_tree` is true, `wipe_chainstate` must also
+    /// be true.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use bitcoinkernel::*;
+    /// # let context = ContextBuilder::new()
+    /// #     .chain_type(ChainType::Regtest)
+    /// #     .build()?;
+    /// # let opts = ChainstateManagerOptions::new(&context, "/data", "/blocks")?;
+    /// // Wipe both databases for a full reindex
+    /// let opts = opts.wipe_db(true, true);
+    ///
+    /// // Only wipe chainstate (e.g., to rebuild UTXO set)
+    /// let opts = opts.wipe_db(false, true);
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn wipe_db(self, wipe_block_tree: bool, wipe_chainstate: bool) -> Self {
         unsafe {
             btck_chainstate_manager_options_set_wipe_dbs(
@@ -371,7 +472,32 @@ impl ChainstateManagerOptions {
         self
     }
 
-    /// Run the block tree db in-memory only. No database files will be written to disk.
+    /// Configures the block tree database to run entirely in memory.
+    ///
+    /// When enabled, the block tree database (which stores the block index and
+    /// metadata about all known blocks) will be stored in RAM rather than on disk.
+    /// This can improve performance but requires sufficient memory and means the
+    /// database will be lost when the process exits.
+    ///
+    /// # Arguments
+    /// * `block_tree_db_in_memory` - If true, run the block tree database in memory
+    ///
+    /// # Use Cases
+    /// - Testing environments where persistence is not needed
+    /// - Temporary validation tasks
+    /// - Systems with fast RAM but slow disk I/O
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use bitcoinkernel::*;
+    /// # let context = ContextBuilder::new()
+    /// #     .chain_type(ChainType::Regtest)
+    /// #     .build()?;
+    /// # let opts = ChainstateManagerOptions::new(&context, "/data", "/blocks")?;
+    /// // Use in-memory block tree for testing
+    /// let opts = opts.block_tree_db_in_memory(true);
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Self {
         unsafe {
             btck_chainstate_manager_options_update_block_tree_db_in_memory(
@@ -382,7 +508,38 @@ impl ChainstateManagerOptions {
         self
     }
 
-    /// Run the chainstate db in-memory only. No database files will be written to disk.
+    /// Configures the chainstate database to run entirely in memory.
+    ///
+    /// When enabled, the chainstate database (which stores the current UTXO set)
+    /// will be stored in RAM rather than on disk. This can significantly improve
+    /// performance but requires substantial memory (several gigabytes for mainnet)
+    /// and means the database will be lost when the process exits.
+    ///
+    /// # Arguments
+    /// * `chainstate_db_in_memory` - If true, run the chainstate database in memory
+    ///
+    /// # Memory Requirements
+    /// The chainstate database size varies by network:
+    /// - Mainnet: ~5-10 GB
+    /// - Testnet: ~1-2 GB
+    /// - Regtest: Typically very small
+    ///
+    /// # Use Cases
+    /// - Testing and development
+    /// - Temporary validation or analysis tasks
+    /// - High-performance applications with sufficient RAM
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use bitcoinkernel::*;
+    /// # let context = ContextBuilder::new()
+    /// #     .chain_type(ChainType::Regtest)
+    /// #     .build()?;
+    /// # let opts = ChainstateManagerOptions::new(&context, "/data", "/blocks")?;
+    /// // Use in-memory chainstate for fast testing
+    /// let opts = opts.chainstate_db_in_memory(true);
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn chainstate_db_in_memory(self, chainstate_db_in_memory: bool) -> Self {
         unsafe {
             btck_chainstate_manager_options_update_chainstate_db_in_memory(
