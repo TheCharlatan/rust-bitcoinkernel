@@ -130,6 +130,16 @@ impl std::fmt::Debug for BlockHash {
     }
 }
 
+impl std::fmt::Display for BlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let bytes = self.to_bytes();
+        for byte in bytes.iter().rev() {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
+    }
+}
+
 pub struct BlockHashRef<'a> {
     inner: *const btck_BlockHash,
     marker: PhantomData<&'a ()>,
@@ -178,6 +188,16 @@ impl<'a> PartialEq for BlockHashRef<'a> {
 impl<'a> std::fmt::Debug for BlockHashRef<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BlockHash({:?})", self.to_bytes())
+    }
+}
+
+impl<'a> std::fmt::Display for BlockHashRef<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let bytes = self.to_bytes();
+        for byte in bytes.iter().rev() {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
     }
 }
 
@@ -1107,5 +1127,53 @@ mod tests {
         let block2 = Block::new(&block_data[1]).unwrap();
 
         assert_ne!(block1.hash(), block2.hash());
+    }
+
+    #[test]
+    fn test_block_hash_display() {
+        let block = Block::new(
+            hex::decode(
+                "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd\
+                1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299\
+                0101000000010000000000000000000000000000000000000000000000000000000000000000ffff\
+                ffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec1\
+                1600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf62\
+                1e73a82cbf2342c858eeac00000000",
+            )
+            .unwrap()
+            .as_slice(),
+        )
+        .unwrap();
+
+        let block_hash = block.hash().to_owned();
+
+        assert_eq!(
+            format!("{block_hash}"),
+            "00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048"
+        );
+    }
+
+    #[test]
+    fn test_block_hash_ref_display() {
+        let block = Block::new(
+            hex::decode(
+                "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd\
+                1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299\
+                0101000000010000000000000000000000000000000000000000000000000000000000000000ffff\
+                ffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec1\
+                1600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf62\
+                1e73a82cbf2342c858eeac00000000",
+            )
+            .unwrap()
+            .as_slice(),
+        )
+        .unwrap();
+
+        let block_hash_ref = block.hash();
+
+        assert_eq!(
+            format!("{block_hash_ref}"),
+            "00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048"
+        );
     }
 }
