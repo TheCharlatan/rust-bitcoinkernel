@@ -1,3 +1,27 @@
+//! Chainstate manager for Bitcoin Core validation and chain state management.
+//!
+//! The [`ChainstateManager`] is the central component for:
+//! - Processing and validating blocks
+//! - Reading block data from disk
+//! - Querying the active chain and block tree
+//! - Managing chainstate databases
+//!
+//! # Example
+//! ```no_run
+//! use bitcoinkernel::*;
+//!
+//! let context = ContextBuilder::new()
+//!     .chain_type(ChainType::Regtest)
+//!     .build()?;
+//!
+//! let opts = ChainstateManagerOptions::new(&context, "/data", "/blocks")?
+//!     .worker_threads(4)
+//!     .chainstate_db_in_memory(true);
+//!
+//! let chainman = ChainstateManager::new(opts)?;
+//! # Ok::<(), KernelError>(())
+//! ```
+
 use std::ffi::CString;
 
 use libbitcoinkernel_sys::{
