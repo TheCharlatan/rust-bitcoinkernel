@@ -86,10 +86,26 @@ impl From<NulError> for KernelError {
 impl fmt::Display for KernelError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            KernelError::Internal(msg)
-            | KernelError::CStringCreationFailed(msg)
-            | KernelError::InvalidOptions(msg) => write!(f, "{msg}"),
-            _ => write!(f, "Error!"),
+            KernelError::Internal(msg) => write!(f, "Internal error: {}", msg),
+            KernelError::CStringCreationFailed(msg) => {
+                write!(f, "C string creation failed: {}", msg)
+            }
+            KernelError::InvalidOptions(msg) => write!(f, "Invalid options: {}", msg),
+            KernelError::OutOfBounds => write!(f, "Out of bounds"),
+            KernelError::ScriptVerify(err) => write!(f, "Script verification error: {}", err),
+            KernelError::SerializationFailed => write!(f, "Serialization failed"),
+            KernelError::InvalidLength { expected, actual } => {
+                write!(f, "Invalid length: expected {}, got {}", expected, actual)
+            }
+        }
+    }
+}
+
+impl std::error::Error for KernelError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            KernelError::ScriptVerify(err) => Some(err),
+            _ => None,
         }
     }
 }
