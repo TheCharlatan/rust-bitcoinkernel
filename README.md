@@ -10,15 +10,14 @@ of blocks and transaction outputs as well as reading block data.
 ## Building
 
 The library statically compiles the Bitcoin Core libbitcoinkernel library as
-part of its build system. Currently it targets the kernelApi branch on the
-following fork: https://github.com/TheCharlatan/bitcoin/tree/kernelApi.
+part of its build system.
 
 Bitcoin Core is vendored as a `git subtree` in this project. The subtree can
 be updated, or made to point at a different commit or branch in Bitcoin Core's
 history with:
 
 ```
- git subtree pull --prefix libbitcoinkernel-sys/bitcoin https://github.com/TheCharlatan/bitcoin kernelApiNode --squash
+ git subtree pull --prefix libbitcoinkernel-sys/bitcoin https://github.com/bitcoin/bitcoin master --squash
 ```
 
 To build this library, the usual Bitcoin Core build requirements, such as
