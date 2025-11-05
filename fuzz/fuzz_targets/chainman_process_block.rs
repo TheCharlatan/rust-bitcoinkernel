@@ -9,8 +9,8 @@ use arbitrary::Arbitrary;
 use bitcoinkernel::{
     disable_logging,
     notifications::types::{BlockValidationStateExt, BlockValidationStateRef},
-    Block, ChainType, ChainstateManager, ChainstateManagerOptions, Context, ContextBuilder,
-    KernelError, ValidationMode,
+    Block, ChainType, ChainstateManagerBuilder, Context, ContextBuilder, KernelError,
+    ValidationMode,
 };
 
 fn create_context(chain_type: ChainType) -> Arc<Context> {
@@ -85,8 +85,8 @@ fuzz_target!(|data: ChainstateManagerInput| {
         std::process::id()
     );
     let blocks_dir = format!("{}/blocks", data_dir);
-    let chainman_opts = match ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir) {
-        Ok(opts) => opts,
+    let chainman_builder = match ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir) {
+        Ok(builder) => builder,
         Err(KernelError::CStringCreationFailed(_)) => {
             let _ = std::fs::remove_dir_all(data_dir);
             return;
@@ -97,7 +97,7 @@ fuzz_target!(|data: ChainstateManagerInput| {
     .block_tree_db_in_memory(data.block_tree_db_in_memory)
     .chainstate_db_in_memory(data.chainstate_db_in_memory)
     .worker_threads(data.worker_threads);
-    let chainman = match ChainstateManager::new(chainman_opts) {
+    let chainman = match chainman_builder.build() {
         Err(KernelError::Internal(_)) => {
             return;
         }

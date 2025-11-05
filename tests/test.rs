@@ -5,7 +5,7 @@ mod tests {
     use bitcoinkernel::notifications::types::BlockValidationStateRef;
     use bitcoinkernel::{
         prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
-        ChainType, ChainstateManager, ChainstateManagerOptions, Coin, Context, ContextBuilder,
+        ChainType, ChainstateManager, ChainstateManagerBuilder, Coin, Context, ContextBuilder,
         KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction,
         TransactionSpentOutputs, TxOut, TxOutRef, VERIFY_ALL_PRE_TAPROOT, VERIFY_TAPROOT,
         VERIFY_WITNESS,
@@ -114,8 +114,7 @@ mod tests {
         let blocks_dir = data_dir.to_string() + "/blocks";
         let block_data = read_block_data();
 
-        let options = ChainstateManagerOptions::new(context, data_dir, &blocks_dir)?;
-        let chainman = ChainstateManager::new(options)?;
+        let chainman = ChainstateManager::new(context, data_dir, &blocks_dir)?;
 
         for raw_block in block_data.iter() {
             let block = Block::new(raw_block.as_slice())?;
@@ -135,10 +134,10 @@ mod tests {
         {
             let block_data = read_block_data();
 
-            let chainman = ChainstateManager::new(
-                ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-            )
-            .unwrap();
+            let chainman = ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir)
+                .unwrap()
+                .build()
+                .unwrap();
             for raw_block in block_data.iter() {
                 let block = Block::try_from(raw_block.as_slice()).unwrap();
                 let result = chainman.process_block(&block);
@@ -148,11 +147,11 @@ mod tests {
             }
         }
 
-        let chainman_opts = ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir)
+        let chainman_builder = ChainstateManager::builder(&context, &data_dir, &blocks_dir)
             .unwrap()
             .wipe_db(false, true);
 
-        let chainman = ChainstateManager::new(chainman_opts).unwrap();
+        let chainman = chainman_builder.build().unwrap();
         chainman.import_blocks().unwrap();
         drop(chainman);
     }
@@ -162,10 +161,10 @@ mod tests {
         let (context, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         for _ in 0..10 {
-            let chainman = ChainstateManager::new(
-                ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-            )
-            .unwrap();
+            let chainman = ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir)
+                .unwrap()
+                .build()
+                .unwrap();
 
             // Not a block
             let block = Block::try_from(hex::decode("deadbeef").unwrap().as_slice());
@@ -273,10 +272,10 @@ mod tests {
         let (context, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
+        let chainman = ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir)
+            .unwrap()
+            .build()
+            .unwrap();
 
         for raw_block in block_data.iter() {
             let block = Block::try_from(raw_block.as_slice()).unwrap();
@@ -292,10 +291,10 @@ mod tests {
         let (context, data_dir) = testing_setup();
         let blocks_dir = data_dir.clone() + "/blocks";
         let block_data = read_block_data();
-        let chainman = ChainstateManager::new(
-            ChainstateManagerOptions::new(&context, &data_dir, &blocks_dir).unwrap(),
-        )
-        .unwrap();
+        let chainman = ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir)
+            .unwrap()
+            .build()
+            .unwrap();
 
         chainman.import_blocks().unwrap();
         let block_2 = Block::try_from(block_data[1].clone().as_slice()).unwrap();
