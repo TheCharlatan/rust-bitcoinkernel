@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use bitcoin::consensus::deserialize;
+    use bitcoinkernel::core::transaction::TxIn;
     use bitcoinkernel::notifications::types::BlockValidationStateRef;
     use bitcoinkernel::{
         prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
@@ -668,6 +669,8 @@ mod tests {
         is_send::<ChainParams>();
         is_sync::<TxOut>();
         is_send::<TxOut>();
+        is_sync::<TxIn>();
+        is_send::<TxIn>();
         is_sync::<Transaction>();
         is_send::<Transaction>();
         is_sync::<Context>();
