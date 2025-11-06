@@ -385,17 +385,56 @@ impl Drop for ChainstateManager {
     }
 }
 
-/// Holds the configuration options for creating a new [`ChainstateManager`]
+/// Builder for configuring and creating a [`ChainstateManager`].
+///
+/// Provides a fluent interface for configuring how the chainstate manager
+/// will initialize and operate. Options control database locations, in-memory
+/// operation, worker thread allocation, and database initialization behavior.
+///
+/// # Usage
+/// Create a builder using [`ChainstateManager::builder`], configure options
+/// by chaining method calls, then call [`build`](Self::build) to create the
+/// chainstate manager.
+///
+/// # Example
+/// ```no_run
+/// use bitcoinkernel::{ChainType, ChainstateManager, ContextBuilder, KernelError};
+///
+/// # fn main() -> Result<(), KernelError> {
+/// let context = ContextBuilder::new()
+///     .chain_type(ChainType::Regtest)
+///     .build()?;
+///
+/// let chainman = ChainstateManager::builder(&context, "/data", "/blocks")?
+///     .worker_threads(4)
+///     .chainstate_db_in_memory(true)
+///     .block_tree_db_in_memory(true)
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct ChainstateManagerBuilder {
     inner: *mut btck_ChainstateManagerOptions,
 }
 
 impl ChainstateManagerBuilder {
-    /// Create a new option
+    /// Creates a new chainstate manager builder.
+    ///
+    /// This is typically called via [`ChainstateManager::builder`] rather than directly.
     ///
     /// # Arguments
-    /// * `context` -  The [`ChainstateManager`] for which these options are created has to use the same [`Context`].
-    /// * `data_dir` - The directory into which the [`ChainstateManager`] will write its data.
+    /// * `context` - The [`Context`] that configures chain parameters and
+    ///   notification callbacks. It is recommended to keep the context in scope
+    ///   for the lifetime of the [`ChainstateManager`].
+    /// * `data_dir` - Path to the directory where chainstate data will be stored.
+    ///   This includes the UTXO set database and other chain state information.
+    /// * `blocks_dir` - Path to the directory where block data will be stored.
+    ///   This includes the raw block files and the block index database.
+    ///
+    /// # Errors
+    /// Returns [`KernelError`] if:
+    /// - The paths contain null bytes (invalid C strings)
+    /// - The underlying C++ library fails to create the builder
     pub fn new(context: &Context, data_dir: &str, blocks_dir: &str) -> Result<Self, KernelError> {
         let c_data_dir = CString::new(data_dir)?;
         let c_blocks_dir = CString::new(blocks_dir)?;
@@ -416,7 +455,16 @@ impl ChainstateManagerBuilder {
         Ok(Self { inner })
     }
 
-    /// Set the number of worker threads used by script validation
+    /// Sets the number of worker threads for validation.
+    ///
+    /// Block validation can be parallelized across multiple threads to improve
+    /// performance. More threads generally result in faster validation, but with
+    /// diminishing returns beyond the number of available CPU cores.
+    ///
+    /// # Arguments
+    /// * `worker_threads` - Number of worker threads to use for validation.
+    ///   Valid range is 0-15 (values outside this range are clamped). When set to 0,
+    ///   no parallel verification is performed.
     pub fn worker_threads(self, worker_threads: i32) -> Self {
         unsafe {
             btck_chainstate_manager_options_set_worker_threads_num(self.inner, worker_threads);
@@ -424,9 +472,42 @@ impl ChainstateManagerBuilder {
         self
     }
 
-    /// Wipe the block tree or chainstate dbs. When wiping the block tree db the
-    /// chainstate db has to be wiped too. Wiping the databases will triggere a
-    /// rebase once import blocks is called.
+    /// Configures database wiping behavior.
+    ///
+    /// When enabled, this will delete and recreate the specified databases on
+    /// initialization. After wiping, [`ChainstateManager::import_blocks`] will
+    /// trigger a reindex to rebuild the databases from the block files.
+    ///
+    /// # Arguments
+    /// * `wipe_block_tree` - If true, wipe the block tree database (block index).
+    ///   Must be false if `wipe_chainstate` is false.
+    /// * `wipe_chainstate` - If true, wipe the chainstate database (UTXO set)
+    ///
+    /// # Reindex Behavior
+    /// - Wiping both databases triggers a full reindex
+    /// - Wiping only the chainstate triggers a chainstate-only reindex
+    ///
+    /// # Errors
+    /// Returns [`KernelError::InvalidOptions`] if `wipe_block_tree` is true but
+    /// `wipe_chainstate` is false, as this combination is currently unsupported.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{ChainType, ChainstateManager, ContextBuilder, KernelError};
+    /// # fn main() -> Result<(), KernelError> {
+    /// # let context = ContextBuilder::new().chain_type(ChainType::Regtest).build()?;
+    /// // Wipe both databases for a full reindex
+    /// let chainman = ChainstateManager::builder(&context, "/data", "/blocks")?
+    ///     .wipe_db(true, true)?
+    ///     .build()?;
+    ///
+    /// // Only wipe chainstate (e.g., to rebuild UTXO set)
+    /// let chainman = ChainstateManager::builder(&context, "/data", "/blocks")?
+    ///     .wipe_db(false, true)?
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn wipe_db(
         self,
         wipe_block_tree: bool,
@@ -449,7 +530,15 @@ impl ChainstateManagerBuilder {
         }
     }
 
-    /// Run the block tree db in-memory only. No database files will be written to disk.
+    /// Configures the block tree database to run entirely in memory.
+    ///
+    /// When enabled, the block tree database (which stores the block index and
+    /// metadata about all known blocks) will be stored in RAM rather than on disk.
+    /// This can improve performance but requires sufficient memory and means the
+    /// database will be lost when the process exits.
+    ///
+    /// # Arguments
+    /// * `block_tree_db_in_memory` - If true, run the block tree database in memory
     pub fn block_tree_db_in_memory(self, block_tree_db_in_memory: bool) -> Self {
         unsafe {
             btck_chainstate_manager_options_update_block_tree_db_in_memory(
@@ -460,7 +549,28 @@ impl ChainstateManagerBuilder {
         self
     }
 
-    /// Run the chainstate db in-memory only. No database files will be written to disk.
+    /// Configures the chainstate database to run entirely in memory.
+    ///
+    /// When enabled, the chainstate database (which stores the current UTXO set)
+    /// will be stored in RAM rather than on disk. This can significantly improve
+    /// performance but requires substantial memory (several gigabytes for mainnet)
+    /// and means the database will be lost when the process exits.
+    ///
+    /// # Arguments
+    /// * `chainstate_db_in_memory` - If true, run the chainstate database in memory
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use bitcoinkernel::{ChainType, ChainstateManager, ContextBuilder, KernelError};
+    /// # fn main() -> Result<(), KernelError> {
+    /// # let context = ContextBuilder::new().chain_type(ChainType::Regtest).build()?;
+    /// // Use in-memory chainstate for fast testing
+    /// let chainman = ChainstateManager::builder(&context, "/data", "/blocks")?
+    ///     .chainstate_db_in_memory(true)
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn chainstate_db_in_memory(self, chainstate_db_in_memory: bool) -> Self {
         unsafe {
             btck_chainstate_manager_options_update_chainstate_db_in_memory(
@@ -471,6 +581,13 @@ impl ChainstateManagerBuilder {
         self
     }
 
+    /// Builds the [`ChainstateManager`] with the configured options.
+    ///
+    /// Consumes the builder and creates a new chainstate manager instance.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::Internal`] if the underlying C++ library fails
+    /// to create the chainstate manager.
     pub fn build(self) -> Result<ChainstateManager, KernelError> {
         let inner = unsafe { btck_chainstate_manager_create(self.inner) };
         if inner.is_null() {
