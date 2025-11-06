@@ -85,6 +85,7 @@ fuzz_target!(|data: ChainstateManagerInput| {
         std::process::id()
     );
     let blocks_dir = format!("{}/blocks", data_dir);
+
     let chainman_builder = match ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir) {
         Ok(builder) => builder,
         Err(KernelError::CStringCreationFailed(_)) => {
@@ -92,11 +93,23 @@ fuzz_target!(|data: ChainstateManagerInput| {
             return;
         }
         Err(err) => panic!("this should never happen: {}", err),
-    }
-    .wipe_db(data.wipe_block_index, data.wipe_chainstate_index)
-    .block_tree_db_in_memory(data.block_tree_db_in_memory)
-    .chainstate_db_in_memory(data.chainstate_db_in_memory)
-    .worker_threads(data.worker_threads);
+    };
+
+    let chainman_builder =
+        match chainman_builder.wipe_db(data.wipe_block_index, data.wipe_chainstate_index) {
+            Ok(builder) => builder,
+            Err(KernelError::InvalidOptions(_)) => {
+                let _ = std::fs::remove_dir_all(data_dir);
+                return;
+            }
+            Err(err) => panic!("this should never happen: {}", err),
+        };
+
+    let chainman_builder = chainman_builder
+        .block_tree_db_in_memory(data.block_tree_db_in_memory)
+        .chainstate_db_in_memory(data.chainstate_db_in_memory)
+        .worker_threads(data.worker_threads);
+
     let chainman = match chainman_builder.build() {
         Err(KernelError::Internal(_)) => {
             return;

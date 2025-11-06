@@ -149,7 +149,8 @@ mod tests {
 
         let chainman_builder = ChainstateManager::builder(&context, &data_dir, &blocks_dir)
             .unwrap()
-            .wipe_db(false, true);
+            .wipe_db(false, true)
+            .unwrap();
 
         let chainman = chainman_builder.build().unwrap();
         chainman.import_blocks().unwrap();
