@@ -1,3 +1,30 @@
+//! Chainstate manager for validation and chain state management.
+//!
+//! The [`ChainstateManager`] is the central component for:
+//! - Processing and validating blocks
+//! - Reading block data from disk
+//! - Querying the active chain and block tree
+//! - Managing chainstate databases
+//!
+//! # Example
+//! ```no_run
+//! # use bitcoinkernel::{Context, ChainType, ChainstateManager, KernelError};
+//! #
+//! # fn main() -> Result<(), KernelError> {
+//!     let context = Context::builder().chain_type(ChainType::Regtest).build()?;
+//!
+//!     let chainman = ChainstateManager::builder(&context, "./data", "./blocks")?
+//!         .chainstate_db_in_memory(true)
+//!         .build()?;
+//!
+//!     chainman.import_blocks()?;
+//!
+//!     # let block = unimplemented!();
+//!     chainman.process_block(&block);
+//!
+//! #     Ok(())
+//! # }
+
 use std::ffi::CString;
 
 use libbitcoinkernel_sys::{
