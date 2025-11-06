@@ -10,7 +10,7 @@ use libbitcoinkernel_sys::{
 };
 
 use crate::{
-    ffi::c_helpers,
+    ffi::{c_helpers, sealed::AsPtr},
     notifications::{
         notification::{
             notification_block_tip_wrapper, notification_fatal_error_wrapper,
@@ -87,9 +87,11 @@ impl Context {
             ));
         }
     }
+}
 
-    pub fn as_ptr(&self) -> *mut btck_Context {
-        self.inner
+impl AsPtr<btck_Context> for Context {
+    fn as_ptr(&self) -> *const btck_Context {
+        self.inner as *const _
     }
 }
 
