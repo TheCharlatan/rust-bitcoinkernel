@@ -49,14 +49,21 @@ use crate::{
 
 use super::{Chain, Context};
 
-/// Result of processing a block with the chainstate manager
+/// Result of processing a block with the [`ChainstateManager`].
+///
+/// Indicates whether a block was accepted (but not necessarily valid), rejected,
+/// or was already known to the chainstate manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessBlockResult {
-    /// Block was accepted and is new
+    /// Block was accepted and is new to the chainstate manager
     NewBlock,
     /// Block was accepted but was already known
     Duplicate,
-    /// Block was rejected during validation
+    /// Block failed validation.
+    ///
+    /// The block violated one or more consensus rules. See
+    /// [`ContextBuilder::with_block_checked_validation`] for retrieving
+    /// detailed error information.
     Rejected,
 }
 
