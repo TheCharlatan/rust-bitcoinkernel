@@ -77,14 +77,23 @@ impl ProcessBlockResult {
     }
 }
 
-/// The chainstate manager is the central object for doing validation tasks as
-/// well as retrieving data from the chain. Internally it is a complex data
-/// structure with diverse functionality.
+/// The chainstate manager handles block validation and chain state.
 ///
-/// The chainstate manager is only valid for as long as the [`Context`] with which it
-/// was created remains in memory.
+/// This is the primary interface for interacting with the chain,
+/// providing functionality to process and validate blocks, read block data from
+/// disk, and query chain state.
 ///
-/// Its functionality will be more and more exposed in the future.
+/// # Lifetime
+/// The chainstate manager holds a reference to the [`Context`] used to create it.
+/// It is recommended to keep the context in scope for the lifetime of the
+/// chainstate manager.
+///
+/// # Thread Safety
+/// The chainstate manager is `Send` and `Sync`, allowing it to be shared
+/// across threads safely.
+///
+/// # Examples
+/// See module-level documentation for usage examples.
 pub struct ChainstateManager {
     inner: *mut btck_ChainstateManager,
 }
@@ -93,6 +102,42 @@ unsafe impl Send for ChainstateManager {}
 unsafe impl Sync for ChainstateManager {}
 
 impl ChainstateManager {
+    /// Creates a new chainstate manager builder for configuring and constructing a chainstate manager.
+    ///
+    /// This is the recommended way to create a [`ChainstateManager`], as it provides a fluent
+    /// interface for configuring all available options before construction.
+    ///
+    /// # Arguments
+    /// * `context` - The [`Context`] that this chainstate manager will use. It is recommended
+    ///   to keep the context in scope for the lifetime of the chainstate manager.
+    /// * `data_dir` - The directory path where the chainstate manager will write its data files.
+    ///   This directory will be created if it doesn't exist.
+    /// * `blocks_dir` - The directory path where block files will be stored.
+    ///   This directory will be created if it doesn't exist.
+    ///
+    /// # Errors
+    /// Returns [`KernelError`] if:
+    /// - The directory paths contain null bytes
+    /// - The underlying C++ library fails to create the builder options
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use bitcoinkernel::{Context, ChainType, ChainstateManager};
+    ///
+    /// # fn main() -> Result<(), bitcoinkernel::KernelError> {
+    /// let context = Context::builder().chain_type(ChainType::Regtest).build()?;
+    ///
+    /// let chainman = ChainstateManager::builder(&context, "./data", "./blocks")?
+    ///     .chainstate_db_in_memory(true)
+    ///     .worker_threads(4)
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # See Also
+    /// - [`ChainstateManagerBuilder`] for available configuration options
+    /// - [`new`](Self::new) for a simpler constructor with default options
     pub fn builder(
         context: &Context,
         data_dir: &str,
@@ -101,6 +146,41 @@ impl ChainstateManager {
         ChainstateManagerBuilder::new(context, data_dir, blocks_dir)
     }
 
+    /// Creates a new chainstate manager with default configuration.
+    ///
+    /// This is a convenience constructor that creates a chainstate manager with default settings.
+    /// For more control over configuration options (such as in-memory databases, worker threads,
+    /// or database wiping), use [`builder`](Self::builder) instead.
+    ///
+    /// # Arguments
+    /// * `context` - The [`Context`] that this chainstate manager will use. It is recommended
+    ///   to keep the context in scope for the lifetime of the chainstate manager.
+    /// * `data_dir` - The directory path where the chainstate manager will write its data files.
+    ///   This directory will be created if it doesn't exist.
+    /// * `blocks_dir` - The directory path where block files will be stored.
+    ///   This directory will be created if it doesn't exist.
+    ///
+    /// # Errors
+    /// Returns [`KernelError`] if:
+    /// - The directory paths contain null bytes
+    /// - The underlying C++ library fails to create the chainstate manager
+    /// - Invalid data directory paths
+    /// - Insufficient permissions
+    /// - Corrupted database files
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use bitcoinkernel::{Context, ChainType, ChainstateManager};
+    ///
+    /// # fn main() -> Result<(), bitcoinkernel::KernelError> {
+    /// let context = Context::builder().chain_type(ChainType::Regtest).build()?;
+    /// let chainman = ChainstateManager::new(&context, "./data", "./blocks")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # See Also
+    /// - [`builder`](Self::builder) for configurable construction with additional options
     pub fn new(
         context: &Context,
         data_dir: &str,
@@ -109,12 +189,47 @@ impl ChainstateManager {
         ChainstateManagerBuilder::new(context, data_dir, blocks_dir)?.build()
     }
 
-    /// Process and validate the passed in block with the [`ChainstateManager`]
-    /// If processing failed, some information can be retrieved through the status
-    /// enumeration. More detailed validation information in case of a failure can
-    /// also be retrieved through a registered validation interface. If the block
-    /// fails to validate the `block_checked` callback's ['BlockValidationState'] will
-    /// contain details.
+    /// Process and validate a block.
+    ///
+    /// Attempts to validate and add the block to the block tree. The block goes
+    /// through full consensus validation including proof-of-work, transaction
+    /// validity, and script verification.
+    ///
+    /// # Arguments
+    /// * `block` - The [`Block`] to process
+    ///
+    /// # Returns
+    /// A [`ProcessBlockResult`] indicating whether the block was:
+    /// - Accepted and committed to the block tree ([`ProcessBlockResult::NewBlock`])
+    /// - Accepted but already present in the block tree ([`ProcessBlockResult::Duplicate`])
+    /// - Rejected due to validation failure ([`ProcessBlockResult::Rejected`])
+    ///
+    /// # Important Notes
+    /// - [`ProcessBlockResult::NewBlock`] indicates the block was newly written to disk,
+    ///   **not** that it was added to the active chain. The block may be valid but not
+    ///   extend the current best chain.
+    /// - To determine full validity and chain status, you **must** register a validation
+    ///   interface callback. Use [`ContextBuilder::with_block_checked_validation`](crate::ContextBuilder::with_block_checked_validation)
+    ///   or [`ContextBuilder::validation`](crate::ContextBuilder::validation) to receive detailed
+    ///   validation state through the block checked callback.
+    ///
+    /// # Validation Details
+    /// The block checked callback receives a [`BlockValidationStateRef`](crate::notifications::types::BlockValidationStateRef)
+    /// containing validation results for the block. This callback fires for all validated blocks.
+    /// To detect when a block extends the active chain, use [`ContextBuilder::with_block_connected_validation`](crate::ContextBuilder::with_block_connected_validation)
+    /// or [`ContextBuilder::validation`](crate::ContextBuilder::validation).
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use bitcoinkernel::{Block, ChainstateManager, ProcessBlockResult};
+    /// # let chainman: ChainstateManager = unimplemented!();
+    /// # let block: Block = unimplemented!();
+    /// match chainman.process_block(&block) {
+    ///     ProcessBlockResult::NewBlock => println!("Block validated and written to disk"),
+    ///     ProcessBlockResult::Duplicate => println!("Block already known (valid)"),
+    ///     ProcessBlockResult::Rejected => println!("Block validation failed"),
+    /// }
+    /// ```
     pub fn process_block(&self, block: &Block) -> ProcessBlockResult {
         let mut new_block: i32 = 0;
         let accepted = unsafe {
@@ -131,10 +246,14 @@ impl ChainstateManager {
         }
     }
 
-    /// May be called after load_chainstate to initialize the
-    /// [`ChainstateManager`]. Triggers the start of a reindex if the option was
-    /// previously set for the chainstate and block manager. Can also import an
-    /// array of existing block files selected by the user.
+    /// Initialize the chainstate manager and optionally trigger a reindex.
+    ///
+    /// This should be called after creating the chainstate manager to complete
+    /// initialization. If the `wipe_db` option was set, this will trigger a
+    /// blockchain reindex.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::Internal`] if initialization fails.
     pub fn import_blocks(&self) -> Result<(), KernelError> {
         let result = unsafe {
             btck_chainstate_manager_import_blocks(
@@ -152,7 +271,19 @@ impl ChainstateManager {
         }
     }
 
-    /// Read a block from disk by its block tree entry.
+    /// Read a block's full data from disk.
+    ///
+    /// # Arguments
+    /// * `entry` - The [`BlockTreeEntry`] identifying which block to read
+    ///
+    /// # Returns
+    /// The complete [`Block`] including all transactions.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::Internal`] if:
+    /// - The block file cannot be read
+    /// - The block data is corrupted
+    /// - The block has been pruned
     pub fn read_block_data(&self, entry: &BlockTreeEntry) -> Result<Block, KernelError> {
         let inner = unsafe { btck_block_read(self.inner, entry.as_ptr()) };
         if inner.is_null() {
@@ -161,7 +292,25 @@ impl ChainstateManager {
         Ok(unsafe { Block::from_ptr(inner) })
     }
 
-    /// Read a block's spent outputs data from disk by its block tree entry.
+    /// Read a block's spent outputs (undo data) from disk.
+    ///
+    /// Retrieves the spent outputs associated with a specific block. Spent outputs
+    /// contain information about the transaction outputs that were consumed when the
+    /// block's transactions were applied to the UTXO set. This data is essential for
+    /// rolling back blocks during chain reorganizations.
+    ///
+    /// # Arguments
+    /// * `entry` - The [`BlockTreeEntry`] identifying which block's spent outputs to read
+    ///
+    /// # Returns
+    /// The [`BlockSpentOutputs`] for the specified block, containing the transaction
+    /// outputs that were consumed by the block's transactions.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::Internal`] if:
+    /// - The undo data file cannot be read
+    /// - The undo data is corrupted
+    /// - The block has been pruned
     pub fn read_spent_outputs(
         &self,
         entry: &BlockTreeEntry,
@@ -175,11 +324,37 @@ impl ChainstateManager {
         Ok(unsafe { BlockSpentOutputs::from_ptr(inner) })
     }
 
+    /// Get a reference to the currently active blockchain.
+    ///
+    /// Returns the active chain, which represents the chain with the most
+    /// accumulated proof-of-work. This is the canonical chain used for validation.
+    ///
+    /// # Returns
+    /// A [`Chain`] reference representing the active chain.
+    ///
+    /// # Lifetime
+    /// The returned [`Chain`] reference is tied to the lifetime of the
+    /// [`ChainstateManager`] and becomes invalid when the manager is dropped.
     pub fn active_chain(&self) -> Chain<'_> {
         let ptr = unsafe { btck_chainstate_manager_get_active_chain(self.inner) };
         unsafe { Chain::from_ptr(ptr) }
     }
 
+    /// Get a block tree entry by its block hash.
+    ///
+    /// Looks up a block in the block tree using its hash. The block tree contains
+    /// metadata about all known blocks, including those not on the active chain.
+    ///
+    /// # Arguments
+    /// * `block_hash` - The [`BlockHash`] of the block to look up
+    ///
+    /// # Returns
+    /// * `Some(`[`BlockTreeEntry`]`)` - If a block with the given hash exists in the block tree
+    /// * `None` - If no block with the given hash is found
+    ///
+    /// # Lifetime
+    /// The returned [`BlockTreeEntry`] reference is tied to the lifetime of the
+    /// [`ChainstateManager`] and becomes invalid when the manager is dropped.
     pub fn get_block_tree_entry(&self, block_hash: &BlockHash) -> Option<BlockTreeEntry<'_>> {
         let ptr = unsafe {
             btck_chainstate_manager_get_block_tree_entry_by_hash(
