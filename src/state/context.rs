@@ -274,7 +274,7 @@ impl ContextBuilder {
         self
     }
 
-    pub fn with_new_pow_valid_block<T>(mut self, handler: T) -> Self
+    pub fn with_new_pow_valid_block_validation<T>(mut self, handler: T) -> Self
     where
         T: NewPoWValidBlockCallback + 'static,
     {
@@ -283,7 +283,7 @@ impl ContextBuilder {
         self
     }
 
-    pub fn with_block_connected<T>(mut self, handler: T) -> Self
+    pub fn with_block_connected_validation<T>(mut self, handler: T) -> Self
     where
         T: BlockConnectedCallback + 'static,
     {
@@ -292,7 +292,7 @@ impl ContextBuilder {
         self
     }
 
-    pub fn with_block_disconnected<T>(mut self, handler: T) -> Self
+    pub fn with_block_disconnected_validation<T>(mut self, handler: T) -> Self
     where
         T: BlockDisconnectedCallback + 'static,
     {
@@ -366,7 +366,7 @@ impl From<btck_ChainType> for ChainType {
 
 #[cfg(test)]
 mod tests {
-    use crate::notifications::types::BlockValidationStateRef;
+    use crate::{notifications::types::BlockValidationStateRef, BlockTreeEntry};
 
     use super::*;
 
@@ -570,6 +570,7 @@ mod tests {
         let context_result = ContextBuilder::new()
             .with_progress_notification(|_title, _percent, _resume| {})
             .with_block_checked_validation(|_block, _state: BlockValidationStateRef<'_>| {})
+            .with_block_connected_validation(|_block, _block_index: BlockTreeEntry<'_>| {})
             .chain_type(ChainType::Testnet)
             .build();
 

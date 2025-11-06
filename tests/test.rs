@@ -79,9 +79,9 @@ mod tests {
             .with_block_checked_validation(|_block, _state: BlockValidationStateRef<'_>| {
                 log::info!("Block checked!");
             })
-            .with_new_pow_valid_block(pow_handler)
-            .with_block_connected(connected_handler)
-            .with_block_disconnected(disconnected_handler);
+            .with_new_pow_valid_block_validation(pow_handler)
+            .with_block_connected_validation(connected_handler)
+            .with_block_disconnected_validation(disconnected_handler);
 
         builder.build().unwrap()
     }
