@@ -218,15 +218,26 @@ impl ChainstateManagerBuilder {
     /// Wipe the block tree or chainstate dbs. When wiping the block tree db the
     /// chainstate db has to be wiped too. Wiping the databases will triggere a
     /// rebase once import blocks is called.
-    pub fn wipe_db(self, wipe_block_tree: bool, wipe_chainstate: bool) -> Self {
-        unsafe {
+    pub fn wipe_db(
+        self,
+        wipe_block_tree: bool,
+        wipe_chainstate: bool,
+    ) -> Result<Self, KernelError> {
+        let result = unsafe {
             btck_chainstate_manager_options_set_wipe_dbs(
                 self.inner,
                 c_helpers::to_c_bool(wipe_block_tree),
                 c_helpers::to_c_bool(wipe_chainstate),
-            );
+            )
+        };
+        if c_helpers::success(result) {
+            Ok(self)
+        } else {
+            Err(KernelError::InvalidOptions(
+                "Wiping the block tree without also wiping the chainstate is currently unsupported"
+                    .to_string(),
+            ))
         }
-        self
     }
 
     /// Run the block tree db in-memory only. No database files will be written to disk.
@@ -311,6 +322,21 @@ mod tests {
     }
 
     #[test]
+    fn test_wipe_block_tree_without_chainstate_fails() {
+        let context = create_test_context();
+        let (_temp_dir, data_dir, blocks_dir) = create_test_dirs();
+
+        let result = ChainstateManagerBuilder::new(&context, &data_dir, &blocks_dir)
+            .unwrap()
+            .wipe_db(true, false);
+
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(matches!(e, KernelError::InvalidOptions(_)));
+        }
+    }
+
+    #[test]
     fn test_chainstate_manager_creation() {
         let context = create_test_context();
         let (_temp_dir, data_dir, blocks_dir) = create_test_dirs();
@@ -320,6 +346,7 @@ mod tests {
             .block_tree_db_in_memory(true)
             .chainstate_db_in_memory(true)
             .wipe_db(false, true)
+            .unwrap()
             .worker_threads(4)
             .build();
 
