@@ -2,13 +2,12 @@
 mod tests {
     use bitcoin::consensus::deserialize;
     use bitcoinkernel::core::transaction::TxIn;
-    use bitcoinkernel::notifications::types::BlockValidationStateRef;
     use bitcoinkernel::{
-        prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, ChainParams,
-        ChainType, ChainstateManager, ChainstateManagerBuilder, Coin, Context, ContextBuilder,
-        KernelError, Log, Logger, ScriptPubkey, ScriptVerifyError, Transaction,
-        TransactionSpentOutputs, TxOut, TxOutRef, VERIFY_ALL_PRE_TAPROOT, VERIFY_TAPROOT,
-        VERIFY_WITNESS,
+        prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry,
+        BlockValidationStateRef, ChainParams, ChainType, ChainstateManager,
+        ChainstateManagerBuilder, Coin, Context, ContextBuilder, KernelError, Log, Logger,
+        ScriptPubkey, ScriptVerifyError, Transaction, TransactionSpentOutputs, TxOut, TxOutRef,
+        VERIFY_ALL_PRE_TAPROOT, VERIFY_TAPROOT, VERIFY_WITNESS,
     };
     use std::fs::File;
     use std::io::{BufRead, BufReader};
