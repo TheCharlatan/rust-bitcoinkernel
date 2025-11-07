@@ -119,10 +119,10 @@ pub use crate::core::{
 pub use crate::log::{disable_logging, Log, LogCategory, LogLevel, Logger};
 
 pub use crate::notifications::{
-    BlockCheckedCallback, BlockTipCallback, BlockValidationResult, FatalErrorCallback,
-    FlushErrorCallback, HeaderTipCallback, NotificationCallbackRegistry, ProgressCallback,
-    SynchronizationState, ValidationCallbackRegistry, ValidationMode, Warning, WarningSetCallback,
-    WarningUnsetCallback,
+    BlockCheckedCallback, BlockTipCallback, BlockValidationResult, BlockValidationStateRef,
+    FatalErrorCallback, FlushErrorCallback, HeaderTipCallback, NotificationCallbackRegistry,
+    ProgressCallback, SynchronizationState, ValidationCallbackRegistry, ValidationMode, Warning,
+    WarningSetCallback, WarningUnsetCallback,
 };
 
 pub use crate::state::{
@@ -140,4 +140,5 @@ pub mod prelude {
         BlockHashExt, BlockSpentOutputsExt, CoinExt, ScriptPubkeyExt, TransactionExt,
         TransactionSpentOutputsExt, TxOutExt,
     };
+    pub use crate::notifications::BlockValidationStateExt;
 }
