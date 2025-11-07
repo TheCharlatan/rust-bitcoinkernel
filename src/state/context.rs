@@ -368,7 +368,7 @@ impl From<btck_ChainType> for ChainType {
 
 #[cfg(test)]
 mod tests {
-    use crate::{notifications::types::BlockValidationStateRef, BlockTreeEntry};
+    use crate::{BlockTreeEntry, BlockValidationStateRef};
 
     use super::*;
 

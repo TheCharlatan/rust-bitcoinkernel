@@ -228,9 +228,7 @@ impl<'a> BlockValidationStateExt for BlockValidationStateRef<'a> {}
 mod tests {
     use libbitcoinkernel_sys::btck_BlockValidationState;
 
-    use crate::{
-        ffi::test_utils::test_ref_trait_requirements, notifications::types::BlockValidationStateRef,
-    };
+    use crate::ffi::test_utils::test_ref_trait_requirements;
 
     use super::*;
 

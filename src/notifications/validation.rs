@@ -4,8 +4,7 @@ use libbitcoinkernel_sys::{btck_Block, btck_BlockTreeEntry, btck_BlockValidation
 
 use crate::{
     ffi::sealed::{FromMutPtr, FromPtr},
-    notifications::types::BlockValidationStateRef,
-    Block, BlockTreeEntry,
+    Block, BlockTreeEntry, BlockValidationStateRef,
 };
 
 /// Exposes the result after validating a block.
@@ -184,7 +183,7 @@ pub(crate) unsafe extern "C" fn validation_block_disconnected_wrapper(
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::{notifications::types::BlockValidationStateExt, BlockValidationResult};
+    use crate::{prelude::*, BlockValidationResult};
 
     use super::*;
 
