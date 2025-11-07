@@ -86,6 +86,19 @@ impl From<btck_Warning> for Warning {
     }
 }
 
+impl std::fmt::Display for Warning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Warning::UnknownNewRulesActivated => {
+                write!(f, "Unknown new rules activated")
+            }
+            Warning::LargeWorkInvalidChain => {
+                write!(f, "Large work invalid chain")
+            }
+        }
+    }
+}
+
 /// Result of data structure validation.
 ///
 /// Indicates whether a validated data structure (block, transaction, etc.)
