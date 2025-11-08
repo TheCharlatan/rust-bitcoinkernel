@@ -811,7 +811,7 @@ impl ContextBuilder {
     ///
     /// # Arguments
     /// * `handler` - The callback function or closure that receives:
-    ///   - `pindex` - The [`BlockTreeEntry`](crate::BlockTreeEntry) for the new block
+    ///   - `entry` - The [`BlockTreeEntry`](crate::BlockTreeEntry) for the new block
     ///   - `block` - The [`Block`](crate::Block) data
     ///
     /// # Returns
@@ -822,9 +822,9 @@ impl ContextBuilder {
     /// use bitcoinkernel::{Block, BlockTreeEntry, ContextBuilder, KernelError};
     ///
     /// let context = ContextBuilder::new()
-    ///     .with_new_pow_valid_block_validation(|pindex: BlockTreeEntry<'_>, block: Block| {
+    ///     .with_new_pow_valid_block_validation(|entry: BlockTreeEntry<'_>, block: Block| {
     ///         println!("New PoW-valid block at height {}: {}",
-    ///                  pindex.height(), block.hash());
+    ///                  entry.height(), block.hash());
     ///     })
     ///     .build()?;
     /// # Ok::<(), KernelError>(())
@@ -850,7 +850,7 @@ impl ContextBuilder {
     /// # Arguments
     /// * `handler` - The callback function or closure that receives:
     ///   - `block` - The [`Block`](crate::Block) that was connected
-    ///   - `pindex` - The [`BlockTreeEntry`](crate::BlockTreeEntry) representing the block's position in the chain
+    ///   - `entry` - The [`BlockTreeEntry`](crate::BlockTreeEntry) representing the block's position in the chain
     ///
     /// # Returns
     /// The builder instance for method chaining.
@@ -860,9 +860,9 @@ impl ContextBuilder {
     /// use bitcoinkernel::{Block, BlockTreeEntry, ContextBuilder, KernelError};
     ///
     /// let context = ContextBuilder::new()
-    ///     .with_block_connected_validation(|block: Block, pindex: BlockTreeEntry<'_>| {
+    ///     .with_block_connected_validation(|block: Block, entry: BlockTreeEntry<'_>| {
     ///         println!("Block connected at height {}: {}",
-    ///                  pindex.height(), block.hash());
+    ///                  entry.height(), block.hash());
     ///     })
     ///     .build()?;
     /// # Ok::<(), KernelError>(())
@@ -889,7 +889,7 @@ impl ContextBuilder {
     /// # Arguments
     /// * `handler` - The callback function or closure that receives:
     ///   - `block` - The [`Block`](crate::Block) that was disconnected
-    ///   - `pindex` - The [`BlockTreeEntry`](crate::BlockTreeEntry) for the disconnected block
+    ///   - `entry` - The [`BlockTreeEntry`](crate::BlockTreeEntry) for the disconnected block
     ///
     /// # Returns
     /// The builder instance for method chaining.
@@ -899,9 +899,9 @@ impl ContextBuilder {
     /// use bitcoinkernel::{Block, BlockTreeEntry, ContextBuilder, KernelError};
     ///
     /// let context = ContextBuilder::new()
-    ///     .with_block_disconnected_validation(|block: Block, pindex: BlockTreeEntry<'_>| {
+    ///     .with_block_disconnected_validation(|block: Block, entry: BlockTreeEntry<'_>| {
     ///         println!("Block disconnected from height {}: {} (reorg)",
-    ///                  pindex.height(), block.hash());
+    ///                  entry.height(), block.hash());
     ///     })
     ///     .build()?;
     /// # Ok::<(), KernelError>(())
@@ -938,11 +938,11 @@ impl ContextBuilder {
     ///         registry.register_block_checked(|block: Block, _state: BlockValidationStateRef<'_>| {
     ///             println!("Checked: {}", block.hash());
     ///         });
-    ///         registry.register_block_connected(|_block, pindex: BlockTreeEntry<'_>| {
-    ///             println!("Connected at height {}", pindex.height());
+    ///         registry.register_block_connected(|_block, entry: BlockTreeEntry<'_>| {
+    ///             println!("Connected at height {}", entry.height());
     ///         });
-    ///         registry.register_block_disconnected(|_block, pindex: BlockTreeEntry<'_>| {
-    ///             println!("Disconnected from height {}", pindex.height());
+    ///         registry.register_block_disconnected(|_block, entry: BlockTreeEntry<'_>| {
+    ///             println!("Disconnected from height {}", entry.height());
     ///         });
     ///     })
     ///     .build()?;
@@ -1187,9 +1187,9 @@ mod tests {
 
     #[test]
     fn test_advanced_validation_configuration() {
-        fn pow_handler(_pindex: crate::BlockTreeEntry, _block: crate::Block) {}
-        fn connected_handler(_block: crate::Block, _pindex: crate::BlockTreeEntry) {}
-        fn disconnected_handler(_block: crate::Block, _pindex: crate::BlockTreeEntry) {}
+        fn pow_handler(_entry: crate::BlockTreeEntry, _block: crate::Block) {}
+        fn connected_handler(_block: crate::Block, _entry: crate::BlockTreeEntry) {}
+        fn disconnected_handler(_block: crate::Block, _entry: crate::BlockTreeEntry) {}
 
         let mut builder = ContextBuilder::new();
 
