@@ -1,3 +1,58 @@
+//! Context initialization and configuration for the Bitcoin Kernel library.
+//!
+//! The [`Context`] holds the kernel library's logically global state and is
+//! passed to operations that need access to this state. It should be kept in
+//! scope for the duration of all operations that depend on it.
+//!
+//! # Overview
+//!
+//! The context is created using the builder pattern via [`ContextBuilder`],
+//! which allows configuration of:
+//! - Chain type (mainnet, testnet, regtest, etc.)
+//! - Notification callbacks for chain events
+//! - Validation callbacks for block processing
+//!
+//! # Examples
+//!
+//! ## Basic Usage
+//!
+//! ```no_run
+//! use bitcoinkernel::{Context, ChainType, KernelError};
+//!
+//! // Create a default context (mainnet)
+//! let context = Context::new()?;
+//! # Ok::<(), KernelError>(())
+//! ```
+//!
+//! ## With Chain Type
+//!
+//! ```no_run
+//! use bitcoinkernel::{Context, ChainType, KernelError};
+//!
+//! // Create a regtest context for testing
+//! let context = Context::builder()
+//!     .chain_type(ChainType::Regtest)
+//!     .build()?;
+//! # Ok::<(), KernelError>(())
+//! ```
+//!
+//! ## With Notifications
+//!
+//! ```no_run
+//! use bitcoinkernel::{Context, ChainType, KernelError};
+//!
+//! let context = Context::builder()
+//!     .chain_type(ChainType::Testnet)
+//!     .with_progress_notification(|title, percent, _resume| {
+//!         println!("{}: {}%", title, percent);
+//!     })
+//!     .with_block_tip_notification(|_state, hash, _progress| {
+//!         println!("New block tip: {}", hash);
+//!     })
+//!     .build()?;
+//! # Ok::<(), KernelError>(())
+//! ```
+
 use std::ffi::c_void;
 
 use libbitcoinkernel_sys::{
@@ -32,7 +87,24 @@ use crate::{
     BTCK_CHAIN_TYPE_TESTNET, BTCK_CHAIN_TYPE_TESTNET_4,
 };
 
-/// The chain parameters with which to configure a [`Context`].
+/// Chain parameters for configuring a [`Context`].
+///
+/// [`ChainParams`] encapsulates the consensus rules and network parameters
+/// for a specific Bitcoin network (mainnet, testnet, regtest, etc.).
+///
+/// # Lifetime
+/// The chain parameters are automatically cleaned up when dropped.
+///
+/// # Thread Safety
+/// [`ChainParams`] can be safely sent between threads and shared via `Arc`.
+///
+/// # Examples
+/// ```no_run
+/// use bitcoinkernel::{ChainParams, ChainType};
+///
+/// let mainnet_params = ChainParams::new(ChainType::Mainnet);
+/// let regtest_params = ChainParams::new(ChainType::Regtest);
+/// ```
 pub struct ChainParams {
     inner: *mut btck_ChainParameters,
 }
@@ -41,6 +113,20 @@ unsafe impl Send for ChainParams {}
 unsafe impl Sync for ChainParams {}
 
 impl ChainParams {
+    /// Creates new chain parameters for the specified chain type.
+    ///
+    /// # Arguments
+    /// * `chain_type` - The Bitcoin network type to configure
+    ///
+    /// # Returns
+    /// A new [`ChainParams`] instance configured for the specified chain.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ChainParams, ChainType};
+    ///
+    /// let params = ChainParams::new(ChainType::Testnet);
+    /// ```
     pub fn new(chain_type: ChainType) -> ChainParams {
         let btck_chain_type = chain_type.into();
         ChainParams {
@@ -57,10 +143,33 @@ impl Drop for ChainParams {
     }
 }
 
-/// The main context struct. This should be setup through the [`ContextBuilder`] and
-/// has to be kept in memory for the duration of context-dependent library
-/// operations.
+/// The main context for the Bitcoin Kernel library.
 ///
+/// The [`Context`] manages the global state of the Bitcoin Kernel library
+/// and should be kept in memory for the duration of all context-dependent operations.
+/// It is created via [`ContextBuilder`] and can be configured with various
+/// chain types and callbacks.
+///
+/// # Lifetime
+/// It is recommended to outlive any objects that depend on it, such as
+/// [`ChainstateManager`](crate::ChainstateManager) instances.
+///
+/// # Thread Safety
+/// [`Context`] can be safely sent between threads and shared via `Arc`.
+///
+/// # Examples
+/// ```no_run
+/// use bitcoinkernel::{Context, ChainType, KernelError};
+///
+/// // Simple creation with defaults
+/// let context = Context::new()?;
+///
+/// // Using the builder for configuration
+/// let context = Context::builder()
+///     .chain_type(ChainType::Regtest)
+///     .build()?;
+/// # Ok::<(), KernelError>(())
+/// ```
 pub struct Context {
     inner: *mut btck_Context,
 }
@@ -69,14 +178,66 @@ unsafe impl Send for Context {}
 unsafe impl Sync for Context {}
 
 impl Context {
+    /// Returns a new [`ContextBuilder`] for constructing a context.
+    ///
+    /// This is the recommended way to create a [`Context`] when you need
+    /// to configure chain types or register callbacks.
+    ///
+    /// # Returns
+    /// A new [`ContextBuilder`] instance.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{Context, ChainType, KernelError};
+    ///
+    /// let context = Context::builder()
+    ///     .chain_type(ChainType::Testnet)
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn builder() -> ContextBuilder {
         ContextBuilder::new()
     }
 
+    /// Creates a new context with default settings (mainnet).
+    ///
+    /// This is a convenience method equivalent to calling
+    /// `ContextBuilder::new().build()`.
+    ///
+    /// # Returns
+    /// * `Ok(`[`Context`]`)` - On successful context creation
+    /// * `Err(`[`KernelError::Internal`]`)` - If context creation fails
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{Context, KernelError};
+    ///
+    /// let context = Context::new()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn new() -> Result<Context, KernelError> {
         ContextBuilder::new().build()
     }
 
+    /// Interrupts any ongoing operations in the context.
+    ///
+    /// This signals the context to stop any long-running operations that
+    /// support interruption, such as reindex, importing or  processing blocks.
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the interrupt signal was successfully sent
+    /// * `Err(`[`KernelError::Internal`]`)` - If the interrupt operation fails
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{Context, KernelError};
+    ///
+    /// let context = Context::new()?;
+    ///
+    /// // Later, interrupt ongoing operations
+    /// context.interrupt()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn interrupt(&self) -> Result<(), KernelError> {
         let result = unsafe { btck_context_interrupt(self.inner) };
         if c_helpers::success(result) {
@@ -103,10 +264,67 @@ impl Drop for Context {
     }
 }
 
-/// Builder struct for the kernel [`Context`].
+/// Builder for creating a [`Context`] with custom configuration.
 ///
-/// The builder by default configures for mainnet and swallows any kernel
-/// notifications.
+/// The builder pattern allows flexible configuration of the Bitcoin Kernel
+/// context before creation. By default, the builder configures for mainnet
+/// with no callbacks registered.
+///
+/// # Configuration Options
+/// - **Chain type**: Set via [`chain_type`](ContextBuilder::chain_type)
+/// - **Notification callbacks**: Set via `with_*_notification` methods or [`notifications`](ContextBuilder::notifications)
+/// - **Validation callbacks**: Set via `with_*_validation` methods or [`validation`](ContextBuilder::validation)
+///
+/// # Examples
+///
+/// ## Basic Configuration
+/// ```no_run
+/// use bitcoinkernel::{ContextBuilder, ChainType, KernelError};
+///
+/// let context = ContextBuilder::new()
+///     .chain_type(ChainType::Regtest)
+///     .build()?;
+/// # Ok::<(), KernelError>(())
+/// ```
+///
+/// ## With Individual Callbacks
+/// ```no_run
+/// use bitcoinkernel::{ContextBuilder, ChainType, KernelError};
+///
+/// let context = ContextBuilder::new()
+///     .chain_type(ChainType::Testnet)
+///     .with_progress_notification(|title, percent, _resume| {
+///         println!("Progress: {} - {}%", title, percent);
+///     })
+///     .with_block_tip_notification(|_state, hash, _progress| {
+///         println!("New tip: {}", hash);
+///     })
+///     .build()?;
+/// # Ok::<(), KernelError>(())
+/// ```
+///
+/// ## With Advanced Configuration
+/// ```no_run
+/// use bitcoinkernel::{Block, BlockValidationStateRef, ContextBuilder, ChainType, KernelError};
+///
+/// let context = ContextBuilder::new()
+///     .chain_type(ChainType::Regtest)
+///     .notifications(|registry| {
+///         registry.register_progress(|title, percent, _resume| {
+///             println!("{}: {}%", title, percent);
+///         });
+///         registry.register_warning_set(|warning, message| {
+///             eprintln!("Warning: {} - {}", warning, message);
+///         });
+///     })
+///     .validation(|registry| {
+///         registry.register_block_checked(|block: Block, _state: BlockValidationStateRef<'_>| {
+///             println!("Checked block: {}", block.hash());
+///         });
+///     })
+///     .build()?;
+/// # Ok::<(), KernelError>(())
+/// ```
 pub struct ContextBuilder {
     inner: *mut btck_ContextOptions,
     notification_registry: Option<NotificationCallbackRegistry>,
@@ -120,6 +338,19 @@ impl Default for ContextBuilder {
 }
 
 impl ContextBuilder {
+    /// Creates a new context builder with default settings.
+    ///
+    /// The builder is initialized with mainnet configuration and no callbacks.
+    ///
+    /// # Returns
+    /// A new [`ContextBuilder`] instance.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::ContextBuilder;
+    ///
+    /// let builder = ContextBuilder::new();
+    /// ```
     pub fn new() -> ContextBuilder {
         ContextBuilder {
             inner: unsafe { btck_context_options_create() },
@@ -130,9 +361,22 @@ impl ContextBuilder {
 
     /// Consumes the builder and creates a [`Context`].
     ///
-    /// # Errors
+    /// This finalizes the configuration and creates the actual context instance.
+    /// All registered callbacks are set up during this process.
     ///
-    /// Returns [`KernelError::Internal`] if [`Context`] creation fails.
+    /// # Returns
+    /// * `Ok(`[`Context`]`)` - On successful context creation
+    /// * `Err(`[`KernelError::Internal`]`)` - If context creation fails
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, ChainType, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .chain_type(ChainType::Regtest)
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn build(mut self) -> Result<Context, KernelError> {
         if let Some(registry) = self.notification_registry.take() {
             self.setup_notification_interface(registry);
@@ -181,13 +425,60 @@ impl ContextBuilder {
         }
     }
 
-    /// Sets the chain type
+    /// Sets the Bitcoin network chain type.
+    ///
+    /// Configures the context to operate on the specified Bitcoin network.
+    /// Each chain type has different consensus rules and network parameters.
+    ///
+    /// # Arguments
+    /// * `chain_type` - The [`ChainType`] to configure (mainnet, testnet, etc.)
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, ChainType, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .chain_type(ChainType::Regtest)
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn chain_type(self, chain_type: ChainType) -> ContextBuilder {
         let chain_params = ChainParams::new(chain_type);
         unsafe { btck_context_options_set_chainparams(self.inner, chain_params.inner) };
         self
     }
 
+    /// Registers a callback for block tip notifications.
+    ///
+    /// The callback is invoked when the chain's tip is updated to a new block.
+    /// This happens during block validation and chain reorganizations.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`BlockTipCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `state` - The [`SynchronizationState`](crate::SynchronizationState) (initial download, etc.)
+    ///   - `hash` - The [`BlockHash`](crate::BlockHash) of the new tip
+    ///   - `progress` - Verification progress as an `f64` (0.0 to 1.0)
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, ChainType, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_block_tip_notification(|_state, hash, progress| {
+    ///         println!("Chain tip updated to: {} ({})", hash, progress);
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_block_tip_notification<T>(mut self, handler: T) -> Self
     where
         T: BlockTipCallback + 'static,
@@ -197,6 +488,34 @@ impl ContextBuilder {
         self
     }
 
+    /// Registers a callback for progress notifications.
+    ///
+    /// The callback is invoked to report on current block synchronization progress
+    /// during operations such as initial block download or reindexing.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`ProgressCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `title` - Description of the current operation as a [`String`]
+    ///   - `percent` - Progress percentage as an `i32` (0-100)
+    ///   - `resume` - Whether the operation can be resumed if interrupted (as a `bool`)
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_progress_notification(|title, percent, resume| {
+    ///         println!("{}: {}% (resumable: {})", title, percent, resume);
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_progress_notification<T>(mut self, handler: T) -> Self
     where
         T: ProgressCallback + 'static,
@@ -206,6 +525,36 @@ impl ContextBuilder {
         self
     }
 
+    /// Registers a callback for header tip notifications.
+    ///
+    /// The callback is invoked when a new best block header is added to the header
+    /// chain. This typically occurs during the header synchronization phase, which
+    /// happens before full block download.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`HeaderTipCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `state` - The [`SynchronizationState`](crate::SynchronizationState)
+    ///   - `height` - The height of the new header tip as an `i64`
+    ///   - `timestamp` - The timestamp of the header as an `i64`
+    ///   - `presync` - Whether this is during pre-synchronization (as a `bool`)
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_header_tip_notification(|_state, height, timestamp, _presync| {
+    ///         println!("New header at height {}, time={}", height, timestamp);
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_header_tip_notification<T>(mut self, handler: T) -> Self
     where
         T: HeaderTipCallback + 'static,
@@ -215,6 +564,33 @@ impl ContextBuilder {
         self
     }
 
+    /// Registers a callback for warning set notifications.
+    ///
+    /// The callback is invoked when a warning is issued by the kernel library
+    /// during validation. This can include warnings about chain forks or other
+    /// consensus-related issues.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`WarningSetCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `warning` - A [`Warning`](crate::Warning) identifier/category
+    ///   - `message` - A human-readable description as a [`String`]
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_warning_set_notification(|warning, message| {
+    ///         eprintln!("Kernel Warning [{}]: {}", warning, message);
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
     pub fn with_warning_set_notification<T>(mut self, handler: T) -> Self
     where
         T: WarningSetCallback + 'static,
@@ -224,6 +600,33 @@ impl ContextBuilder {
         self
     }
 
+    /// Registers a callback for warning unset notifications.
+    ///
+    /// The callback is invoked when a previous condition that led to the issuance
+    /// of a warning is no longer present. This indicates that the warning condition
+    /// has been resolved.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`WarningUnsetCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `warning` - The [`Warning`](crate::Warning) identifier/category that was cleared
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_warning_unset_notification(|warning| {
+    ///         println!("Warning [{}] has been cleared", warning);
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_warning_unset_notification<T>(mut self, handler: T) -> Self
     where
         T: WarningUnsetCallback + 'static,
@@ -233,6 +636,32 @@ impl ContextBuilder {
         self
     }
 
+    /// Registers a callback for flush error notifications.
+    ///
+    /// The callback is invoked when an error occurs while flushing data
+    /// to disk.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`FlushErrorCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `message` - The error message as a [`String`]
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_flush_error_notification(|message| {
+    ///         eprintln!("Flush error: {}", message);
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_flush_error_notification<T>(mut self, handler: T) -> Self
     where
         T: FlushErrorCallback + 'static,
@@ -242,6 +671,35 @@ impl ContextBuilder {
         self
     }
 
+    /// Registers a callback for fatal error notifications.
+    ///
+    /// The callback is invoked when an unrecoverable system error is encountered
+    /// by the library. These are critical errors that typically require the
+    /// application to shut down gracefully.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`FatalErrorCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `message` - A description of the fatal error as a [`String`]
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_fatal_error_notification(|message| {
+    ///         eprintln!("FATAL ERROR: {}", message);
+    ///         // Perform cleanup and shutdown
+    ///         std::process::exit(1);
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_fatal_error_notification<T>(mut self, handler: T) -> Self
     where
         T: FatalErrorCallback + 'static,
@@ -251,6 +709,39 @@ impl ContextBuilder {
         self
     }
 
+    /// Configures multiple notification callbacks at once.
+    ///
+    /// This method provides access to the [`NotificationCallbackRegistry`]
+    /// for advanced configuration of multiple callbacks.
+    ///
+    /// # Type Parameters
+    /// * `F` - A closure taking a mutable reference to the registry
+    ///
+    /// # Arguments
+    /// * `configure` - A closure that configures the notification registry
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .notifications(|registry| {
+    ///         registry.register_progress(|title, percent, _resume| {
+    ///             println!("{}: {}%", title, percent);
+    ///         });
+    ///         registry.register_block_tip(|_state, hash, _progress| {
+    ///             println!("Tip: {}", hash);
+    ///         });
+    ///         registry.register_warning_set(|_warning, msg| {
+    ///             eprintln!("Warning: {}", msg);
+    ///         });
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn notifications<F>(mut self, configure: F) -> Self
     where
         F: FnOnce(&mut NotificationCallbackRegistry),
@@ -267,6 +758,40 @@ impl ContextBuilder {
         self.notification_registry.as_mut().unwrap()
     }
 
+    /// Registers a callback for block checked validation events.
+    ///
+    /// The callback is invoked when a new block has been fully validated.
+    /// The validation state contains the result of the validation, including
+    /// whether the block is valid and any rejection reasons if invalid.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`BlockCheckedCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `block` - The [`Block`](crate::Block) that was validated
+    ///   - `state` - The [`BlockValidationStateRef`](crate::notifications::types::BlockValidationStateRef) containing the validation result
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{
+    ///     prelude::*, Block, BlockValidationStateRef, ContextBuilder,
+    ///     KernelError, ValidationMode,
+    /// };
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_block_checked_validation(|block: Block, state: BlockValidationStateRef<'_>| {
+    ///         println!("Block validated: {}", block.hash());
+    ///         if state.mode() != ValidationMode::Valid {
+    ///             eprintln!("Validation failed with result: {:?}", state.result());
+    ///         }
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_block_checked_validation<T>(mut self, handler: T) -> Self
     where
         T: BlockCheckedCallback + 'static,
@@ -276,6 +801,34 @@ impl ContextBuilder {
         self
     }
 
+    /// Registers a callback for new proof-of-work valid block events.
+    ///
+    /// The callback is invoked when a new block extends the header chain and
+    /// has a valid transaction and segwit merkle root.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`NewPoWValidBlockCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `pindex` - The [`BlockTreeEntry`](crate::BlockTreeEntry) for the new block
+    ///   - `block` - The [`Block`](crate::Block) data
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{Block, BlockTreeEntry, ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_new_pow_valid_block_validation(|pindex: BlockTreeEntry<'_>, block: Block| {
+    ///         println!("New PoW-valid block at height {}: {}",
+    ///                  pindex.height(), block.hash());
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_new_pow_valid_block_validation<T>(mut self, handler: T) -> Self
     where
         T: NewPoWValidBlockCallback + 'static,
@@ -285,6 +838,35 @@ impl ContextBuilder {
         self
     }
 
+    /// Registers a callback for block connected events.
+    ///
+    /// The callback is invoked when a block is valid and has now been connected
+    /// to the best chain. This happens after the block passes full validation
+    /// and becomes part of the active chain.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`BlockConnectedCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `block` - The [`Block`](crate::Block) that was connected
+    ///   - `pindex` - The [`BlockTreeEntry`](crate::BlockTreeEntry) representing the block's position in the chain
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{Block, BlockTreeEntry, ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_block_connected_validation(|block: Block, pindex: BlockTreeEntry<'_>| {
+    ///         println!("Block connected at height {}: {}",
+    ///                  pindex.height(), block.hash());
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_block_connected_validation<T>(mut self, handler: T) -> Self
     where
         T: BlockConnectedCallback + 'static,
@@ -294,6 +876,36 @@ impl ContextBuilder {
         self
     }
 
+    /// Registers a callback for block disconnected events.
+    ///
+    /// The callback is invoked during a reorganization when a block has been
+    /// removed from the best chain. This occurs when a competing chain with
+    /// more cumulative work becomes the new active chain, requiring blocks
+    /// from the old chain to be disconnected.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type implementing [`BlockDisconnectedCallback`]
+    ///
+    /// # Arguments
+    /// * `handler` - The callback function or closure that receives:
+    ///   - `block` - The [`Block`](crate::Block) that was disconnected
+    ///   - `pindex` - The [`BlockTreeEntry`](crate::BlockTreeEntry) for the disconnected block
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{Block, BlockTreeEntry, ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .with_block_disconnected_validation(|block: Block, pindex: BlockTreeEntry<'_>| {
+    ///         println!("Block disconnected from height {}: {} (reorg)",
+    ///                  pindex.height(), block.hash());
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn with_block_disconnected_validation<T>(mut self, handler: T) -> Self
     where
         T: BlockDisconnectedCallback + 'static,
@@ -303,6 +915,39 @@ impl ContextBuilder {
         self
     }
 
+    /// Configures multiple validation callbacks at once.
+    ///
+    /// This method provides access to the [`ValidationCallbackRegistry`]
+    /// for advanced configuration of multiple validation callbacks.
+    ///
+    /// # Type Parameters
+    /// * `F` - A closure taking a mutable reference to the registry
+    ///
+    /// # Arguments
+    /// * `configure` - A closure that configures the validation registry
+    ///
+    /// # Returns
+    /// The builder instance for method chaining.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{Block, BlockTreeEntry, BlockValidationStateRef, ContextBuilder, KernelError};
+    ///
+    /// let context = ContextBuilder::new()
+    ///     .validation(|registry| {
+    ///         registry.register_block_checked(|block: Block, _state: BlockValidationStateRef<'_>| {
+    ///             println!("Checked: {}", block.hash());
+    ///         });
+    ///         registry.register_block_connected(|_block, pindex: BlockTreeEntry<'_>| {
+    ///             println!("Connected at height {}", pindex.height());
+    ///         });
+    ///         registry.register_block_disconnected(|_block, pindex: BlockTreeEntry<'_>| {
+    ///             println!("Disconnected from height {}", pindex.height());
+    ///         });
+    ///     })
+    ///     .build()?;
+    /// # Ok::<(), KernelError>(())
+    /// ```
     pub fn validation<F>(mut self, configure: F) -> Self
     where
         F: FnOnce(&mut ValidationCallbackRegistry),
@@ -332,16 +977,39 @@ impl Drop for ContextBuilder {
 ///
 /// Specifies which Bitcoin network the kernel should operate on.
 /// Each chain type has different consensus rules and network parameters.
+///
+/// # Variants
+/// * [`Mainnet`](ChainType::Mainnet) - Bitcoin mainnet, the production network with economic value
+/// * [`Testnet`](ChainType::Testnet) - The original test network for development and testing
+/// * [`Testnet4`](ChainType::Testnet4) - The newer test network with improved features
+/// * [`Signet`](ChainType::Signet) - Signed test network with controlled block production
+/// * [`Regtest`](ChainType::Regtest) - Regression test network for local development
+///
+/// # Examples
+/// ```no_run
+/// use bitcoinkernel::{ChainType, ContextBuilder, KernelError};
+///
+/// // For production
+/// let mainnet_ctx = ContextBuilder::new()
+///     .chain_type(ChainType::Mainnet)
+///     .build()?;
+///
+/// // For local testing
+/// let regtest_ctx = ContextBuilder::new()
+///     .chain_type(ChainType::Regtest)
+///     .build()?;
+/// # Ok::<(), KernelError>(())
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum ChainType {
-    /// Bitcoin mainnet - the production network
+    /// Bitcoin mainnet - the production network with economic value
     Mainnet = BTCK_CHAIN_TYPE_MAINNET,
-    /// Bitcoin testnet - the original test network
+    /// Bitcoin testnet - the original test network for development and testing
     Testnet = BTCK_CHAIN_TYPE_TESTNET,
-    /// Bitcoin testnet4 - the newer test network
+    /// Bitcoin testnet4 - the newer test network with improved features
     Testnet4 = BTCK_CHAIN_TYPE_TESTNET_4,
-    /// Bitcoin signet - signed test network
+    /// Bitcoin signet - signed test network with controlled block production
     Signet = BTCK_CHAIN_TYPE_SIGNET,
     /// Regression test network for local development
     Regtest = BTCK_CHAIN_TYPE_REGTEST,
