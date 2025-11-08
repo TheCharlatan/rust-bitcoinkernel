@@ -7,13 +7,10 @@ use bitcoin::consensus::deserialize;
 use bitcoin::hashes::Hash;
 use bitcoin::Transaction;
 use bitcoin::{PrivateKey, XOnlyPublicKey};
-use bitcoinkernel::Block;
-use bitcoinkernel::BlockSpentOutputs;
-use bitcoinkernel::BlockTreeEntry;
-use bitcoinkernel::TransactionSpentOutputsRef;
 use bitcoinkernel::{
-    prelude::*, ChainType, ChainstateManager, ChainstateManagerBuilder, Context, ContextBuilder,
-    KernelError, Log, Logger,
+    prelude::*, Block, BlockSpentOutputs, BlockTreeEntry, ChainType, ChainstateManager,
+    ChainstateManagerBuilder, Context, ContextBuilder, KernelError, Log, Logger,
+    TransactionSpentOutputsRef,
 };
 use env_logger::Builder;
 use log::LevelFilter;
