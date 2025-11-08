@@ -428,7 +428,6 @@ impl ContextBuilder {
     /// Sets the Bitcoin network chain type.
     ///
     /// Configures the context to operate on the specified Bitcoin network.
-    /// Each chain type has different consensus rules and network parameters.
     ///
     /// # Arguments
     /// * `chain_type` - The [`ChainType`] to configure (mainnet, testnet, etc.)
@@ -470,7 +469,7 @@ impl ContextBuilder {
     ///
     /// # Example
     /// ```no_run
-    /// use bitcoinkernel::{ContextBuilder, ChainType, KernelError};
+    /// use bitcoinkernel::{ContextBuilder, KernelError};
     ///
     /// let context = ContextBuilder::new()
     ///     .with_block_tip_notification(|_state, hash, progress| {
@@ -979,10 +978,10 @@ impl Drop for ContextBuilder {
 /// Each chain type has different consensus rules and network parameters.
 ///
 /// # Variants
-/// * [`Mainnet`](ChainType::Mainnet) - Bitcoin mainnet, the production network with economic value
-/// * [`Testnet`](ChainType::Testnet) - The original test network for development and testing
-/// * [`Testnet4`](ChainType::Testnet4) - The newer test network with improved features
-/// * [`Signet`](ChainType::Signet) - Signed test network with controlled block production
+/// * [`Mainnet`](ChainType::Mainnet) - Production network with economic value
+/// * [`Testnet`](ChainType::Testnet) - Test network for development and testing
+/// * [`Testnet4`](ChainType::Testnet4) - Newer test network with tweaked block production
+/// * [`Signet`](ChainType::Signet) - Test network with controlled, regular block production
 /// * [`Regtest`](ChainType::Regtest) - Regression test network for local development
 ///
 /// # Examples
@@ -1003,13 +1002,13 @@ impl Drop for ContextBuilder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum ChainType {
-    /// Bitcoin mainnet - the production network with economic value
+    /// Bitcoin mainnet - production network with economic value
     Mainnet = BTCK_CHAIN_TYPE_MAINNET,
-    /// Bitcoin testnet - the original test network for development and testing
+    /// Bitcoin testnet3 - test network for development and testing
     Testnet = BTCK_CHAIN_TYPE_TESTNET,
-    /// Bitcoin testnet4 - the newer test network with improved features
+    /// Bitcoin testnet4 - newer test network with tweaked block production
     Testnet4 = BTCK_CHAIN_TYPE_TESTNET_4,
-    /// Bitcoin signet - signed test network with controlled block production
+    /// Bitcoin signet - test network with controlled, regular block production
     Signet = BTCK_CHAIN_TYPE_SIGNET,
     /// Regression test network for local development
     Regtest = BTCK_CHAIN_TYPE_REGTEST,
