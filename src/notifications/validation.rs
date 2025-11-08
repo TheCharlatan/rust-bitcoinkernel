@@ -23,43 +23,43 @@ where
 
 /// Callback for when a new PoW valid block is found.
 pub trait NewPoWValidBlockCallback: Send + Sync {
-    fn on_new_pow_valid_block<'a>(&self, block: Block, pindex: BlockTreeEntry<'a>);
+    fn on_new_pow_valid_block<'a>(&self, block: Block, entry: BlockTreeEntry<'a>);
 }
 
 impl<F> NewPoWValidBlockCallback for F
 where
     F: for<'a> Fn(BlockTreeEntry<'a>, Block) + Send + Sync + 'static,
 {
-    fn on_new_pow_valid_block<'a>(&self, block: Block, pindex: BlockTreeEntry<'a>) {
-        self(pindex, block)
+    fn on_new_pow_valid_block<'a>(&self, block: Block, entry: BlockTreeEntry<'a>) {
+        self(entry, block)
     }
 }
 
 /// Callback for when a block is connected to the chain.
 pub trait BlockConnectedCallback: Send + Sync {
-    fn on_block_connected<'a>(&self, block: Block, pindex: BlockTreeEntry<'a>);
+    fn on_block_connected<'a>(&self, block: Block, entry: BlockTreeEntry<'a>);
 }
 
 impl<F> BlockConnectedCallback for F
 where
     F: for<'a> Fn(Block, BlockTreeEntry<'a>) + Send + Sync + 'static,
 {
-    fn on_block_connected<'a>(&self, block: Block, pindex: BlockTreeEntry<'a>) {
-        self(block, pindex)
+    fn on_block_connected<'a>(&self, block: Block, entry: BlockTreeEntry<'a>) {
+        self(block, entry)
     }
 }
 
 /// Callback for when a block is disconnected from the chain.
 pub trait BlockDisconnectedCallback: Send + Sync {
-    fn on_block_disconnected<'a>(&self, block: Block, pindex: BlockTreeEntry<'a>);
+    fn on_block_disconnected<'a>(&self, block: Block, entry: BlockTreeEntry<'a>);
 }
 
 impl<F> BlockDisconnectedCallback for F
 where
     F: for<'a> Fn(Block, BlockTreeEntry<'a>) + Send + Sync + 'static,
 {
-    fn on_block_disconnected<'a>(&self, block: Block, pindex: BlockTreeEntry<'a>) {
-        self(block, pindex)
+    fn on_block_disconnected<'a>(&self, block: Block, entry: BlockTreeEntry<'a>) {
+        self(block, entry)
     }
 }
 
@@ -134,7 +134,7 @@ pub(crate) unsafe extern "C" fn validation_block_checked_wrapper(
 pub(crate) unsafe extern "C" fn validation_new_pow_valid_block_wrapper(
     user_data: *mut c_void,
     block: *mut btck_Block,
-    pindex: *const btck_BlockTreeEntry,
+    entry: *const btck_BlockTreeEntry,
 ) {
     let block = Block::from_ptr(block);
     let registry = &*(user_data as *mut ValidationCallbackRegistry);
@@ -142,7 +142,7 @@ pub(crate) unsafe extern "C" fn validation_new_pow_valid_block_wrapper(
     if let Some(ref handler) = registry.new_pow_valid_block_handler {
         handler.on_new_pow_valid_block(
             block,
-            BlockTreeEntry::from_ptr(pindex as *mut btck_BlockTreeEntry),
+            BlockTreeEntry::from_ptr(entry as *mut btck_BlockTreeEntry),
         );
     }
 }
@@ -150,7 +150,7 @@ pub(crate) unsafe extern "C" fn validation_new_pow_valid_block_wrapper(
 pub(crate) unsafe extern "C" fn validation_block_connected_wrapper(
     user_data: *mut c_void,
     block: *mut btck_Block,
-    pindex: *const btck_BlockTreeEntry,
+    entry: *const btck_BlockTreeEntry,
 ) {
     let block = Block::from_ptr(block);
     let registry = &*(user_data as *mut ValidationCallbackRegistry);
@@ -158,7 +158,7 @@ pub(crate) unsafe extern "C" fn validation_block_connected_wrapper(
     if let Some(ref handler) = registry.block_connected_handler {
         handler.on_block_connected(
             block,
-            BlockTreeEntry::from_ptr(pindex as *mut btck_BlockTreeEntry),
+            BlockTreeEntry::from_ptr(entry as *mut btck_BlockTreeEntry),
         );
     }
 }
@@ -166,7 +166,7 @@ pub(crate) unsafe extern "C" fn validation_block_connected_wrapper(
 pub(crate) unsafe extern "C" fn validation_block_disconnected_wrapper(
     user_data: *mut c_void,
     block: *mut btck_Block,
-    pindex: *const btck_BlockTreeEntry,
+    entry: *const btck_BlockTreeEntry,
 ) {
     let block = Block::from_ptr(block);
     let registry = &*(user_data as *mut ValidationCallbackRegistry);
@@ -174,7 +174,7 @@ pub(crate) unsafe extern "C" fn validation_block_disconnected_wrapper(
     if let Some(ref handler) = registry.block_disconnected_handler {
         handler.on_block_disconnected(
             block,
-            BlockTreeEntry::from_ptr(pindex as *mut btck_BlockTreeEntry),
+            BlockTreeEntry::from_ptr(entry as *mut btck_BlockTreeEntry),
         );
     }
 }
@@ -213,7 +213,7 @@ mod tests {
 
     #[test]
     fn test_new_pow_valid_block_registration() {
-        fn handler(_pindex: BlockTreeEntry, _block: Block) {}
+        fn handler(_entry: BlockTreeEntry, _block: Block) {}
 
         let mut registry = ValidationCallbackRegistry::new();
         registry.register_new_pow_valid_block(handler);
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_block_connected_registration() {
-        fn handler(_block: Block, _pindex: BlockTreeEntry) {}
+        fn handler(_block: Block, _entry: BlockTreeEntry) {}
 
         let mut registry = ValidationCallbackRegistry::new();
         registry.register_block_connected(handler);
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn test_block_disconnected_registration() {
-        fn handler(_block: Block, _pindex: BlockTreeEntry) {}
+        fn handler(_block: Block, _entry: BlockTreeEntry) {}
 
         let mut registry = ValidationCallbackRegistry::new();
         registry.register_block_disconnected(handler);
@@ -272,14 +272,14 @@ mod tests {
         let called_clone = Arc::clone(&called);
 
         let mut registry = ValidationCallbackRegistry::new();
-        registry.register_new_pow_valid_block(move |_pindex: BlockTreeEntry, _block: Block| {
+        registry.register_new_pow_valid_block(move |_entry: BlockTreeEntry, _block: Block| {
             *called_clone.lock().unwrap() = true;
         });
 
         if let Some(ref handler) = registry.new_pow_valid_block_handler {
             let block = unsafe { Block::from_ptr(std::ptr::null_mut()) };
-            let pindex = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
-            handler.on_new_pow_valid_block(block, pindex);
+            let entry = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
+            handler.on_new_pow_valid_block(block, entry);
         }
 
         assert!(*called.lock().unwrap());
@@ -291,14 +291,14 @@ mod tests {
         let called_clone = Arc::clone(&called);
 
         let mut registry = ValidationCallbackRegistry::new();
-        registry.register_block_connected(move |_block: Block, _pindex: BlockTreeEntry| {
+        registry.register_block_connected(move |_block: Block, _entry: BlockTreeEntry| {
             *called_clone.lock().unwrap() = true;
         });
 
         if let Some(ref handler) = registry.block_connected_handler {
             let block = unsafe { Block::from_ptr(std::ptr::null_mut()) };
-            let pindex = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
-            handler.on_block_connected(block, pindex);
+            let entry = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
+            handler.on_block_connected(block, entry);
         }
 
         assert!(*called.lock().unwrap());
@@ -310,14 +310,14 @@ mod tests {
         let called_clone = Arc::clone(&called);
 
         let mut registry = ValidationCallbackRegistry::new();
-        registry.register_block_disconnected(move |_block: Block, _pindex: BlockTreeEntry| {
+        registry.register_block_disconnected(move |_block: Block, _entry: BlockTreeEntry| {
             *called_clone.lock().unwrap() = true;
         });
 
         if let Some(ref handler) = registry.block_disconnected_handler {
             let block = unsafe { Block::from_ptr(std::ptr::null_mut()) };
-            let pindex = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
-            handler.on_block_disconnected(block, pindex);
+            let entry = unsafe { BlockTreeEntry::from_ptr(std::ptr::null_mut()) };
+            handler.on_block_disconnected(block, entry);
         }
 
         assert!(*called.lock().unwrap());

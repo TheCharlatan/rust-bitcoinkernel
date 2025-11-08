@@ -34,15 +34,15 @@ mod tests {
     }
 
     fn create_context() -> Context {
-        fn pow_handler(_pindex: BlockTreeEntry, _block: Block) {
+        fn pow_handler(_entry: BlockTreeEntry, _block: Block) {
             log::info!("New PoW valid block!");
         }
 
-        fn connected_handler(_block: Block, _pindex: BlockTreeEntry) {
+        fn connected_handler(_block: Block, _entry: BlockTreeEntry) {
             log::info!("Block connected!");
         }
 
-        fn disconnected_handler(_block: Block, _pindex: BlockTreeEntry) {
+        fn disconnected_handler(_block: Block, _entry: BlockTreeEntry) {
             log::info!("Block disconnected!");
         }
 
