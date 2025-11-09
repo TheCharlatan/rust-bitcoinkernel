@@ -1,9 +1,7 @@
 # rust-bitcoinkernel
 
-:warning::construction: This library is still under contruction. :warning::construction:
-
 `rust-bitcoinkernel` is a wrapper around
-[libbitcoinkernel](https://github.com/bitcoin/bitcoin/issues/24303), a C++
+[libbitcoinkernel](https://github.com/bitcoin/bitcoin/issues/24303), an experimental C++
 library exposing Bitcoin Core's validation engine. It supports both validation
 of blocks and transaction outputs as well as reading block data.
 
