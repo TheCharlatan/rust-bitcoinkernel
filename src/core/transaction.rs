@@ -845,6 +845,21 @@ mod tests {
         (tx1, tx2)
     }
 
+    fn get_test_coinbase_transactions() -> (Transaction, Transaction) {
+        let block_data = read_block_data();
+        let tx1 = Block::new(&block_data[204])
+            .unwrap()
+            .transaction(0)
+            .unwrap()
+            .to_owned();
+        let tx2 = Block::new(&block_data[205])
+            .unwrap()
+            .transaction(0)
+            .unwrap()
+            .to_owned();
+        (tx1, tx2)
+    }
+
     fn get_test_txids() -> (Txid, Txid) {
         let (tx1, tx2) = get_test_transactions();
         (tx1.txid().to_owned(), tx2.txid().to_owned())
@@ -1198,6 +1213,33 @@ mod tests {
     }
 
     #[test]
+    fn test_txoutpoint_coinbase_is_null() {
+        let (tx, _) = get_test_coinbase_transactions();
+        let txin = tx.input(0).unwrap();
+        let outpoint_ref = txin.outpoint();
+        let outpoint = outpoint_ref.to_owned();
+
+        assert!(outpoint_ref.is_null());
+        assert_eq!(outpoint_ref.index(), u32::MAX);
+        assert!(outpoint_ref.txid().is_all_zeros());
+
+        assert!(outpoint.is_null());
+        assert_eq!(outpoint.index(), u32::MAX);
+        assert!(outpoint.txid().is_all_zeros());
+    }
+
+    #[test]
+    fn test_txoutpoint_is_null() {
+        let (tx, _) = get_test_transactions();
+        let txin = tx.input(0).unwrap();
+        let outpoint_ref = txin.outpoint();
+        let outpoint = outpoint_ref.to_owned();
+
+        assert!(!outpoint_ref.is_null());
+        assert!(!outpoint.is_null());
+    }
+
+    #[test]
     fn test_txoutpoint_txid() {
         let (tx, _) = get_test_transactions();
         let txin = tx.input(0).unwrap();
@@ -1289,6 +1331,16 @@ mod tests {
         let owned_txid = txid_ref.to_owned();
 
         assert_eq!(txid.to_bytes(), owned_txid.to_bytes());
+    }
+
+    #[test]
+    fn test_txid_is_all_zeros() {
+        let (tx, _) = get_test_transactions();
+        let txid = tx.txid().to_owned();
+        let txid_ref = txid.as_ref();
+
+        assert!(!txid.is_all_zeros());
+        assert!(!txid_ref.is_all_zeros());
     }
 
     // Polymorphism tests
