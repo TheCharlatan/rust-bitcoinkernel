@@ -822,14 +822,14 @@ mod tests {
 
     fn get_test_transactions() -> (Transaction, Transaction) {
         let block_data = read_block_data();
-        let tx1 = Block::new(&block_data[1])
+        let tx1 = Block::new(&block_data[204])
             .unwrap()
-            .transaction(0)
+            .transaction(1)
             .unwrap()
             .to_owned();
-        let tx2 = Block::new(&block_data[2])
+        let tx2 = Block::new(&block_data[205])
             .unwrap()
-            .transaction(0)
+            .transaction(1)
             .unwrap()
             .to_owned();
         (tx1, tx2)
@@ -1184,7 +1184,7 @@ mod tests {
         let outpoint = txin.outpoint();
 
         let index = outpoint.index();
-        assert_eq!(index, u32::MAX);
+        assert_eq!(index, 0);
     }
 
     #[test]
@@ -1366,7 +1366,7 @@ mod tests {
 
         assert_eq!(
             display,
-            "f3ac0618ad042336fbec1f88a4e965481b46cd3381a807591c78c75fdbae7d67"
+            "9beec3326c1efee76b743e667f9043941552c0803d12b94406e0e037c899e294"
         );
     }
 
@@ -1379,7 +1379,7 @@ mod tests {
 
         assert_eq!(
             display,
-            "f3ac0618ad042336fbec1f88a4e965481b46cd3381a807591c78c75fdbae7d67"
+            "9beec3326c1efee76b743e667f9043941552c0803d12b94406e0e037c899e294"
         );
     }
 }
