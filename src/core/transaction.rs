@@ -1,4 +1,8 @@
-use std::{ffi::c_void, marker::PhantomData};
+use std::{
+    ffi::c_void,
+    fmt::{self, Debug, Display, Formatter},
+    marker::PhantomData,
+};
 
 use libbitcoinkernel_sys::{
     btck_Transaction, btck_TransactionInput, btck_TransactionOutPoint, btck_TransactionOutput,
@@ -653,7 +657,6 @@ pub trait TxidExt: AsPtr<btck_Txid> {
     }
 }
 
-#[derive(Debug)]
 pub struct Txid {
     inner: *mut btck_Txid,
 }
@@ -709,7 +712,22 @@ impl PartialEq<TxidRef<'_>> for Txid {
 
 impl Eq for Txid {}
 
-#[derive(Debug)]
+impl Debug for Txid {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Txid({:?})", self.to_bytes())
+    }
+}
+
+impl Display for Txid {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let bytes = self.to_bytes();
+        for byte in bytes.iter().rev() {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
+    }
+}
+
 pub struct TxidRef<'a> {
     inner: *const btck_Txid,
     marker: PhantomData<&'a ()>,
@@ -762,6 +780,22 @@ impl<'a> Eq for TxidRef<'a> {}
 impl PartialEq<Txid> for TxidRef<'_> {
     fn eq(&self, other: &Txid) -> bool {
         present(unsafe { btck_txid_equals(self.inner, other.inner) })
+    }
+}
+
+impl<'a> Debug for TxidRef<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Txid({:?})", self.to_bytes())
+    }
+}
+
+impl<'a> Display for TxidRef<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let bytes = self.to_bytes();
+        for byte in bytes.iter().rev() {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
     }
 }
 
@@ -1321,5 +1355,31 @@ mod tests {
         }
 
         assert_eq!(iter_count, count);
+    }
+
+    #[test]
+    fn test_txid_display() {
+        let (tx, _) = get_test_transactions();
+        let txid = tx.txid().to_owned();
+
+        let display = format!("{}", txid);
+
+        assert_eq!(
+            display,
+            "f3ac0618ad042336fbec1f88a4e965481b46cd3381a807591c78c75fdbae7d67"
+        );
+    }
+
+    #[test]
+    fn test_txid_ref_display() {
+        let (tx, _) = get_test_transactions();
+        let txid = tx.txid();
+
+        let display = format!("{}", txid);
+
+        assert_eq!(
+            display,
+            "f3ac0618ad042336fbec1f88a4e965481b46cd3381a807591c78c75fdbae7d67"
+        );
     }
 }
