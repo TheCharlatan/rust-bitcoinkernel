@@ -1,3 +1,107 @@
+//! Block data structures.
+//!
+//! This module provides types for working with blocks, block hashes, spent
+//! outputs (undo data), coins, and transaction spent outputs.
+//!
+//! # Core Types
+//!
+//! - `Block` - A block with header and transactions
+//! - `BlockHash` - A 32-byte hash uniquely identifying a block
+//! - `BlockSpentOutputs` - Spent outputs (undo data) for all transactions in a block
+//! - `TransactionSpentOutputs` - Spent outputs for a single transaction
+//! - `Coin` - A UTXO (unspent transaction output) consumed by an input
+//!
+//! # Common Patterns
+//!
+//! ## Creating and Working with Blocks
+//!
+//! Blocks can be created from raw serialized data:
+//!
+//! ```no_run
+//! use bitcoinkernel::{prelude::*, Block};
+//!
+//! # fn example() -> Result<(), bitcoinkernel::KernelError> {
+//! let block_data = vec![0u8; 100]; // placeholder
+//! let block = Block::new(&block_data)?;
+//!
+//! // Get block hash
+//! let hash = block.hash();
+//! println!("Block hash: {}", hash);
+//!
+//! // Iterate over transactions
+//! for tx in block.transactions() {
+//!     println!("Transaction: {}", tx.txid());
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Working with Block Hashes
+//!
+//! Block hashes can be created from byte arrays and inspected as raw bytes
+//! or as a hexadecimal string:
+//!
+//! ```no_run
+//! use bitcoinkernel::{prelude::*, BlockHash};
+//!
+//! # fn example() -> Result<(), bitcoinkernel::KernelError> {
+//! let bytes = [42u8; 32];
+//! let hash = BlockHash::from(bytes);
+//!
+//! // Display as hex string (reversed byte order)
+//! println!("Hash: {}", hash);
+//!
+//! // Get raw bytes (internal byte order)
+//! let raw_bytes = hash.to_bytes();
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Examining Spent Outputs
+//!
+//! ```no_run
+//! # use bitcoinkernel::{prelude::*, ChainstateManager, BlockTreeEntry, KernelError};
+//! # fn example(chainman: &ChainstateManager, entry: &BlockTreeEntry) -> Result<(), KernelError> {
+//! // Read spent outputs (undo data) for a block
+//! let spent_outputs = chainman.read_spent_outputs(entry)?;
+//!
+//! // Iterate through transactions' spent outputs
+//! for tx_spent in spent_outputs.iter() {
+//!     println!("Transaction has {} spent coins", tx_spent.count());
+//!
+//!     // Examine each spent coin
+//!     for coin in tx_spent.coins() {
+//!         println!("Spent output value: {}", coin.output().value());
+//!         println!("Created at height: {}", coin.confirmation_height());
+//!         println!("Is coinbase: {}", coin.is_coinbase());
+//!     }
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Extension Traits
+//!
+//! The module defines extension traits that provide common functionality for
+//! both owned and borrowed types:
+//!
+//! - [`BlockHashExt`] - Operations on block hashes
+//! - [`BlockSpentOutputsExt`] - Operations on block spent outputs
+//! - [`TransactionSpentOutputsExt`] - Operations on transaction spent outputs
+//! - [`CoinExt`] - Operations on coins
+//!
+//! These traits allow writing generic code that works with either owned or
+//! borrowed types.
+//!
+//! # Iterators
+//!
+//! Several iterator types are provided for traversal:
+//!
+//! - [`BlockTransactionIter`] - Iterates over transactions in a block
+//! - [`BlockSpentOutputsIter`] - Iterates over transaction spent outputs in a block
+//! - [`TransactionSpentOutputsIter`] - Iterates over coins spent by a transaction
+//!
+
 use std::{ffi::c_void, marker::PhantomData};
 
 use libbitcoinkernel_sys::{
@@ -25,8 +129,39 @@ use crate::{
 use super::transaction::{TransactionRef, TxOutRef};
 
 /// Common operations for block hashes, implemented by both owned and borrowed types.
+///
+/// This trait provides shared functionality for [`BlockHash`] and [`BlockHashRef`],
+/// allowing code to work with either owned or borrowed block hashes.
+///
+/// # Examples
+///
+/// ```no_run
+/// use bitcoinkernel::{prelude::*, BlockHash};
+///
+/// fn display_hash<H: BlockHashExt>(hash: &H) {
+///     let bytes = hash.to_bytes();
+///     println!("Hash bytes: {:?}", bytes);
+/// }
+///
+/// let hash = BlockHash::from([1u8; 32]);
+/// display_hash(&hash);
+/// ```
 pub trait BlockHashExt: AsPtr<btck_BlockHash> {
     /// Serializes the block hash to raw bytes.
+    ///
+    /// Returns the 32-byte representation of the block hash in internal byte order.
+    ///
+    /// # Returns
+    /// A 32-byte array containing the block hash.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bitcoinkernel::{prelude::*, BlockHash};
+    ///
+    /// let hash = BlockHash::from([42u8; 32]);
+    /// let bytes = hash.to_bytes();
+    /// assert_eq!(bytes.len(), 32);
+    /// ```
     fn to_bytes(&self) -> [u8; 32] {
         let mut output = [0u8; 32];
         unsafe { btck_block_hash_to_bytes(self.as_ptr(), output.as_mut_ptr()) };
@@ -34,7 +169,39 @@ pub trait BlockHashExt: AsPtr<btck_BlockHash> {
     }
 }
 
-/// A type for a Block hash.
+/// A 32-byte hash uniquely identifying a block.
+///
+/// Block hashes are the double SHA256 hash of a block header and serve as
+/// the block's unique identifier.
+///
+/// # Byte Order
+///
+/// Bitcoin uses two different representations of block hashes:
+/// - **Internal byte order**: Used in memory and on disk
+/// - **Display byte order**: Reversed for human-readable hex strings
+///
+/// The [`to_bytes`](BlockHashExt::to_bytes) method returns internal byte order,
+/// while [`Display`](std::fmt::Display) formatting shows the reversed bytes.
+///
+/// # Thread Safety
+///
+/// `BlockHash` is both [`Send`] and [`Sync`], allowing it to be safely
+/// shared across threads.
+///
+/// # Examples
+///
+/// ```no_run
+/// use bitcoinkernel::{prelude::*, BlockHash};
+///
+/// // Create from raw bytes
+/// let hash = BlockHash::from([42u8; 32]);
+///
+/// // Display as hex (reversed byte order)
+/// println!("Block: {}", hash);
+///
+/// // Get internal representation
+/// let bytes = hash.to_bytes();
+/// ```
 pub struct BlockHash {
     inner: *mut btck_BlockHash,
 }
@@ -43,6 +210,26 @@ unsafe impl Send for BlockHash {}
 unsafe impl Sync for BlockHash {}
 
 impl BlockHash {
+    /// Creates a new block hash from raw bytes.
+    ///
+    /// # Arguments
+    /// * `raw_bytes` - A slice containing exactly 32 bytes
+    ///
+    /// # Errors
+    /// Returns [`KernelError::InvalidLength`] if the slice is not exactly 32 bytes.
+    /// Returns [`KernelError::Internal`] if the underlying C++ library fails
+    /// to create the hash.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use bitcoinkernel::BlockHash;
+    ///
+    /// # fn example() -> Result<(), bitcoinkernel::KernelError> {
+    /// let bytes = [42u8; 32];
+    /// let hash = BlockHash::new(&bytes)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(raw_bytes: &[u8]) -> Result<Self, KernelError> {
         if raw_bytes.len() != 32 {
             return Err(KernelError::InvalidLength {
@@ -61,6 +248,13 @@ impl BlockHash {
         }
     }
 
+    /// Creates a borrowed reference to this block hash.
+    ///
+    /// This allows converting from an owned [`BlockHash`] to a [`BlockHashRef`]
+    /// without copying the underlying data.
+    ///
+    /// # Lifetime
+    /// The returned reference is valid for the lifetime of this [`BlockHash`].
     pub fn as_ref(&self) -> BlockHashRef<'_> {
         unsafe { BlockHashRef::from_ptr(self.inner as *const _) }
     }
@@ -144,6 +338,16 @@ impl std::fmt::Display for BlockHash {
     }
 }
 
+/// A borrowed reference to a block hash.
+///
+/// Provides zero-copy access to block hash data. It implements [`Copy`],
+/// making it cheap to pass around.
+///
+/// # Lifetime
+/// The reference is only valid as long as the data it references remains alive.
+///
+/// # Thread Safety
+/// `BlockHashRef` is both [`Send`] and [`Sync`].
 pub struct BlockHashRef<'a> {
     inner: *const btck_BlockHash,
     marker: PhantomData<&'a ()>,
@@ -153,6 +357,9 @@ unsafe impl<'a> Send for BlockHashRef<'a> {}
 unsafe impl<'a> Sync for BlockHashRef<'a> {}
 
 impl<'a> BlockHashRef<'a> {
+    /// Creates an owned copy of this block hash.
+    ///
+    /// This allocates a new [`BlockHash`] with its own copy of the hash data.
     pub fn to_owned(&self) -> BlockHash {
         BlockHash {
             inner: unsafe { btck_block_hash_copy(self.inner) },
@@ -209,10 +416,47 @@ impl<'a> Eq for BlockHashRef<'a> {}
 
 impl<'a> Copy for BlockHashRef<'a> {}
 
-/// A Bitcoin block containing a header and transactions.
+/// A block containing a header and transactions.
 ///
-/// Blocks can be created from raw serialized data or retrieved from the blockchain.
-/// They represent the fundamental units of the Bitcoin blockchain structure.
+/// Blocks are the fundamental units of the block chain, linking together
+/// through their hashes to form a chain. Each block includes:
+/// - Header fields: version, previous block hash, merkle root, timestamp, difficulty target (nBits), and nonce
+/// - Transactions: one or more transactions, where the first is always the coinbase transaction
+///
+/// The block's hash is computed from the header fields using double SHA256.
+///
+/// **Note**: Individual header fields are not currently accessible through this API.
+/// You can access the block hash via [`hash`](Self::hash) and transactions via
+/// [`transaction`](Self::transaction) or [`transactions`](Self::transactions).
+///
+/// # Creation
+///
+/// Blocks are typically created from:
+/// - Raw serialized block data using [`new`](Self::new)
+/// - Reading from disk via [`ChainstateManager::read_block_data`](crate::ChainstateManager::read_block_data)
+///
+/// # Thread Safety
+///
+/// `Block` is both [`Send`] and [`Sync`], allowing it to be safely shared
+/// across threads or moved between threads.
+///
+/// # Examples
+///
+/// ```no_run
+/// use bitcoinkernel::Block;
+///
+/// # fn example() -> Result<(), bitcoinkernel::KernelError> {
+/// let block_data = vec![0u8; 100]; // placeholder
+/// let block = Block::new(&block_data)?;
+///
+/// println!("Block hash: {}", block.hash());
+/// println!("Transaction count: {}", block.transaction_count());
+///
+/// // Access first transaction (coinbase)
+/// let coinbase = block.transaction(0)?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct Block {
     inner: *mut btck_Block,
 }
@@ -221,6 +465,30 @@ unsafe impl Send for Block {}
 unsafe impl Sync for Block {}
 
 impl Block {
+    /// Creates a new block from raw serialized data.
+    ///
+    /// Deserializes a block from its wire format representation.
+    /// The data must contain a complete, valid block structure.
+    ///
+    /// # Arguments
+    /// * `raw_block` - The serialized block data in Bitcoin wire format
+    ///
+    /// # Errors
+    /// Returns [`KernelError::Internal`] if:
+    /// - The data is not a valid block
+    /// - The data is incomplete
+    /// - Deserialization fails
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use bitcoinkernel::Block;
+    ///
+    /// # fn example() -> Result<(), bitcoinkernel::KernelError> {
+    /// let block_data = vec![0u8; 100]; // placeholder
+    /// let block = Block::new(&block_data)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(raw_block: &[u8]) -> Result<Self, KernelError> {
         let inner =
             unsafe { btck_block_create(raw_block.as_ptr() as *const c_void, raw_block.len()) };
@@ -238,23 +506,69 @@ impl Block {
     ///
     /// This is the double SHA256 hash of the block header, which serves as
     /// the block's unique identifier.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::Block;
+    /// # fn example() -> Result<(), bitcoinkernel::KernelError> {
+    /// # let block_data = vec![0u8; 100]; // placeholder
+    /// # let block = Block::new(&block_data)?;
+    /// let hash = block.hash();
+    /// println!("Block: {}", hash);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn hash(&self) -> BlockHash {
         let hash_ptr = unsafe { btck_block_get_hash(self.inner) };
         unsafe { BlockHash::from_ptr(hash_ptr) }
     }
 
     /// Returns the number of transactions in this block.
+    ///
+    /// Every block contains at least one transaction (the coinbase transaction).
+    /// The count includes the coinbase.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::Block;
+    /// # let block: Block = unimplemented!();
+    /// println!("Block contains {} transactions", block.transaction_count());
+    /// ```
     pub fn transaction_count(&self) -> usize {
         unsafe { btck_block_count_transactions(self.inner) }
     }
 
-    /// Returns the transaction at the specified index.
+    /// Returns a reference to the transaction at the specified index.
     ///
     /// # Arguments
     /// * `index` - The zero-based index of the transaction (0 is the coinbase)
     ///
+    /// # Returns
+    /// A [`TransactionRef`] borrowing the transaction data from this block.
+    ///
     /// # Errors
-    /// Returns [`KernelError::OutOfBounds`] if the index is invalid.
+    /// Returns [`KernelError::OutOfBounds`] if the index is greater than or
+    /// equal to [`transaction_count`](Self::transaction_count).
+    ///
+    /// # Lifetime
+    /// The returned reference is valid only as long as this [`Block`] exists.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, Block, KernelError};
+    /// # fn example(block: &Block) -> Result<(), KernelError> {
+    /// // Get the coinbase transaction
+    /// let coinbase = block.transaction(0)?;
+    /// println!("Coinbase txid: {}", coinbase.txid());
+    ///
+    /// // Iterate through all transactions
+    /// for i in 0..block.transaction_count() {
+    ///     let tx = block.transaction(i)?;
+    ///     println!("Transaction {}: {}", i, tx.txid());
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn transaction(&self, index: usize) -> Result<TransactionRef<'_>, KernelError> {
         if index >= self.transaction_count() {
             return Err(KernelError::OutOfBounds);
@@ -263,7 +577,24 @@ impl Block {
         Ok(unsafe { TransactionRef::from_ptr(tx_ptr) })
     }
 
-    /// Consensus encodes the block to Bitcoin wire format.
+    /// Serializes the block to Bitcoin wire format.
+    ///
+    /// Encodes the complete block (header and all transactions) according to
+    /// the Bitcoin consensus rules. The resulting data can be transmitted over
+    /// the network or stored to disk.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::Internal`] if serialization fails.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{Block, KernelError};
+    /// # fn example(block: &Block) -> Result<(), Box<dyn std::error::Error>> {
+    /// let serialized = block.consensus_encode()?;
+    /// std::fs::write("block.dat", &serialized)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn consensus_encode(&self) -> Result<Vec<u8>, KernelError> {
         c_serialize(|callback, user_data| unsafe {
             btck_block_to_bytes(self.inner, Some(callback), user_data)
@@ -271,6 +602,21 @@ impl Block {
     }
 
     /// Returns an iterator over all transactions in this block.
+    ///
+    /// The iterator yields [`TransactionRef`] instances that borrow from this block.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, Block};
+    /// # fn example() -> Result<(), bitcoinkernel::KernelError> {
+    /// # let block_data = vec![0u8; 100]; // placeholder
+    /// # let block = Block::new(&block_data)?;
+    /// for (i, tx) in block.transactions().enumerate() {
+    ///     println!("Transaction {}: {}", i, tx.txid());
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn transactions(&self) -> BlockTransactionIter<'_> {
         BlockTransactionIter::new(self)
     }
@@ -326,6 +672,43 @@ impl TryFrom<&Block> for Vec<u8> {
     }
 }
 
+/// Iterator over transactions in a block.
+///
+/// This iterator yields [`TransactionRef`] items for each transaction in the
+/// block, starting from the coinbase transaction (index 0) and continuing
+/// through all remaining transactions.
+///
+/// # Lifetime
+/// The iterator is tied to the lifetime of the [`Block`] it was created from.
+/// The iterator becomes invalid when the block is dropped.
+///
+/// # Example
+/// ```no_run
+/// # use bitcoinkernel::{prelude::*, Block, KernelError};
+/// # fn example() -> Result<(), KernelError> {
+/// # let block_data = vec![0u8; 100]; // placeholder
+/// # let block = Block::new(&block_data)?;
+/// // Iterate through all transactions
+/// for tx in block.transactions() {
+///     println!("Transaction: {}", tx.txid());
+/// }
+///
+/// // Or with enumerate for explicit indexing
+/// for (idx, tx) in block.transactions().enumerate() {
+///     if idx == 0 {
+///         println!("Coinbase: {}", tx.txid());
+///     } else {
+///         println!("Transaction {}: {}", idx, tx.txid());
+///     }
+/// }
+///
+/// // Use iterator adapters
+/// let first_ten: Vec<_> = block.transactions()
+///     .take(10)
+///     .collect();
+/// # Ok(())
+/// # }
+/// ```
 pub struct BlockTransactionIter<'a> {
     block: &'a Block,
     current_index: usize,
@@ -367,22 +750,47 @@ impl<'a> ExactSizeIterator for BlockTransactionIter<'a> {
 }
 
 /// Common operations for block spent outputs, implemented by both owned and borrowed types.
+///
+/// This trait provides shared functionality for [`BlockSpentOutputs`] and
+/// [`BlockSpentOutputsRef`], allowing code to work with either owned or borrowed
+/// spent output data.
 pub trait BlockSpentOutputsExt: AsPtr<btck_BlockSpentOutputs> {
     /// Returns the number of transactions that have spent output data.
     ///
-    /// Note: This excludes the coinbase transaction, which has no inputs.
+    /// Note: This excludes the coinbase transaction
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, BlockSpentOutputs};
+    /// # fn example(spent_outputs: &BlockSpentOutputs) {
+    /// println!("Block has spent outputs for {} transactions", spent_outputs.count());
+    /// # }
+    /// ```
     fn count(&self) -> usize {
         unsafe { btck_block_spent_outputs_count(self.as_ptr()) }
     }
 
-    /// Returns a reference to the spent outputs for a specific transaction in the block.
+    /// Returns a reference to the spent outputs for a specific transaction.
     ///
     /// # Arguments
     /// * `transaction_index` - The index of the transaction (0-based, excluding coinbase)
     ///
     /// # Returns
-    /// * `Ok(RefType<TransactionSpentOutputs, BlockSpentOutputs>)` - A reference to the transaction's spent outputs
-    /// * `Err(KernelError::OutOfBounds)` - If the index is invalid
+    /// A [`TransactionSpentOutputsRef`] borrowing the transaction's spent output data.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::OutOfBounds`] if the index is greater than or
+    /// equal to [`count`](Self::count).
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, BlockSpentOutputs, KernelError};
+    /// # fn example(block_spent: &BlockSpentOutputs) -> Result<(), KernelError> {
+    /// let tx_spent = block_spent.transaction_spent_outputs(0)?;
+    /// println!("First transaction spent {} coins", tx_spent.count());
+    /// # Ok(())
+    /// # }
+    /// ```
     fn transaction_spent_outputs(
         &self,
         transaction_index: usize,
@@ -402,7 +810,20 @@ pub trait BlockSpentOutputsExt: AsPtr<btck_BlockSpentOutputs> {
         Ok(unsafe { TransactionSpentOutputsRef::from_ptr(tx_out_ptr) })
     }
 
-    /// Returns an iterator over spent outputs for transactions in the block.
+    /// Returns an iterator over spent outputs for all transactions in the block.
+    ///
+    /// The iterator yields [`TransactionSpentOutputsRef`] instances in the same
+    /// order as the transactions in the block (excluding the coinbase).
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, BlockSpentOutputs};
+    /// # fn example(block_spent: &BlockSpentOutputs) {
+    /// for tx_spent in block_spent.iter() {
+    ///     println!("Transaction spent {} coins", tx_spent.count());
+    /// }
+    /// # }
+    /// ```
     fn iter(&self) -> BlockSpentOutputsIter<'_> {
         BlockSpentOutputsIter::new(unsafe { BlockSpentOutputsRef::from_ptr(self.as_ptr()) })
     }
@@ -410,8 +831,43 @@ pub trait BlockSpentOutputsExt: AsPtr<btck_BlockSpentOutputs> {
 
 /// Spent output data for all transactions in a block.
 ///
-/// This contains the previous outputs that were consumed by all transactions
-/// in a specific block.
+/// Also known as "undo data", this contains all the previous transaction outputs
+/// that were consumed (spent) by a block's transactions.
+///
+/// # Structure
+///
+/// The spent outputs are ordered by transaction order in a block (excluding the coinbase
+/// transaction). Each transaction's spent outputs correspond one-to-one with its inputs
+/// in the same order.
+///
+/// # Reading from Disk
+///
+/// Spent outputs are read from disk using [`ChainstateManager::read_spent_outputs`](crate::ChainstateManager::read_spent_outputs).
+///
+/// # Thread Safety
+///
+/// `BlockSpentOutputs` is both [`Send`] and [`Sync`].
+///
+/// # Examples
+///
+/// ```no_run
+/// # use bitcoinkernel::{prelude::*, ChainstateManager, BlockTreeEntry, KernelError};
+/// # fn example(chainman: &ChainstateManager, entry: &BlockTreeEntry) -> Result<(), KernelError> {
+/// let spent_outputs = chainman.read_spent_outputs(entry)?;
+///
+/// println!("Block has {} transactions with spent outputs", spent_outputs.count());
+///
+/// for tx_spent in spent_outputs.iter() {
+///     for coin in tx_spent.coins() {
+///         println!("Spent {} satoshis from height {}",
+///             coin.output().value(),
+///             coin.confirmation_height()
+///         );
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct BlockSpentOutputs {
     inner: *mut btck_BlockSpentOutputs,
@@ -421,6 +877,13 @@ unsafe impl Send for BlockSpentOutputs {}
 unsafe impl Sync for BlockSpentOutputs {}
 
 impl BlockSpentOutputs {
+    /// Creates a borrowed reference to these spent outputs.
+    ///
+    /// This allows converting from owned [`BlockSpentOutputs`] to
+    /// [`BlockSpentOutputsRef`] without copying the underlying data.
+    ///
+    /// # Lifetime
+    /// The returned reference is valid for the lifetime of the [`BlockSpentOutputs`].
     pub fn as_ref(&self) -> BlockSpentOutputsRef<'_> {
         unsafe { BlockSpentOutputsRef::from_ptr(self.inner as *const _) }
     }
@@ -454,6 +917,18 @@ impl Drop for BlockSpentOutputs {
     }
 }
 
+/// A borrowed reference to block spent outputs.
+///
+/// This type provides zero-copy access to spent output data owned by the
+/// underlying C++ library. It implements [`Copy`], making it cheap to pass around.
+///
+/// # Lifetime
+/// The reference is valid only as long as the owner (typically returned from
+/// [`ChainstateManager::read_spent_outputs`](crate::ChainstateManager::read_spent_outputs))
+/// remains alive.
+///
+/// # Thread Safety
+/// `BlockSpentOutputsRef` is both [`Send`] and [`Sync`].
 pub struct BlockSpentOutputsRef<'a> {
     inner: *const btck_BlockSpentOutputs,
     marker: PhantomData<&'a ()>,
@@ -463,6 +938,9 @@ unsafe impl<'a> Send for BlockSpentOutputsRef<'a> {}
 unsafe impl<'a> Sync for BlockSpentOutputsRef<'a> {}
 
 impl<'a> BlockSpentOutputsRef<'a> {
+    /// Creates an owned copy of these spent outputs.
+    ///
+    /// This allocates a new [`BlockSpentOutputs`] with its own copy of the data.
     pub fn to_owned(&self) -> BlockSpentOutputs {
         BlockSpentOutputs {
             inner: unsafe { btck_block_spent_outputs_copy(self.inner) },
@@ -495,6 +973,37 @@ impl<'a> Clone for BlockSpentOutputsRef<'a> {
 
 impl<'a> Copy for BlockSpentOutputsRef<'a> {}
 
+/// Iterator over transaction spent outputs in a block.
+///
+/// This iterator yields [`TransactionSpentOutputsRef`] items for each transaction
+/// in the block (excluding the coinbase transaction).
+///
+/// # Lifetime
+/// The iterator is tied to the lifetime of the [`BlockSpentOutputs`] it was
+/// created from. The iterator becomes invalid when the block spent outputs are dropped.
+///
+/// # Example
+/// ```no_run
+/// # use bitcoinkernel::{prelude::*, BlockSpentOutputs, KernelError};
+/// # fn example(block_spent: &BlockSpentOutputs) -> Result<(), KernelError> {
+/// // Iterate through all transaction spent outputs
+/// for tx_spent in block_spent.iter() {
+///     println!("Transaction spent {} coins", tx_spent.count());
+/// }
+///
+/// // Or with enumerate for explicit indexing
+/// for (idx, tx_spent) in block_spent.iter().enumerate() {
+///     println!("Transaction {} spent {} coins", idx + 1, tx_spent.count());
+/// }
+///
+/// // Use iterator adapters
+/// let total_coins: usize = block_spent.iter()
+///     .map(|tx| tx.count())
+///     .sum();
+/// println!("Block spent {} total coins", total_coins);
+/// # Ok(())
+/// # }
+/// ```
 pub struct BlockSpentOutputsIter<'a> {
     block_spent_outputs: BlockSpentOutputsRef<'a>,
     current_index: usize,
@@ -552,8 +1061,22 @@ impl<'a> ExactSizeIterator for BlockSpentOutputsIter<'a> {
 }
 
 /// Common operations for transaction spent outputs, implemented by both owned and borrowed types.
+///
+/// This trait provides shared functionality for [`TransactionSpentOutputs`] and
+/// [`TransactionSpentOutputsRef`], allowing code to work with either owned or
+/// borrowed spent output data for a single transaction.
 pub trait TransactionSpentOutputsExt: AsPtr<btck_TransactionSpentOutputs> {
-    /// Returns the number of coins spent by this transaction
+    /// Returns the number of coins (outputs) spent by this transaction.
+    ///
+    /// This equals the number of inputs in the transaction.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, TransactionSpentOutputs};
+    /// # fn example(tx_spent: &TransactionSpentOutputs) {
+    /// println!("Transaction has {} inputs", tx_spent.count());
+    /// # }
+    /// ```
     fn count(&self) -> usize {
         unsafe { btck_transaction_spent_outputs_count(self.as_ptr()) }
     }
@@ -561,11 +1084,24 @@ pub trait TransactionSpentOutputsExt: AsPtr<btck_TransactionSpentOutputs> {
     /// Returns a reference to the coin at the specified input index.
     ///
     /// # Arguments
-    /// * `coin_index` - The index corresponding to the transaction input
+    /// * `coin_index` - The index corresponding to the transaction input (0-based)
     ///
     /// # Returns
-    /// * `Ok(RefType<Coin, TransactionSpentOutputs>)` - A reference to the coin
-    /// * `Err(KernelError::OutOfBounds)` - If the index is invalid
+    /// A [`CoinRef`] borrowing the coin data.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::OutOfBounds`] if the index is greater than or
+    /// equal to [`count`](Self::count).
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, TransactionSpentOutputs, KernelError};
+    /// # fn example(tx_spent: &TransactionSpentOutputs) -> Result<(), KernelError> {
+    /// let first_coin = tx_spent.coin(0)?;
+    /// println!("First input spent {} satoshis", first_coin.output().value());
+    /// # Ok(())
+    /// # }
+    /// ```
     fn coin(&self, coin_index: usize) -> Result<CoinRef<'_>, KernelError> {
         if coin_index >= self.count() {
             return Err(KernelError::OutOfBounds);
@@ -576,6 +1112,18 @@ pub trait TransactionSpentOutputsExt: AsPtr<btck_TransactionSpentOutputs> {
     }
 
     /// Returns an iterator over the coins spent by this transaction.
+    ///
+    /// The coins are yielded in the same order as the transaction's inputs.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, TransactionSpentOutputs};
+    /// # fn example(tx_spent: &TransactionSpentOutputs) {
+    /// for coin in tx_spent.coins() {
+    ///     println!("Spent {} satoshis", coin.output().value());
+    /// }
+    /// # }
+    /// ```
     fn coins(&self) -> TransactionSpentOutputsIter<'_> {
         TransactionSpentOutputsIter::new(unsafe {
             TransactionSpentOutputsRef::from_ptr(self.as_ptr())
@@ -586,7 +1134,29 @@ pub trait TransactionSpentOutputsExt: AsPtr<btck_TransactionSpentOutputs> {
 /// Spent output data for a single transaction.
 ///
 /// Contains all the coins (UTXOs) that were consumed by a specific transaction's
-/// inputs, in the same order as the transaction's inputs.
+/// inputs, in the same order as the inputs. Each coin represents a previous
+/// transaction output that was spent.
+///
+/// # Thread Safety
+///
+/// `TransactionSpentOutputs` is both [`Send`] and [`Sync`].
+///
+/// # Examples
+///
+/// ```no_run
+/// # use bitcoinkernel::{prelude::*, BlockSpentOutputs, KernelError};
+/// # fn example(block_spent: &BlockSpentOutputs) -> Result<(), KernelError> {
+/// // Get spent outputs for the second transaction in a block
+/// let tx_spent = block_spent.transaction_spent_outputs(0)?;
+///
+/// // Iterate through the coins
+/// for coin in tx_spent.coins() {
+///     println!("Input spent: {} satoshis", coin.output().value());
+///     println!("Output was created at height: {}", coin.confirmation_height());
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct TransactionSpentOutputs {
     inner: *mut btck_TransactionSpentOutputs,
@@ -596,6 +1166,13 @@ unsafe impl Send for TransactionSpentOutputs {}
 unsafe impl Sync for TransactionSpentOutputs {}
 
 impl TransactionSpentOutputs {
+    /// Creates a borrowed reference to these spent outputs.
+    ///
+    /// This allows converting from owned [`TransactionSpentOutputs`] to
+    /// [`TransactionSpentOutputsRef`] without copying the underlying data.
+    ///
+    /// # Lifetime
+    /// The returned reference is valid for the lifetime of the [`TransactionSpentOutputs`].
     pub fn as_ref(&self) -> TransactionSpentOutputsRef<'_> {
         unsafe { TransactionSpentOutputsRef::from_ptr(self.inner as *const _) }
     }
@@ -629,6 +1206,16 @@ impl Drop for TransactionSpentOutputs {
     }
 }
 
+/// A borrowed reference to transaction spent outputs.
+///
+/// This type provides zero-copy access to spent output data owned by the
+/// underlying C++ library. It implements [`Copy`], making it cheap to pass around.
+///
+/// # Lifetime
+/// The reference is valid only as long as the owner remains alive.
+///
+/// # Thread Safety
+/// `TransactionSpentOutputsRef` is both [`Send`] and [`Sync`].
 pub struct TransactionSpentOutputsRef<'a> {
     inner: *const btck_TransactionSpentOutputs,
     marker: PhantomData<&'a ()>,
@@ -638,6 +1225,9 @@ unsafe impl<'a> Send for TransactionSpentOutputsRef<'a> {}
 unsafe impl<'a> Sync for TransactionSpentOutputsRef<'a> {}
 
 impl<'a> TransactionSpentOutputsRef<'a> {
+    /// Creates an owned copy of these spent outputs.
+    ///
+    /// This allocates a new [`TransactionSpentOutputs`] with its own copy of the data.
     pub fn to_owned(&self) -> TransactionSpentOutputs {
         TransactionSpentOutputs {
             inner: unsafe { btck_transaction_spent_outputs_copy(self.inner) },
@@ -670,6 +1260,42 @@ impl<'a> Clone for TransactionSpentOutputsRef<'a> {
 
 impl<'a> Copy for TransactionSpentOutputsRef<'a> {}
 
+/// Iterator over coins in transaction spent outputs.
+///
+/// This iterator yields [`CoinRef`] items for each coin (UTXO) spent by a
+/// transaction. The coins correspond one-to-one with the transaction's inputs,
+/// yielded in the same order.
+///
+/// # Lifetime
+/// The iterator is tied to the lifetime of the [`TransactionSpentOutputs`] it was
+/// created from. The iterator becomes invalid when the transaction spent outputs are dropped.
+///
+/// # Example
+/// ```no_run
+/// # use bitcoinkernel::{prelude::*, TransactionSpentOutputs, KernelError};
+/// # fn example(tx_spent: &TransactionSpentOutputs) -> Result<(), KernelError> {
+/// // Iterate through all spent coins
+/// for coin in tx_spent.coins() {
+///     println!("Spent {} satoshis from height {}",
+///              coin.output().value(),
+///              coin.confirmation_height());
+/// }
+///
+/// // Or with enumerate for explicit input indexing
+/// for (input_idx, coin) in tx_spent.coins().enumerate() {
+///     println!("Input {}: {} satoshis",
+///              input_idx,
+///              coin.output().value());
+/// }
+///
+/// // Use iterator adapters
+/// let total_value: i64 = tx_spent.coins()
+///     .map(|coin| coin.output().value())
+///     .sum();
+/// println!("Transaction spent {} satoshis total", total_value);
+/// # Ok(())
+/// # }
+/// ```
 pub struct TransactionSpentOutputsIter<'a> {
     tx_spent_outputs: TransactionSpentOutputsRef<'a>,
     current_index: usize,
@@ -720,13 +1346,40 @@ impl<'a> ExactSizeIterator for TransactionSpentOutputsIter<'a> {
 }
 
 /// Common operations for coins, implemented by both owned and borrowed types.
+///
+/// This trait provides shared functionality for [`Coin`] and [`CoinRef`],
+/// allowing code to work with either owned or borrowed coin data.
 pub trait CoinExt: AsPtr<btck_Coin> {
     /// Returns the height of the block where this coin was created.
+    ///
+    /// This is the block height at which the transaction containing this
+    /// output was confirmed.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, Coin};
+    /// # fn example(coin: &Coin) {
+    /// println!("Coin created at height {}", coin.confirmation_height());
+    /// # }
+    /// ```
     fn confirmation_height(&self) -> u32 {
         unsafe { btck_coin_confirmation_height(self.as_ptr()) }
     }
 
     /// Returns true if this coin came from a coinbase transaction.
+    ///
+    /// Coinbase outputs have special rules: they cannot be spent until they
+    /// mature (100 blocks on mainnet).
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, Coin};
+    /// # fn example(coin: &Coin) {
+    /// if coin.is_coinbase() {
+    ///     println!("This is a coinbase output");
+    /// }
+    /// # }
+    /// ```
     fn is_coinbase(&self) -> bool {
         let result = unsafe { btck_coin_is_coinbase(self.as_ptr()) };
         c_helpers::present(result)
@@ -734,19 +1387,52 @@ pub trait CoinExt: AsPtr<btck_Coin> {
 
     /// Returns a reference to the transaction output data for this coin.
     ///
-    /// # Returns
-    /// * `Ok(RefType<TxOut, Coin>)` - A reference to the transaction output
-    /// * `Err(KernelError::Internal)` - If the coin data is corrupted
+    /// The output contains the value (amount in satoshis) and the script
+    /// that must be satisfied to spend the coin.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, Coin};
+    /// # fn example(coin: &Coin) {
+    /// let output = coin.output();
+    /// println!("Value: {} satoshis", output.value());
+    /// println!("Script length: {} bytes", output.script_pubkey().to_bytes().len());
+    /// # }
+    /// ```
     fn output(&self) -> TxOutRef<'_> {
         let output_ptr = unsafe { btck_coin_get_output(self.as_ptr()) };
         unsafe { TxOutRef::from_ptr(output_ptr) }
     }
 }
 
-/// A coin (UTXO) representing a transaction output.
+/// A coin (UTXO) representing a spendable transaction output.
 ///
-/// Contains the transaction output data along with metadata about when
-/// it was created and whether it came from a coinbase transaction.
+/// A coin contains:
+/// - The transaction output (value and locking script)
+/// - The height at which it was created
+/// - Whether it came from a coinbase transaction
+///
+/// Coins are the fundamental unit of the UTXO (Unspent Transaction Output)
+/// set. When found in spent output data, they represent outputs that have been
+/// consumed by transaction inputs.
+///
+/// # Thread Safety
+///
+/// `Coin` is both [`Send`] and [`Sync`].
+///
+/// # Examples
+///
+/// ```no_run
+/// # use bitcoinkernel::{prelude::*, TransactionSpentOutputs, KernelError};
+/// # fn example(tx_spent: &TransactionSpentOutputs) -> Result<(), KernelError> {
+/// let coin = tx_spent.coin(0)?;
+///
+/// println!("Output value: {} satoshis", coin.output().value());
+/// println!("Created at height: {}", coin.confirmation_height());
+/// println!("Is coinbase: {}", coin.is_coinbase());
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct Coin {
     inner: *mut btck_Coin,
@@ -756,6 +1442,13 @@ unsafe impl Send for Coin {}
 unsafe impl Sync for Coin {}
 
 impl Coin {
+    /// Creates a borrowed reference to this coin.
+    ///
+    /// This allows converting from owned [`Coin`] to [`CoinRef`] without
+    /// copying the underlying data.
+    ///
+    /// # Lifetime
+    /// The returned reference is valid for the lifetime of the [`Coin`].
     pub fn as_ref(&self) -> CoinRef<'_> {
         unsafe { CoinRef::from_ptr(self.inner as *const _) }
     }
@@ -789,6 +1482,16 @@ impl Drop for Coin {
     }
 }
 
+/// A borrowed reference to a coin.
+///
+/// This type provides zero-copy access to coin data owned by the underlying
+/// C++ library. It implements [`Copy`], making it cheap to pass around.
+///
+/// # Lifetime
+/// The reference is valid only as long as the owner remains alive.
+///
+/// # Thread Safety
+/// `CoinRef` is both [`Send`] and [`Sync`].
 pub struct CoinRef<'a> {
     inner: *const btck_Coin,
     marker: PhantomData<&'a ()>,
@@ -798,6 +1501,9 @@ unsafe impl<'a> Send for CoinRef<'a> {}
 unsafe impl<'a> Sync for CoinRef<'a> {}
 
 impl<'a> CoinRef<'a> {
+    /// Creates an owned copy of this coin.
+    ///
+    /// This allocates a new [`Coin`] with its own copy of the data.
     pub fn to_owned(&self) -> Coin {
         Coin {
             inner: unsafe { btck_coin_copy(self.inner) },
