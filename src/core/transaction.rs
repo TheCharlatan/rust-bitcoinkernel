@@ -553,6 +553,11 @@ pub trait TxOutPointExt: AsPtr<btck_TransactionOutPoint> {
         let ptr = unsafe { btck_transaction_out_point_get_txid(self.as_ptr()) };
         unsafe { TxidRef::from_ptr(ptr) }
     }
+
+    /// Returns true if this OutPoint is the "null" coinbase OutPoint.
+    fn is_null(&self) -> bool {
+        self.index() == u32::MAX && self.txid().is_all_zeros()
+    }
 }
 
 /// A reference to a specific output in a previous transaction.
@@ -654,6 +659,11 @@ pub trait TxidExt: AsPtr<btck_Txid> {
             btck_txid_to_bytes(self.as_ptr(), bytes.as_mut_ptr());
         }
         bytes
+    }
+
+    /// Returns true if all bytes of the txid are zero (null txid).
+    fn is_all_zeros(&self) -> bool {
+        self.to_bytes().iter().all(|&b| b == 0)
     }
 }
 
