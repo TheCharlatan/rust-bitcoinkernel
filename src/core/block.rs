@@ -60,6 +60,10 @@ impl BlockHash {
             Ok(BlockHash { inner })
         }
     }
+
+    pub fn as_ref(&self) -> BlockHashRef<'_> {
+        unsafe { BlockHashRef::from_ptr(self.inner as *const _) }
+    }
 }
 
 impl AsPtr<btck_BlockHash> for BlockHash {
@@ -269,12 +273,6 @@ impl Block {
     /// Returns an iterator over all transactions in this block.
     pub fn transactions(&self) -> BlockTransactionIter<'_> {
         BlockTransactionIter::new(self)
-    }
-}
-
-impl BlockHash {
-    pub fn as_ref(&self) -> BlockHashRef<'_> {
-        unsafe { BlockHashRef::from_ptr(self.inner as *const _) }
     }
 }
 
