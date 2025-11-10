@@ -49,10 +49,6 @@ exclude = [
 ]
 publish = true
 
-[dependencies]
-libc = "0.2"
-
 [build-dependencies]
-cc = "1.0"
-pkg-config = "0.3"
-bindgen = "0.71"
+cc = "1.2"
+bindgen = "0.72"
