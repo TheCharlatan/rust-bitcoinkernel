@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use bitcoin::consensus::deserialize;
     use bitcoinkernel::{
         prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry,
         BlockValidationStateRef, ChainParams, ChainType, ChainstateManager,
@@ -27,7 +26,9 @@ mod tests {
     static mut GLOBAL_LOG_CALLBACK_HOLDER: Option<Logger> = None;
 
     fn setup_logging() {
-        let _ = env_logger::Builder::from_default_env().is_test(true).try_init();
+        let _ = env_logger::Builder::from_default_env()
+            .is_test(true)
+            .try_init();
         unsafe { GLOBAL_LOG_CALLBACK_HOLDER = Some(Logger::new(TestLog {}).unwrap()) };
     }
 
