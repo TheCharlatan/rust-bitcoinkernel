@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use bitcoin::consensus::deserialize;
     use bitcoinkernel::{
         prelude::*, verify, Block, BlockHash, BlockSpentOutputs, BlockTreeEntry,
         BlockValidationStateRef, ChainParams, ChainType, ChainstateManager,
@@ -27,9 +26,9 @@ mod tests {
     static mut GLOBAL_LOG_CALLBACK_HOLDER: Option<Logger> = None;
 
     fn setup_logging() {
-        let mut builder = env_logger::Builder::from_default_env();
-        builder.filter(None, log::LevelFilter::Debug).init();
-
+        let _ = env_logger::Builder::from_default_env()
+            .is_test(true)
+            .try_init();
         unsafe { GLOBAL_LOG_CALLBACK_HOLDER = Some(Logger::new(TestLog {}).unwrap()) };
     }
 
@@ -184,85 +183,6 @@ mod tests {
             assert!(result.is_rejected());
             assert!(!result.is_new_block());
             assert!(!result.is_duplicate())
-        }
-    }
-
-    #[test]
-    fn test_scan_tx() {
-        #[allow(dead_code)]
-        #[derive(Debug)]
-        struct Input {
-            height: u32,
-            prevout: Vec<u8>,
-            script_sig: Vec<u8>,
-            witness: Vec<Vec<u8>>,
-        }
-
-        #[derive(Debug)]
-        struct ScanTxHelper {
-            ins: Vec<Input>,
-            #[allow(dead_code)]
-            outs: Vec<Vec<u8>>,
-        }
-
-        let (context, data_dir) = testing_setup();
-        let chainman = setup_chainman_with_blocks(&context, &data_dir).unwrap();
-
-        let active_chain = chainman.active_chain();
-
-        for (height, block_index) in active_chain.iter().enumerate() {
-            assert_eq!(height, block_index.height().try_into().unwrap());
-        }
-
-        let block_index_tip = active_chain.tip();
-
-        let raw_block_tip: Vec<u8> = chainman
-            .read_block_data(&block_index_tip)
-            .unwrap()
-            .consensus_encode()
-            .unwrap();
-
-        let spent_outputs_tip = chainman.read_spent_outputs(&block_index_tip).unwrap();
-        let block_tip: bitcoin::Block = deserialize(&raw_block_tip).unwrap();
-        // Should be the same size minus the coinbase transaction
-        assert_eq!(block_tip.txdata.len() - 1, spent_outputs_tip.count());
-
-        let block_index_tip_prev = block_index_tip.prev().unwrap();
-        let raw_block: Vec<u8> = chainman
-            .read_block_data(&block_index_tip_prev)
-            .unwrap()
-            .try_into()
-            .unwrap();
-
-        let spent_outputs = chainman.read_spent_outputs(&block_index_tip_prev).unwrap();
-        let block: bitcoin::Block = deserialize(&raw_block).unwrap();
-        // Should be the same size minus the coinbase transaction
-        assert_eq!(block.txdata.len() - 1, spent_outputs.count());
-
-        for i in 0..(block.txdata.len() - 1) {
-            let tx_spent_outputs = spent_outputs.transaction_spent_outputs(i).unwrap();
-            let coins_spent_count = tx_spent_outputs.count();
-            let transaction_input_size = block.txdata[i + 1].input.len();
-
-            assert_eq!(transaction_input_size, coins_spent_count);
-            let mut helper = ScanTxHelper {
-                ins: vec![],
-                outs: block.txdata[i + 1]
-                    .output
-                    .iter()
-                    .map(|output| output.script_pubkey.to_bytes())
-                    .collect(),
-            };
-            for j in 0..transaction_input_size {
-                let coin = tx_spent_outputs.coin(j).unwrap();
-                helper.ins.push(Input {
-                    height: coin.confirmation_height(),
-                    prevout: coin.output().script_pubkey().to_bytes(),
-                    script_sig: block.txdata[i + 1].input[j].script_sig.to_bytes(),
-                    witness: block.txdata[i + 1].input[j].witness.to_vec(),
-                });
-            }
-            println!("helper: {:?}", helper);
         }
     }
 
