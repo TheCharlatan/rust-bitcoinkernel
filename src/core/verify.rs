@@ -1,3 +1,149 @@
+//! Script verification and validation.
+//!
+//! This module provides functionality for verifying that transaction inputs satisfy
+//! the spending conditions defined by their corresponding output scripts.
+//!
+//! # Overview
+//!
+//! Script verification involves checking that a transaction input's
+//! unlocking script (scriptSig) and witness data satisfy the conditions
+//! specified in the output's locking script (scriptPubkey). The verification
+//! process depends on the script type and the consensus rules active at the
+//! time.
+//!
+//! # Verification Flags
+//!
+//! Consensus rules have evolved over time through soft forks. Verification flags
+//! allow you to specify which consensus rules to enforce:
+//!
+//! | Flag | Description | BIP |
+//! |------|-------------|-----|
+//! | [`VERIFY_P2SH`] | Pay-to-Script-Hash validation | BIP 16 |
+//! | [`VERIFY_DERSIG`] | Strict DER signature encoding | BIP 66 |
+//! | [`VERIFY_NULLDUMMY`] | Dummy stack element must be empty | BIP 147 |
+//! | [`VERIFY_CHECKLOCKTIMEVERIFY`] | CHECKLOCKTIMEVERIFY opcode | BIP 65 |
+//! | [`VERIFY_CHECKSEQUENCEVERIFY`] | CHECKSEQUENCEVERIFY opcode | BIP 112 |
+//! | [`VERIFY_WITNESS`] | Segregated Witness validation | BIP 141/143 |
+//! | [`VERIFY_TAPROOT`] | Taproot validation | BIP 341/342 |
+//!
+//! # Common Flag Combinations
+//!
+//! - [`VERIFY_ALL_PRE_TAPROOT`]: All rules except Taproot (for pre-Taproot blocks)
+//! - [`VERIFY_ALL`]: All consensus rules including Taproot
+//!
+//! # Examples
+//!
+//! ## Basic verification with all consensus rules
+//!
+//! ```no_run
+//! # use bitcoinkernel::{prelude::*, Transaction, verify, VERIFY_ALL};
+//! # let spending_tx_bytes = vec![];
+//! # let prev_tx_bytes = vec![];
+//! # let spending_tx = Transaction::new(&spending_tx_bytes).unwrap();
+//! # let prev_tx = Transaction::new(&prev_tx_bytes).unwrap();
+//! let prev_output = prev_tx.output(0).unwrap();
+//!
+//! let result = verify(
+//!     &prev_output.script_pubkey(),
+//!     Some(prev_output.value()),
+//!     &spending_tx,
+//!     0,
+//!     Some(VERIFY_ALL),
+//!     &[prev_output],
+//! );
+//!
+//! match result {
+//!     Ok(()) => println!("Script verification passed"),
+//!     Err(e) => println!("Script verification failed: {}", e),
+//! }
+//! ```
+//!
+//! ## Verifying pre-Taproot transactions
+//!
+//! ```no_run
+//! # use bitcoinkernel::{prelude::*, Transaction, verify, VERIFY_ALL_PRE_TAPROOT};
+//! # let spending_tx_bytes = vec![];
+//! # let prev_tx_bytes = vec![];
+//! # let spending_tx = Transaction::new(&spending_tx_bytes).unwrap();
+//! # let prev_tx = Transaction::new(&prev_tx_bytes).unwrap();
+//! # let prev_output = prev_tx.output(0).unwrap();
+//! let result = verify(
+//!     &prev_output.script_pubkey(),
+//!     Some(prev_output.value()),
+//!     &spending_tx,
+//!     0,
+//!     Some(VERIFY_ALL_PRE_TAPROOT),
+//!     &[prev_output],
+//! );
+//! ```
+//!
+//! ## Verifying with multiple spent outputs
+//!
+//! ```no_run
+//! # use bitcoinkernel::{prelude::*, Transaction, verify, VERIFY_ALL};
+//! # let spending_tx_bytes = vec![];
+//! # let prev_tx1_bytes = vec![];
+//! # let prev_tx2_bytes = vec![];
+//! # let spending_tx = Transaction::new(&spending_tx_bytes).unwrap();
+//! # let prev_tx1 = Transaction::new(&prev_tx1_bytes).unwrap();
+//! # let prev_tx2 = Transaction::new(&prev_tx2_bytes).unwrap();
+//! let spent_outputs = vec![
+//!     prev_tx1.output(0).unwrap(),
+//!     prev_tx2.output(1).unwrap(),
+//! ];
+//!
+//! let result = verify(
+//!     &spent_outputs[0].script_pubkey(),
+//!     Some(spent_outputs[0].value()),
+//!     &spending_tx,
+//!     0,
+//!     Some(VERIFY_ALL),
+//!     &spent_outputs,
+//! );
+//! ```
+//!
+//! ## Handling verification errors
+//!
+//! ```no_run
+//! # use bitcoinkernel::{prelude::*, Transaction, verify, VERIFY_ALL, KernelError, ScriptVerifyError};
+//! # let spending_tx_bytes = vec![];
+//! # let prev_tx_bytes = vec![];
+//! # let spending_tx = Transaction::new(&spending_tx_bytes).unwrap();
+//! # let prev_tx = Transaction::new(&prev_tx_bytes).unwrap();
+//! # let prev_output = prev_tx.output(0).unwrap();
+//! let result = verify(
+//!     &prev_output.script_pubkey(),
+//!     Some(prev_output.value()),
+//!     &spending_tx,
+//!     0,
+//!     Some(VERIFY_ALL),
+//!     &[prev_output],
+//! );
+//!
+//! match result {
+//!     Ok(()) => {
+//!         println!("Valid transaction");
+//!     }
+//!     Err(KernelError::ScriptVerify(ScriptVerifyError::SpentOutputsRequired)) => {
+//!         println!("This script type requires spent outputs");
+//!     }
+//!     Err(KernelError::ScriptVerify(ScriptVerifyError::InvalidFlagsCombination)) => {
+//!         println!("Invalid combination of verification flags");
+//!     }
+//!     Err(KernelError::ScriptVerify(ScriptVerifyError::Invalid)) => {
+//!         println!("Script verification failed - invalid script");
+//!     }
+//!     Err(e) => {
+//!         println!("Other error: {}", e);
+//!     }
+//! }
+//! ```
+//!
+//! # Thread Safety
+//!
+//! The [`verify`] function is thread-safe and can be called concurrently from multiple
+//! threads. All types used in verification are `Send + Sync`.
+
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
@@ -22,26 +168,36 @@ use crate::{
     KernelError, ScriptPubkeyExt, TransactionExt, TxOutExt,
 };
 
+/// No verification flags.
 pub const VERIFY_NONE: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_NONE;
 
+/// Validate Pay-to-Script-Hash (BIP 16).
 pub const VERIFY_P2SH: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_P2SH;
 
+/// Require strict DER encoding for ECDSA signatures (BIP 66).
 pub const VERIFY_DERSIG: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_DERSIG;
 
+/// Require the dummy element in OP_CHECKMULTISIG to be empty (BIP 147).
 pub const VERIFY_NULLDUMMY: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_NULLDUMMY;
 
+/// Enable OP_CHECKLOCKTIMEVERIFY (BIP 65).
 pub const VERIFY_CHECKLOCKTIMEVERIFY: btck_ScriptVerificationFlags =
     BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKLOCKTIMEVERIFY;
 
+/// Enable OP_CHECKSEQUENCEVERIFY (BIP 112).
 pub const VERIFY_CHECKSEQUENCEVERIFY: btck_ScriptVerificationFlags =
     BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKSEQUENCEVERIFY;
 
+/// Validate Segregated Witness programs (BIP 141/143).
 pub const VERIFY_WITNESS: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_WITNESS;
 
+/// Validate Taproot spends (BIP 341/342). Requires spent outputs.
 pub const VERIFY_TAPROOT: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_TAPROOT;
 
+/// All consensus rules.
 pub const VERIFY_ALL: btck_ScriptVerificationFlags = BTCK_SCRIPT_VERIFICATION_FLAGS_ALL;
 
+/// All consensus rules except Taproot.
 pub const VERIFY_ALL_PRE_TAPROOT: btck_ScriptVerificationFlags = VERIFY_P2SH
     | VERIFY_DERSIG
     | VERIFY_NULLDUMMY
@@ -51,17 +207,84 @@ pub const VERIFY_ALL_PRE_TAPROOT: btck_ScriptVerificationFlags = VERIFY_P2SH
 
 /// Verifies a transaction input against its corresponding output script.
 ///
+/// This function checks that the transaction input at the specified index properly
+/// satisfies the spending conditions defined by the output script. The verification
+/// process depends on the script type and the consensus rules specified by the flags.
+///
 /// # Arguments
-/// * `script_pubkey` - The output script to verify against
-/// * `amount` - Needs to be set if the segwit flag is set
-/// * `tx_to` - The transaction containing the input to verify
-/// * `input_index` - The index of the input within `tx_to` to verify
-/// * `flags` - Defaults to all if none
-/// * `spent_output` - The outputs being spent by this transaction
+///
+/// * `script_pubkey` - The output script (locking script) to verify against
+/// * `amount` - The amount in satoshis of the output being spent. Required for SegWit
+///   and Taproot scripts (when [`VERIFY_WITNESS`] or [`VERIFY_TAPROOT`] flags are set).
+///   Optional for pre-SegWit scripts.
+/// * `tx_to` - The transaction containing the input to verify (the spending transaction)
+/// * `input_index` - The zero-based index of the input within `tx_to` to verify
+/// * `flags` - Verification flags specifying which consensus rules to enforce. If `None`,
+///   defaults to [`VERIFY_ALL`]. Combine multiple flags using bitwise OR (`|`).
+/// * `spent_outputs` - The outputs being spent by the transaction. For SegWit and Taproot,
+///   this should contain all outputs spent by all inputs in the transaction. For pre-SegWit,
+///   this can be empty or contain just the output being spent. The length must either be 0
+///   or match the number of inputs in the transaction.
 ///
 /// # Returns
-/// * `Ok(())` if verification succeeds
-/// * [`KernelError::ScriptVerify`] an error describing the failure
+///
+/// * `Ok(())` - Verification succeeded; the input properly spends the output
+/// * `Err(KernelError::ScriptVerify(ScriptVerifyError::TxInputIndex))` - Input index out of bounds
+/// * `Err(KernelError::ScriptVerify(ScriptVerifyError::SpentOutputsMismatch))` - The spent_outputs
+///   length is non-zero but doesn't match the number of inputs
+/// * `Err(KernelError::ScriptVerify(ScriptVerifyError::InvalidFlags))` - Invalid verification flags
+/// * `Err(KernelError::ScriptVerify(ScriptVerifyError::InvalidFlagsCombination))` - Incompatible
+///   combination of flags
+/// * `Err(KernelError::ScriptVerify(ScriptVerifyError::SpentOutputsRequired))` - Spent outputs
+///   are required for this script type but were not provided
+/// * `Err(KernelError::ScriptVerify(ScriptVerifyError::Invalid))` - Script verification failed;
+///   the input does not properly satisfy the output's spending conditions
+///
+/// # Examples
+///
+/// ## Verifying a P2PKH transaction
+///
+/// ```no_run
+/// # use bitcoinkernel::{prelude::*, Transaction, TxOut, verify, VERIFY_ALL};
+/// # let tx_bytes = vec![];
+/// # let spending_tx = Transaction::new(&tx_bytes).unwrap();
+/// # let prev_tx = Transaction::new(&tx_bytes).unwrap();
+/// let prev_output = prev_tx.output(0).unwrap();
+///
+/// let result = verify(
+///     &prev_output.script_pubkey(),
+///     None,
+///     &spending_tx,
+///     0,
+///     Some(VERIFY_ALL),
+///     &[] as &[TxOut],
+/// );
+/// ```
+///
+/// ## Using custom flags
+///
+/// ```no_run
+/// # use bitcoinkernel::{prelude::*, Transaction, TxOut, verify, VERIFY_P2SH, VERIFY_DERSIG};
+/// # let tx_bytes = vec![];
+/// # let spending_tx = Transaction::new(&tx_bytes).unwrap();
+/// # let prev_output = spending_tx.output(0).unwrap();
+/// // Only verify P2SH and DERSIG rules
+/// let custom_flags = VERIFY_P2SH | VERIFY_DERSIG;
+///
+/// let result = verify(
+///     &prev_output.script_pubkey(),
+///     None,
+///     &spending_tx,
+///     0,
+///     Some(custom_flags),
+///     &[] as &[TxOut],
+/// );
+/// ```
+///
+/// # Panics
+///
+/// This function does not panic under normal circumstances. All error conditions
+/// are returned as `Result::Err`.
 pub fn verify(
     script_pubkey: &impl ScriptPubkeyExt,
     amount: Option<i64>,
@@ -136,18 +359,35 @@ pub fn verify(
     }
 }
 
-/// Status of script verification operations.
+/// Internal status codes from the C verification function.
 ///
-/// Indicates the result of verifying a transaction script, including any
-/// configuration errors that prevented verification from proceeding.
+/// These are used internally to distinguish between setup errors (invalid flags,
+/// missing data) and actual script verification failures. Converted to
+/// [`KernelError::ScriptVerify`] variants in the public API.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 enum ScriptVerifyStatus {
     /// Script verification completed successfully
     Ok = BTCK_SCRIPT_VERIFY_STATUS_OK,
-    /// Invalid combination of verification flags was provided
+
+    /// Invalid or inconsistent verification flags were provided.
+    ///
+    /// This occurs when the supplied `script_verify_flags` combination violates
+    /// internal consistency rules. For example:
+    ///
+    /// - `SCRIPT_VERIFY_CLEANSTACK` is set without also enabling either
+    ///   `SCRIPT_VERIFY_P2SH` or `SCRIPT_VERIFY_WITNESS`.
+    /// - `SCRIPT_VERIFY_WITNESS` is set without also enabling `SCRIPT_VERIFY_P2SH`.
+    ///
+    /// These combinations are considered invalid and result in an immediate
+    /// verification setup failure rather than a script execution failure.
     ErrorInvalidFlagsCombination = BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION,
-    /// Spent outputs are required for this type of verification but were not provided
+
+    /// Spent outputs are required but were not provided.
+    ///
+    /// Taproot scripts require the complete set of outputs being spent to properly
+    /// validate witness data. This occurs when the TAPROOT flag is set but no spent
+    /// outputs were provided.
     ErrorSpentOutputsRequired = BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED,
 }
 
@@ -172,14 +412,40 @@ impl From<btck_ScriptVerifyStatus> for ScriptVerifyStatus {
     }
 }
 
-/// A collection of errors that may occur during script verification
+/// Errors that can occur during script verification.
+///
+/// These errors represent both configuration problems (incorrect parameters)
+/// and actual verification failures (invalid scripts).
 #[derive(Debug)]
 pub enum ScriptVerifyError {
+    /// The specified input index is out of bounds.
+    ///
+    /// The `input_index` parameter is greater than or equal to the number
+    /// of inputs in the transaction.
     TxInputIndex,
+
+    /// Invalid verification flags were provided.
+    ///
+    /// The flags parameter contains bits that don't correspond to any
+    /// defined verification flag.
     InvalidFlags,
+
+    /// Invalid or inconsistent verification flags were provided.
+    ///
+    /// This occurs when the supplied `script_verify_flags` combination violates
+    /// internal consistency rules.
     InvalidFlagsCombination,
+
+    /// The spent_outputs array length doesn't match the input count.
+    ///
+    /// When spent_outputs is non-empty, it must contain exactly one output
+    /// for each input in the transaction.
     SpentOutputsMismatch,
+
+    /// Spent outputs are required but were not provided.
     SpentOutputsRequired,
+
+    /// Script verification failed.
     Invalid,
 }
 
