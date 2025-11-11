@@ -146,7 +146,7 @@ use super::transaction::{TransactionRef, TxOutRef};
 /// let hash = BlockHash::from([1u8; 32]);
 /// display_hash(&hash);
 /// ```
-pub trait BlockHashExt: AsPtr<btck_BlockHash> {
+pub trait BlockHashExt: AsPtr<btck_BlockHash> + std::fmt::Display {
     /// Serializes the block hash to raw bytes.
     ///
     /// Returns the 32-byte representation of the block hash in internal byte order.
