@@ -173,8 +173,6 @@ impl From<btck_ScriptVerifyStatus> for ScriptVerifyStatus {
 #[derive(Debug)]
 pub enum ScriptVerifyError {
     TxInputIndex,
-    TxSizeMismatch,
-    TxDeserialize,
     InvalidFlags,
     InvalidFlagsCombination,
     SpentOutputsMismatch,
@@ -186,8 +184,6 @@ impl Display for ScriptVerifyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ScriptVerifyError::TxInputIndex => write!(f, "Transaction input index out of bounds"),
-            ScriptVerifyError::TxSizeMismatch => write!(f, "Transaction size mismatch"),
-            ScriptVerifyError::TxDeserialize => write!(f, "Failed to deserialize transaction"),
             ScriptVerifyError::InvalidFlags => write!(f, "Invalid verification flags"),
             ScriptVerifyError::InvalidFlagsCombination => {
                 write!(f, "Invalid combination of verification flags")
@@ -343,8 +339,6 @@ mod tests {
     fn test_script_verify_error_debug() {
         let errors = vec![
             ScriptVerifyError::TxInputIndex,
-            ScriptVerifyError::TxSizeMismatch,
-            ScriptVerifyError::TxDeserialize,
             ScriptVerifyError::InvalidFlags,
             ScriptVerifyError::InvalidFlagsCombination,
             ScriptVerifyError::SpentOutputsMismatch,
