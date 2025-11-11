@@ -1,3 +1,53 @@
+//! Script pubkey types and operations.
+//!
+//! This module provides types for working with script pubkeys (also known as
+//! "locking scripts"), which define the conditions that must be met to spend a
+//! [`TxOut`].
+//!
+//! # Types
+//!
+//! The module provides two types:
+//!
+//! - [`ScriptPubkey`]: An owned script pubkey that manages its own memory
+//! - [`ScriptPubkeyRef`]: A borrowed reference to a script pubkey with a specific lifetime
+//!
+//! Both types implement the [`ScriptPubkeyExt`] trait, providing a unified interface
+//! for all script pubkey operations regardless of ownership.
+//!
+//! # Examples
+//!
+//! ## Creating and working with script pubkeys
+//!
+//! ```no_run
+//! # use bitcoinkernel::{prelude::*, ScriptPubkey};
+//! // Create a simple script from raw bytes
+//! let script = ScriptPubkey::new(&[0x76, 0xa9, 0x14]).unwrap();
+//!
+//! // Serialize back to bytes
+//! let bytes = script.to_bytes();
+//! assert_eq!(bytes, vec![0x76, 0xa9, 0x14]);
+//!
+//! // Use TryFrom for conversion
+//! let script2 = ScriptPubkey::try_from(bytes.as_slice()).unwrap();
+//! ```
+//!
+//! ## Creating standard script types
+//!
+//! ```no_run
+//! # use bitcoinkernel::ScriptPubkey;
+//! // P2PKH: OP_DUP OP_HASH160 <pubKeyHash> OP_EQUALVERIFY OP_CHECKSIG
+//! let p2pkh_hex = "76a914deadbeefdeadbeefdeadbeefdeadbeefdeadbeef88ac";
+//! let p2pkh = ScriptPubkey::new(&hex::decode(p2pkh_hex).unwrap()).unwrap();
+//!
+//! // P2SH: OP_HASH160 <scriptHash> OP_EQUAL
+//! let p2sh_hex = "a914deadbeefdeadbeefdeadbeefdeadbeefdeadbeef87";
+//! let p2sh = ScriptPubkey::new(&hex::decode(p2sh_hex).unwrap()).unwrap();
+//!
+//! // P2WPKH: OP_0 <20-byte-pubkey-hash>
+//! let p2wpkh_hex = "0014deadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+//! let p2wpkh = ScriptPubkey::new(&hex::decode(p2wpkh_hex).unwrap()).unwrap();
+//! ```
+
 use std::{ffi::c_void, marker::PhantomData};
 
 use libbitcoinkernel_sys::{
@@ -12,8 +62,22 @@ use crate::{
 };
 
 /// Common operations for script pubkeys, implemented by both owned and borrowed types.
+///
+/// This trait provides shared functionality for [`ScriptPubkey`] and [`ScriptPubkeyRef`],
+/// allowing code to work with either owned or borrowed script pubkeys.
 pub trait ScriptPubkeyExt: AsPtr<btck_ScriptPubkey> {
     /// Serializes the script to raw bytes.
+    ///
+    /// Returns the script's raw byte representation.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, ScriptPubkey};
+    /// let script = ScriptPubkey::new(&[0x76, 0xa9]).unwrap();
+    /// let bytes = script.to_bytes();
+    /// assert_eq!(bytes, vec![0x76, 0xa9]);
+    /// ```
     fn to_bytes(&self) -> Vec<u8> {
         c_serialize(|callback, user_data| unsafe {
             btck_script_pubkey_to_bytes(self.as_ptr(), Some(callback), user_data)
@@ -22,10 +86,25 @@ pub trait ScriptPubkeyExt: AsPtr<btck_ScriptPubkey> {
     }
 }
 
-/// A single script pubkey containing spending conditions for a transaction output.
+/// A single script pubkey containing spending conditions for a [`TxOut`].
 ///
-/// Script pubkeys can be created from raw script bytes or retrieved from existing
-/// transaction outputs.
+/// Script pubkeys define the conditions that must be met to spend a transaction output.
+/// They are also called "locking scripts" because they lock the output to specific
+/// spending conditions.
+///
+/// Script pubkeys can be created from raw script bytes or retrieved from an existing
+/// [`TxOut`].
+///
+/// # Examples
+///
+/// Creating a simple script:
+///
+/// ```no_run
+/// # use bitcoinkernel::{prelude::*, ScriptPubkey};
+/// let script_bytes = vec![0x76, 0xa9, 0x14]; // OP_DUP OP_HASH160 OP_PUSHBYTES_20
+/// let script = ScriptPubkey::new(&script_bytes).unwrap();
+/// assert_eq!(script.to_bytes(), script_bytes);
+/// ```
 #[derive(Debug)]
 pub struct ScriptPubkey {
     inner: *mut btck_ScriptPubkey,
@@ -35,6 +114,28 @@ unsafe impl Send for ScriptPubkey {}
 unsafe impl Sync for ScriptPubkey {}
 
 impl ScriptPubkey {
+    /// Creates a new script pubkey from raw script bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `script_bytes` - The raw bytes representing the script
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(ScriptPubkey)` - Successfully created script pubkey
+    /// * `Err(KernelError::Internal)` - If the script could not be created
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use bitcoinkernel::ScriptPubkey;
+    /// // Create a P2PKH script
+    /// let p2pkh = ScriptPubkey::new(&[
+    ///     0x76, 0xa9, 0x14,  // OP_DUP OP_HASH160 OP_PUSHBYTES_20
+    ///     // ... pubkey hash bytes ...
+    ///     0x88, 0xac          // OP_EQUALVERIFY OP_CHECKSIG
+    /// ]).unwrap();
+    /// ```
     pub fn new(script_bytes: &[u8]) -> Result<Self, KernelError> {
         let inner = unsafe {
             btck_script_pubkey_create(script_bytes.as_ptr() as *const c_void, script_bytes.len())
@@ -49,6 +150,13 @@ impl ScriptPubkey {
         }
     }
 
+    /// Creates a borrowed reference to this script pubkey.
+    ///
+    /// This allows converting from an owned [`ScriptPubkey`] to a [`ScriptPubkeyRef`]
+    /// without copying the underlying data.
+    ///
+    /// # Lifetime
+    /// The returned reference is valid for the lifetime of this [`ScriptPubkey`].
     pub fn as_ref(&self) -> ScriptPubkeyRef<'_> {
         unsafe { ScriptPubkeyRef::from_ptr(self.inner as *const _) }
     }
@@ -102,6 +210,16 @@ impl From<&ScriptPubkey> for Vec<u8> {
     }
 }
 
+/// A borrowed reference to a script pubkey.
+///
+/// Provides zero-copy access to script pubkey data. It implements [`Copy`],
+/// making it cheap to pass around.
+///
+/// # Lifetime
+/// The reference is only valid as long as the data it references remains alive.
+///
+/// # Thread Safety
+/// `ScriptPubkeyRef` is both [`Send`] and [`Sync`].
 pub struct ScriptPubkeyRef<'a> {
     inner: *const btck_ScriptPubkey,
     marker: PhantomData<&'a ()>,
@@ -111,6 +229,21 @@ unsafe impl<'a> Send for ScriptPubkeyRef<'a> {}
 unsafe impl<'a> Sync for ScriptPubkeyRef<'a> {}
 
 impl<'a> ScriptPubkeyRef<'a> {
+    /// Creates an owned copy of this script pubkey.
+    ///
+    /// This allocates a new [`ScriptPubkey`] with its own copy of the script data.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use bitcoinkernel::{prelude::*, ScriptPubkey};
+    /// let owned_script = {
+    ///     let script = ScriptPubkey::new(&[0x76, 0xa9]).unwrap();
+    ///     let script_ref = script.as_ref();
+    ///     script_ref.to_owned()  // Survives after script is dropped
+    /// };
+    /// assert_eq!(owned_script.to_bytes(), vec![0x76, 0xa9]);
+    /// ```
     pub fn to_owned(&self) -> ScriptPubkey {
         ScriptPubkey {
             inner: unsafe { btck_script_pubkey_copy(self.inner) },
