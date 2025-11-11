@@ -7,8 +7,7 @@
 use std::marker::PhantomData;
 
 use libbitcoinkernel_sys::{
-    btck_Chain, btck_chain_contains, btck_chain_get_by_height, btck_chain_get_genesis,
-    btck_chain_get_height, btck_chain_get_tip,
+    btck_Chain, btck_chain_contains, btck_chain_get_by_height, btck_chain_get_height,
 };
 
 use crate::{
@@ -103,7 +102,7 @@ impl<'a> Iterator for ChainIterator<'a> {
 /// println!("Tip hash: {}", tip.block_hash());
 ///
 /// // Get the genesis block
-/// let genesis = chain.genesis();
+/// let genesis = chain.at_height(0).unwrap();
 /// println!("Genesis hash: {}", genesis.block_hash());
 ///
 /// // Query a specific height
@@ -139,33 +138,7 @@ impl<'a> Chain<'a> {
     /// # Ok::<(), KernelError>(())
     /// ```
     pub fn tip(&self) -> BlockTreeEntry<'a> {
-        let ptr = unsafe { btck_chain_get_tip(self.inner) };
-        unsafe { BlockTreeEntry::from_ptr(ptr) }
-    }
-
-    /// Returns the genesis block (height 0) of the chain.
-    ///
-    /// The genesis block is the first block in the chain and is hardcoded
-    /// in the protocol.
-    ///
-    /// # Returns
-    /// A [`BlockTreeEntry`] for the genesis block at height 0.
-    ///
-    /// # Example
-    /// ```no_run
-    /// use bitcoinkernel::{ChainstateManager, ChainType, ContextBuilder, KernelError};
-    ///
-    /// # let context = ContextBuilder::new().chain_type(ChainType::Regtest).build()?;
-    /// # let chainman = ChainstateManager::builder(&context, "/data", "/blocks")?.build()?;
-    /// let chain = chainman.active_chain();
-    /// let genesis = chain.genesis();
-    ///
-    /// println!("Genesis block hash: {}", genesis.block_hash());
-    /// assert_eq!(genesis.height(), 0);
-    /// # Ok::<(), KernelError>(())
-    /// ```
-    pub fn genesis(&self) -> BlockTreeEntry<'a> {
-        let ptr = unsafe { btck_chain_get_genesis(self.inner) };
+        let ptr = unsafe { btck_chain_get_by_height(self.inner, self.height()) };
         unsafe { BlockTreeEntry::from_ptr(ptr) }
     }
 
