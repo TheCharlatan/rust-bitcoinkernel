@@ -378,11 +378,12 @@ mod tests {
 
         let chain = chainman.active_chain();
 
-        let genesis = chain.genesis();
+        let genesis = chain.at_height(0).unwrap();
         assert_eq!(genesis.height(), 0);
         let genesis_hash = genesis.block_hash();
 
         let tip = chain.tip();
+        assert_eq!(tip.height(), chain.height());
         let tip_height = tip.height();
         let tip_hash = tip.block_hash();
 

@@ -85,7 +85,7 @@ impl SilentPaymentScanner {
 
     fn scan_chain(&mut self, chainman: &ChainstateManager) -> Result<(), ScanError> {
         let chain = chainman.active_chain();
-        let tip_height = chain.tip().height();
+        let tip_height = chain.height();
 
         log::info!("Starting scan from genesis to tip {}", tip_height);
 
