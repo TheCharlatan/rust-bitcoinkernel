@@ -114,7 +114,7 @@ pub use crate::core::{
     verify, Block, BlockHash, BlockSpentOutputs, BlockSpentOutputsRef, BlockTreeEntry, Coin,
     CoinRef, ScriptPubkey, ScriptPubkeyRef, ScriptVerifyError, ScriptVerifyStatus, Transaction,
     TransactionRef, TransactionSpentOutputs, TransactionSpentOutputsRef, TxIn, TxInRef, TxOut,
-    TxOutPoint, TxOutPointRef, TxOutRef,
+    TxOutPoint, TxOutPointRef, TxOutRef, Txid, TxidRef,
 };
 
 pub use crate::log::{disable_logging, Log, LogCategory, LogLevel, Logger};
@@ -139,7 +139,7 @@ pub use crate::core::verify_flags::{
 pub mod prelude {
     pub use crate::core::{
         BlockHashExt, BlockSpentOutputsExt, CoinExt, ScriptPubkeyExt, TransactionExt,
-        TransactionSpentOutputsExt, TxInExt, TxOutExt, TxOutPointExt,
+        TransactionSpentOutputsExt, TxInExt, TxOutExt, TxOutPointExt, TxidExt,
     };
     pub use crate::notifications::BlockValidationStateExt;
 }
