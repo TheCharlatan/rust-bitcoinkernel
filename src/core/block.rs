@@ -102,7 +102,11 @@
 //! - [`TransactionSpentOutputsIter`] - Iterates over coins spent by a transaction
 //!
 
-use std::{ffi::c_void, marker::PhantomData};
+use std::{
+    ffi::c_void,
+    fmt::{self, Debug, Display, Formatter},
+    marker::PhantomData,
+};
 
 use libbitcoinkernel_sys::{
     btck_Block, btck_BlockHash, btck_BlockSpentOutputs, btck_Coin, btck_TransactionSpentOutputs,
@@ -146,7 +150,7 @@ use super::transaction::{TransactionRef, TxOutRef};
 /// let hash = BlockHash::from([1u8; 32]);
 /// display_hash(&hash);
 /// ```
-pub trait BlockHashExt: AsPtr<btck_BlockHash> + std::fmt::Display {
+pub trait BlockHashExt: AsPtr<btck_BlockHash> + Display {
     /// Serializes the block hash to raw bytes.
     ///
     /// Returns the 32-byte representation of the block hash in internal byte order.
@@ -322,14 +326,14 @@ impl PartialEq for BlockHash {
 
 impl Eq for BlockHash {}
 
-impl std::fmt::Debug for BlockHash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for BlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "BlockHash({:?})", self.to_bytes())
     }
 }
 
-impl std::fmt::Display for BlockHash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for BlockHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let bytes = self.to_bytes();
         for byte in bytes.iter().rev() {
             write!(f, "{:02x}", byte)?;
@@ -396,14 +400,14 @@ impl<'a> PartialEq for BlockHashRef<'a> {
     }
 }
 
-impl<'a> std::fmt::Debug for BlockHashRef<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a> Debug for BlockHashRef<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "BlockHash({:?})", self.to_bytes())
     }
 }
 
-impl<'a> std::fmt::Display for BlockHashRef<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a> Display for BlockHashRef<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let bytes = self.to_bytes();
         for byte in bytes.iter().rev() {
             write!(f, "{:02x}", byte)?;
