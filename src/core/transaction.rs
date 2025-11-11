@@ -651,7 +651,7 @@ impl<'a> Clone for TxOutPointRef<'a> {
 impl<'a> Copy for TxOutPointRef<'a> {}
 
 /// Common operations for transaction IDs, implemented by both owned and borrowed types.
-pub trait TxidExt: AsPtr<btck_Txid> {
+pub trait TxidExt: AsPtr<btck_Txid> + Display {
     /// Serializes the txid to raw bytes.
     fn to_bytes(&self) -> [u8; 32] {
         let mut bytes = [0u8; 32];
