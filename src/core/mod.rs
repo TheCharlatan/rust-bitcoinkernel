@@ -10,11 +10,14 @@ pub use block::{
 };
 pub use block_tree_entry::BlockTreeEntry;
 pub use script::{ScriptPubkey, ScriptPubkeyRef};
-pub use transaction::{Transaction, TransactionRef, TxIn, TxOut, TxOutRef};
+pub use transaction::{
+    Transaction, TransactionRef, TxIn, TxInRef, TxOut, TxOutPoint, TxOutPointRef, TxOutRef, Txid,
+    TxidRef,
+};
 
 pub use block::{BlockHashExt, BlockSpentOutputsExt, CoinExt, TransactionSpentOutputsExt};
 pub use script::ScriptPubkeyExt;
-pub use transaction::{TransactionExt, TxInExt, TxOutExt};
+pub use transaction::{TransactionExt, TxInExt, TxOutExt, TxOutPointExt, TxidExt};
 
 pub use verify::{verify, ScriptVerifyError, ScriptVerifyStatus};
 
