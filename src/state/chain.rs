@@ -26,6 +26,17 @@ use super::ChainstateManager;
 /// chain, starting from the genesis block (height 0) and continuing
 /// through to the chain tip.
 ///
+/// # Performance Note
+/// This iterator traverses blocks sequentially from genesis. Common operations
+/// have the following complexity:
+/// - `.next()`: O(1) - retrieves next block by height
+/// - `.last()`: O(N) - iterates through entire chain
+/// - `.nth(n)`: O(N) - skips N blocks
+///
+/// For direct access, prefer using [`Chain`] methods:
+/// - [`Chain::tip()`] - O(1) access to chain tip (instead of `.last()`)
+/// - [`Chain::at_height()`] - O(1) access to specific height (instead of `.nth()`)
+///
 /// # Lifetime
 /// The iterator is tied to the lifetime of the [`Chain`] it was created from,
 /// which in turn is tied to the [`ChainstateManager`]. The iterator becomes
@@ -226,6 +237,11 @@ impl<'a> Chain<'a> {
     /// Creates a [`ChainIterator`] that yields [`BlockTreeEntry`] items
     /// for each block in the chain, starting from the genesis block (height 0) and
     /// continuing sequentially to the current tip.
+    ///
+    /// # Performance
+    /// **Warning:** Avoid calling `.last()` on this iterator, as it requires O(N)
+    /// iteration through all blocks. Use [`chain.tip()`](Chain::tip) instead,
+    /// which is O(1).
     ///
     /// # Returns
     /// A [`ChainIterator`] that traverses the entire chain.
