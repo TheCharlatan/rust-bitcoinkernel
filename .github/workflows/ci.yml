@@ -72,6 +72,11 @@ jobs:
     - name: Check formatting
       run: cargo fmt -- --check
 
+    - name: Check documentation
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+      run: cargo doc --no-deps --all-features --document-private-items
+
     - name: Install llvm-tools for coverage
       run: rustup component add llvm-tools-preview
 
