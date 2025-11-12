@@ -139,7 +139,7 @@ pub fn verify(
 /// configuration errors that prevented verification from proceeding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
-pub enum ScriptVerifyStatus {
+enum ScriptVerifyStatus {
     /// Script verification completed successfully
     Ok = BTCK_SCRIPT_VERIFY_STATUS_OK,
     /// Invalid combination of verification flags was provided
