@@ -29,17 +29,8 @@
 					rustToolchain.rust-std
 				];
 
-				rustToolchainNightly = fenix.packages.${system}.fromToolchainName {
-					name = "nightly";
-					sha256 = "sha256-x+EWymRPcdfpK3I1N+Rr3RE0ld/KmNPEJGDnyxFyByE=";
-				};
-				rustBuildToolchainNightly = fenix.packages.${system}.combine [
-					rustToolchainNightly.rustc
-					rustToolchainNightly.cargo
-					rustToolchainNightly.rust-src
-					rustToolchainNightly.llvm-tools
-					rustToolchainNightly.rust-std
-				];
+				rustBuildToolchainNightly = fenix.packages.${system}.latest.toolchain;
+
 				rustPlatformNightly = pkgs.makeRustPlatform {
 					cargo = rustBuildToolchainNightly;
 					rustc = rustBuildToolchainNightly;
