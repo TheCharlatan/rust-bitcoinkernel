@@ -1,4 +1,7 @@
-use std::fmt::{Display, Formatter};
+use std::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+};
 
 use libbitcoinkernel_sys::{
     btck_ScriptVerificationFlags, btck_ScriptVerifyStatus, btck_TransactionOutput,
@@ -181,7 +184,7 @@ pub enum ScriptVerifyError {
 }
 
 impl Display for ScriptVerifyError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ScriptVerifyError::TxInputIndex => write!(f, "Transaction input index out of bounds"),
             ScriptVerifyError::InvalidFlags => write!(f, "Invalid verification flags"),
@@ -197,7 +200,7 @@ impl Display for ScriptVerifyError {
     }
 }
 
-impl std::error::Error for ScriptVerifyError {}
+impl Error for ScriptVerifyError {}
 
 #[cfg(test)]
 mod tests {
