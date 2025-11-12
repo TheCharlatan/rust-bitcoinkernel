@@ -2,7 +2,7 @@
 //!
 //! This module provides types for working with script pubkeys (also known as
 //! "locking scripts"), which define the conditions that must be met to spend a
-//! [`TxOut`].
+//! [`crate::TxOut`].
 //!
 //! # Types
 //!
@@ -86,14 +86,14 @@ pub trait ScriptPubkeyExt: AsPtr<btck_ScriptPubkey> {
     }
 }
 
-/// A single script pubkey containing spending conditions for a [`TxOut`].
+/// A single script pubkey containing spending conditions for a [`crate::TxOut`].
 ///
 /// Script pubkeys define the conditions that must be met to spend a transaction output.
 /// They are also called "locking scripts" because they lock the output to specific
 /// spending conditions.
 ///
 /// Script pubkeys can be created from raw script bytes or retrieved from an existing
-/// [`TxOut`].
+/// [`crate::TxOut`].
 ///
 /// # Examples
 ///

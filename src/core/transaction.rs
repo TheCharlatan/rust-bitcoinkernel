@@ -1430,7 +1430,7 @@ pub trait TxidExt: AsPtr<btck_Txid> + Display {
 /// - **Display byte order**: Reversed for human-readable hex strings
 ///
 /// The [`to_bytes`](TxidExt::to_bytes) method returns internal byte order,
-/// while [`Display`](std::fmt::Display) formatting shows the reversed bytes.
+/// while [`Display`] formatting shows the reversed bytes.
 ///
 /// # Thread Safety
 ///

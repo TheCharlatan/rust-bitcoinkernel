@@ -62,7 +62,7 @@ pub enum ProcessBlockResult {
     /// Block failed validation.
     ///
     /// The block violated one or more consensus rules. See
-    /// [`ContextBuilder::with_block_checked_validation`] for retrieving
+    /// [`crate::ContextBuilder::with_block_checked_validation`] for retrieving
     /// detailed error information.
     Rejected,
 }

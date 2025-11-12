@@ -29,7 +29,7 @@ pub mod state;
 /// Serializes data using a C callback function pattern.
 ///
 /// Takes a C function that writes data via a callback and returns the
-/// serialized bytes as a Vec<u8>.
+/// serialized bytes as a `Vec<u8>`.
 fn c_serialize<F>(c_function: F) -> Result<Vec<u8>, KernelError>
 where
     F: FnOnce(
