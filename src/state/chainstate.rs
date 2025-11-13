@@ -28,22 +28,27 @@
 use std::ffi::CString;
 
 use libbitcoinkernel_sys::{
-    btck_BlockHash, btck_ChainstateManager, btck_ChainstateManagerOptions, btck_block_read,
-    btck_block_spent_outputs_read, btck_chainstate_manager_create, btck_chainstate_manager_destroy,
-    btck_chainstate_manager_get_active_chain, btck_chainstate_manager_get_block_tree_entry_by_hash,
-    btck_chainstate_manager_import_blocks, btck_chainstate_manager_options_create,
-    btck_chainstate_manager_options_destroy, btck_chainstate_manager_options_set_wipe_dbs,
+    btck_BlockHash, btck_BlockValidationState, btck_ChainstateManager,
+    btck_ChainstateManagerOptions, btck_block_read, btck_block_spent_outputs_read,
+    btck_chainstate_manager_create, btck_chainstate_manager_destroy,
+    btck_chainstate_manager_get_active_chain, btck_chainstate_manager_get_best_entry,
+    btck_chainstate_manager_get_block_tree_entry_by_hash, btck_chainstate_manager_import_blocks,
+    btck_chainstate_manager_options_create, btck_chainstate_manager_options_destroy,
+    btck_chainstate_manager_options_set_wipe_dbs,
     btck_chainstate_manager_options_set_worker_threads_num,
     btck_chainstate_manager_options_update_block_tree_db_in_memory,
     btck_chainstate_manager_options_update_chainstate_db_in_memory,
-    btck_chainstate_manager_process_block,
+    btck_chainstate_manager_process_block, btck_chainstate_manager_process_block_header,
+    btck_chainstate_manager_validate_block,
 };
 
 use crate::{
+    core::block::BlockHeader,
     ffi::{
         c_helpers,
         sealed::{AsPtr, FromMutPtr, FromPtr},
     },
+    notifications::types::BlockValidationState,
     Block, BlockHash, BlockSpentOutputs, BlockTreeEntry, KernelError,
 };
 
@@ -253,6 +258,35 @@ impl ChainstateManager {
         }
     }
 
+    pub fn process_header(&self, header: &BlockHeader) -> (bool, BlockValidationState) {
+        let state = BlockValidationState::new();
+        let accepted = unsafe {
+            btck_chainstate_manager_process_block_header(
+                self.inner,
+                header.as_ptr(),
+                state.as_ptr() as *mut btck_BlockValidationState,
+            )
+        };
+        (c_helpers::success(accepted), state)
+    }
+
+    pub fn validate_block(
+        &self,
+        block: &Block,
+        block_spent_outputs: &BlockSpentOutputs,
+    ) -> (bool, BlockValidationState) {
+        let state = BlockValidationState::new();
+        let accepted = unsafe {
+            btck_chainstate_manager_validate_block(
+                self.inner,
+                block.as_ptr(),
+                block_spent_outputs.as_ptr(),
+                state.as_ptr() as *mut btck_BlockValidationState,
+            )
+        };
+        (c_helpers::success(accepted), state)
+    }
+
     /// Initialize the chainstate manager and optionally trigger a reindex.
     ///
     /// This should be called after creating the chainstate manager to complete
@@ -261,6 +295,7 @@ impl ChainstateManager {
     ///
     /// # Errors
     /// Returns [`KernelError::Internal`] if initialization fails.
+
     pub fn import_blocks(&self) -> Result<(), KernelError> {
         let result = unsafe {
             btck_chainstate_manager_import_blocks(
@@ -345,6 +380,15 @@ impl ChainstateManager {
     pub fn active_chain(&self) -> Chain<'_> {
         let ptr = unsafe { btck_chainstate_manager_get_active_chain(self.inner) };
         unsafe { Chain::from_ptr(ptr) }
+    }
+
+    pub fn best_entry(&self) -> Option<BlockTreeEntry<'_>> {
+        let ptr = unsafe { btck_chainstate_manager_get_best_entry(self.inner) };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { BlockTreeEntry::from_ptr(ptr) })
+        }
     }
 
     /// Get a block tree entry by its block hash.
