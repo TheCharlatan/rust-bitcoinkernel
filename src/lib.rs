@@ -1,3 +1,183 @@
+//! # rust-bitcoinkernel
+//!
+//! Rust bindings for the `libbitcoinkernel` library, providing safe and idiomatic
+//! access to Bitcoin's consensus engine and validation logic.
+//!
+//! ## Overview
+//!
+//! This crate enables Rust applications to leverage Bitcoin Core's consensus implementation.
+//! It provides type-safe wrappers around the C API exposed by `libbitcoinkernel`.
+//!
+//! ## Key Features
+//!
+//! - **Block Processing**: Process and validate blocks against consensus rules
+//! - **Script Verification**: Validate transaction scripts
+//! - **Chain Queries**: Traverse the chain and read block data
+//! - **Event Notifications**: Subscribe to block validation, tip updates, and error events
+//! - **Memory Safety**: FFI interactions are wrapped in safe Rust abstractions
+//!
+//! ## Architecture
+//!
+//! The crate is organized into several modules:
+//!
+//! - [`core`]: Core Bitcoin primitives (blocks, transactions, scripts)
+//! - [`state`]: Chain state management (chainstate, context, chain parameters)
+//! - [`notifications`]: Event callbacks for validation and synchronization events
+//! - [`log`]: Logging integration with Bitcoin Core's logging system
+//! - [`prelude`]: Commonly used extension traits for ergonomic API access
+//!
+//! ## Quick Start
+//!
+//! ### Basic Block Validation
+//!
+//! ```no_run
+//! use bitcoinkernel::{
+//!     Block, ContextBuilder, ChainType, ChainstateManager,
+//!     KernelError, ProcessBlockResult
+//! };
+//!
+//! // Create a context for mainnet
+//! let context = ContextBuilder::new()
+//!     .chain_type(ChainType::Mainnet)
+//!     .build()?;
+//!
+//! // Initialize chainstate manager
+//! let chainman = ChainstateManager::new(&context, "/path/to/data", "path/to/blocks/")?;
+//!
+//! // Process a block
+//! let block_data = vec![0u8; 100]; // placeholder
+//! let block = Block::new(&block_data)?;
+//!
+//! match chainman.process_block(&block) {
+//!     ProcessBlockResult::NewBlock => println!("Block validated and written to disk"),
+//!     ProcessBlockResult::Duplicate => println!("Block already known (valid)"),
+//!     ProcessBlockResult::Rejected => println!("Block validation failed"),
+//! }
+//!
+//! # Ok::<(), KernelError>(())
+//! ```
+//!
+//! ### Script Verification
+//!
+//! ```no_run
+//! use bitcoinkernel::{prelude::*, Transaction, verify, VERIFY_ALL};
+//! let spending_tx_bytes = vec![]; // placeholder
+//! let prev_tx_bytes = vec![]; // placeholder
+//! let spending_tx = Transaction::new(&spending_tx_bytes).unwrap();
+//! let prev_tx = Transaction::new(&prev_tx_bytes).unwrap();
+//! let prev_output = prev_tx.output(0).unwrap();
+//!
+//! let result = verify(
+//!     &prev_output.script_pubkey(),
+//!     Some(prev_output.value()),
+//!     &spending_tx,
+//!     0,
+//!     Some(VERIFY_ALL),
+//!     &[prev_output],
+//! );
+//!
+//! match result {
+//!     Ok(()) => println!("Script verification passed"),
+//!     Err(e) => println!("Script verification failed: {}", e),
+//! }
+//! ```
+//!
+//! ### Event Notifications
+//!
+//! ```no_run
+//! use bitcoinkernel::{
+//!     Block, BlockValidationStateRef, ChainType, ContextBuilder, KernelError,
+//!     ValidationCallbackRegistry,
+//! };
+//!
+//! let context = ContextBuilder::new()
+//!     .chain_type(ChainType::Mainnet)
+//!     .notifications(|registry| {
+//!         registry.register_progress(|title, percent, _resume| {
+//!             println!("{}: {}%", title, percent);
+//!         });
+//!         registry.register_warning_set(|warning, message| {
+//!             eprintln!("Warning: {} - {}", warning, message);
+//!         });
+//!         registry.register_flush_error(|message| {
+//!             eprintln!("Flush error: {}", message);
+//!             // Consider tearing down context and terminating operations
+//!         });
+//!         registry.register_fatal_error(|message| {
+//!             eprintln!("FATAL: {}", message);
+//!             // Tear down context and terminate all operations
+//!             std::process::exit(1);
+//!         });
+//!     })
+//!     .validation(|registry| {
+//!         registry.register_block_checked(|block: Block, _state: BlockValidationStateRef<'_>| {
+//!             println!("Checked block: {}", block.hash());
+//!         });
+//!     })
+//!     .build()?;
+//! # Ok::<(), KernelError>(())
+//! ```
+//!
+//! **Note**: System-level errors are surfaced through [`FatalErrorCallback`] and
+//! [`FlushErrorCallback`]. When encountering either error type, it is recommended to
+//! tear down the [`Context`] and terminate any running tasks using the [`ChainstateManager`].
+//!
+//! ### Chain Traversal
+//!
+//! ```no_run
+//! use bitcoinkernel::{ContextBuilder, ChainType, ChainstateManager, KernelError};
+//!
+//! // Create a context for mainnet
+//! let context = ContextBuilder::new()
+//!     .chain_type(ChainType::Mainnet)
+//!     .build()?;
+//!
+//! // Initialize chainstate manager
+//! let chainman = ChainstateManager::new(&context, "path/to/data", "path/to/blocks")?;
+//!
+//! chainman.import_blocks()?;
+//!
+//! // Get the active chain
+//! let chain = chainman.active_chain();
+//!
+//! // Traverse the chain
+//! for entry in chain.iter() {
+//!     println!("Block hash {} at height {}", entry.block_hash(), entry.height());
+//! }
+//! # Ok::<(), KernelError>(())
+//! ```
+//!
+//! ## Type System
+//!
+//! The crate uses owned and borrowed types extensively:
+//!
+//! - **Owned types** (e.g., `Block`, `Transaction`): Manage C memory lifecycle
+//! - **Borrowed types** (e.g., `BlockRef`, `TransactionRef`): Zero-copy views into data
+//! - **Extension traits**: Provide ergonomic methods (use `prelude::*` to import)
+//!
+//! ## Error Handling
+//!
+//! The crate provides multiple layers of error handling:
+//!
+//! - **Operation Errors**: Standard [`KernelError`] results for validation failures,
+//!   serialization errors, and internal library errors
+//! - **System Errors**: Critical failures are reported through notification callbacks:
+//!   - [`FatalErrorCallback`]: Unrecoverable system errors requiring immediate shutdown
+//!   - [`FlushErrorCallback`]: Disk I/O errors during state persistence
+//!
+//! When encountering fatal or flush errors through these callbacks, applications should
+//! tear down the [`Context`] and terminate any operations using the [`ChainstateManager`].
+//!
+//! ## Minimum Supported Rust Version (MSRV)
+//!
+//! This crate requires Rust 1.71.0 or later.
+//!
+//! ## Examples
+//!
+//! See the `examples/` directory for complete working examples including:
+//!
+//! - Silent Payment Scanning
+
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
