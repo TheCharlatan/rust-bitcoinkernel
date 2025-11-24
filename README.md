@@ -57,6 +57,9 @@ To get the sanitizer flags working in the libbitcoinkernel Bitcoin Core
 library, the easiest way for now is to edit the `libbitcoinkernel-sys/build.rs`
 flags.
 
+New fuzzing results may be submitted to the following corpus repository:
+https://github.com/alexanderwiederin/qa-assets
+
 ### Coverage
 
 Once fuzzed, a coverage report can be generated with (picking the `verify`
