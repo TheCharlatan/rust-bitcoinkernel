@@ -77,6 +77,24 @@
 						pkgs.gcc.cc.lib
 					];
 				};
+				devShells.fuzz-asan = pkgs.mkShell {
+					packages = [
+						rustBuildToolchainNightly
+
+						pkgs.cmake
+						pkgs.boost.dev
+						pkgs.cargo-fuzz
+					];
+
+					LIBCLANG_PATH = "${pkgs.llvmPackages.clang-unwrapped.lib}/lib/";
+					CFLAGS = "-fsanitize=address";
+					CXXFLAGS = "-fsanitize=address";
+					LDFLAGS = "-fsanitize=address";
+					RUSTFLAGS = "-Zsanitizer=address";
+					LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+						pkgs.gcc.cc.lib
+					];
+				};
 			}
 		);
 }
