@@ -38,7 +38,6 @@ exclude = [
     "bitcoin/src/bench",
     "bitcoin/src/ipc",
     "bitcoin/test/functional",
-    "bitcoin/test/fuzz",
     "bitcoin/test/lint",
     "bitcoin/test/sanitizer_suppresions",
     "bitcoin/test/util",
@@ -46,6 +45,8 @@ exclude = [
     "bitcoin/src/qt",
     "bitcoin/src/bench",
     "bitcoin/src/wallet",
+    "bitcoin/src/bench",
+    "bitcoin/src/fuzz"
 ]
 publish = true
 
