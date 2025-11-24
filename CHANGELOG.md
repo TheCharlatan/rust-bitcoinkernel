@@ -10,5 +10,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.1] - 2025-24-11
 
 ### Fixed
-- Precise package excludes to ensure the test/fuzz directory is included
-  in the packaged crate correctly.
+- Updated to latest libbitcoinkernel-sys with cmake packaging include fix.
