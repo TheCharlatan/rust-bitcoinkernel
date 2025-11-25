@@ -163,6 +163,29 @@ const Coin& CCoinsViewCache::AccessCoin(const COutPoint &outpoint) const {
     }
 }
 
+std::vector<std::reference_wrapper<const Coin>> CCoinsViewCache::AccessCoins(const CTransaction& tx) const
+{
+    std::vector<std::reference_wrapper<const Coin>> coins;
+    coins.reserve(tx.vin.size());
+    for (const CTxIn& input : tx.vin) {
+        coins.emplace_back(AccessCoin(input.prevout));
+    }
+    return coins;
+}
+
+std::vector<CTxOut> CCoinsViewCache::GetUnspentOutputs(const CTransaction& tx) const
+{
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.reserve(tx.vin.size());
+    for (const auto& txin : tx.vin) {
+        const COutPoint& prevout = txin.prevout;
+        const Coin& coin = AccessCoin(prevout);
+        assert(!coin.IsSpent());
+        spent_outputs.emplace_back(coin.out);
+    }
+    return spent_outputs;
+}
+
 bool CCoinsViewCache::HaveCoin(const COutPoint &outpoint) const {
     CCoinsMap::const_iterator it = FetchCoin(outpoint);
     return (it != cacheCoins.end() && !it->second.coin.IsSpent());
@@ -349,8 +372,8 @@ void CCoinsViewCache::SanityCheck() const
     assert(recomputed_usage == cachedCoinsUsage);
 }
 
-static const uint64_t MIN_TRANSACTION_OUTPUT_WEIGHT{WITNESS_SCALE_FACTOR * ::GetSerializeSize(CTxOut())};
-static const uint64_t MAX_OUTPUTS_PER_BLOCK{MAX_BLOCK_WEIGHT / MIN_TRANSACTION_OUTPUT_WEIGHT};
+static const size_t MIN_TRANSACTION_OUTPUT_WEIGHT = WITNESS_SCALE_FACTOR * ::GetSerializeSize(CTxOut());
+static const size_t MAX_OUTPUTS_PER_BLOCK = MAX_BLOCK_WEIGHT / MIN_TRANSACTION_OUTPUT_WEIGHT;
 
 const Coin& AccessByTxid(const CCoinsViewCache& view, const Txid& txid)
 {
