@@ -12,8 +12,6 @@
 #include <txdb.h>
 #include <validation.h>
 
-using kernel::CBlockFileInfo;
-
 namespace {
 
 const BasicTestingSetup* g_setup;
