@@ -3,7 +3,9 @@
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 
-use bitcoinkernel::{verify, ScriptPubkey, Transaction, TxOut};
+use bitcoinkernel::{
+    verify, KernelError, ScriptPubkey, ScriptVerifyError, Transaction, TxOut, VERIFY_WITNESS,
+};
 
 #[derive(Debug, Arbitrary)]
 pub struct UtxoWrapper {
@@ -39,7 +41,7 @@ fuzz_target!(|data: VerifyInput| {
         return;
     };
 
-    let _ = verify(
+    let res = verify(
         &script_pubkey,
         data.amount,
         &transaction,
@@ -47,4 +49,11 @@ fuzz_target!(|data: VerifyInput| {
         data.flags,
         &spent_outputs,
     );
+
+    match res {
+        Err(KernelError::ScriptVerify(ScriptVerifyError::InvalidFlagsCombination)) => {
+            assert_eq!(data.flags.unwrap() & VERIFY_WITNESS, VERIFY_WITNESS)
+        }
+        _ => {}
+    }
 });
