@@ -109,13 +109,16 @@ use std::{
 };
 
 use libbitcoinkernel_sys::{
-    btck_Block, btck_BlockHash, btck_BlockSpentOutputs, btck_Coin, btck_TransactionSpentOutputs,
-    btck_block_copy, btck_block_count_transactions, btck_block_create, btck_block_destroy,
-    btck_block_get_hash, btck_block_get_transaction_at, btck_block_hash_copy,
-    btck_block_hash_create, btck_block_hash_destroy, btck_block_hash_equals,
-    btck_block_hash_to_bytes, btck_block_spent_outputs_copy, btck_block_spent_outputs_count,
-    btck_block_spent_outputs_destroy, btck_block_spent_outputs_get_transaction_spent_outputs_at,
-    btck_block_to_bytes, btck_coin_confirmation_height, btck_coin_copy, btck_coin_destroy,
+    btck_Block, btck_BlockHash, btck_BlockHeader, btck_BlockSpentOutputs, btck_Coin,
+    btck_TransactionSpentOutputs, btck_block_copy, btck_block_count_transactions,
+    btck_block_create, btck_block_destroy, btck_block_get_hash, btck_block_get_header,
+    btck_block_get_transaction_at, btck_block_hash_copy, btck_block_hash_create,
+    btck_block_hash_destroy, btck_block_hash_equals, btck_block_hash_to_bytes,
+    btck_block_header_copy, btck_block_header_create, btck_block_header_destroy,
+    btck_block_header_get_hash, btck_block_spent_outputs_copy, btck_block_spent_outputs_count,
+    btck_block_spent_outputs_create, btck_block_spent_outputs_destroy,
+    btck_block_spent_outputs_get_transaction_spent_outputs_at, btck_block_to_bytes,
+    btck_coin_confirmation_height, btck_coin_copy, btck_coin_create, btck_coin_destroy,
     btck_coin_get_output, btck_coin_is_coinbase, btck_transaction_spent_outputs_copy,
     btck_transaction_spent_outputs_count, btck_transaction_spent_outputs_destroy,
     btck_transaction_spent_outputs_get_coin_at,
@@ -127,7 +130,7 @@ use crate::{
         c_helpers::present,
         sealed::{AsPtr, FromMutPtr, FromPtr},
     },
-    KernelError,
+    KernelError, TxOut,
 };
 
 use super::transaction::{TransactionRef, TxOutRef};
@@ -270,6 +273,15 @@ impl AsPtr<btck_BlockHash> for BlockHash {
     }
 }
 
+impl<'a> FromPtr<btck_BlockHash> for BlockHashRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_BlockHash) -> Self {
+        BlockHashRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+}
+
 impl FromMutPtr<btck_BlockHash> for BlockHash {
     unsafe fn from_ptr(ptr: *mut btck_BlockHash) -> Self {
         BlockHash { inner: ptr }
@@ -377,15 +389,6 @@ impl<'a> AsPtr<btck_BlockHash> for BlockHashRef<'a> {
     }
 }
 
-impl<'a> FromPtr<btck_BlockHash> for BlockHashRef<'a> {
-    unsafe fn from_ptr(ptr: *const btck_BlockHash) -> Self {
-        BlockHashRef {
-            inner: ptr,
-            marker: PhantomData,
-        }
-    }
-}
-
 impl<'a> BlockHashExt for BlockHashRef<'a> {}
 
 impl<'a> Clone for BlockHashRef<'a> {
@@ -419,6 +422,122 @@ impl<'a> Display for BlockHashRef<'a> {
 impl<'a> Eq for BlockHashRef<'a> {}
 
 impl<'a> Copy for BlockHashRef<'a> {}
+
+/// Common operations for block headers, implemented by both owned and borrow types.
+pub trait BlockHeaderExt: AsPtr<btck_BlockHeader> {
+    /// Return the block hash of the header.
+    fn hash(&self) -> BlockHash {
+        unsafe { BlockHash::from_ptr(btck_block_header_get_hash(self.as_ptr())) }
+    }
+}
+
+/// A Bitcoin block header.
+///
+/// Block headers can be created from raw serialized data or retrieved from the
+/// chain or blocks.
+pub struct BlockHeader {
+    inner: *mut btck_BlockHeader,
+}
+
+unsafe impl Send for BlockHeader {}
+unsafe impl Sync for BlockHeader {}
+
+impl BlockHeader {
+    pub fn new(header_bytes: &[u8]) -> Result<Self, KernelError> {
+        let inner = unsafe {
+            btck_block_header_create(header_bytes.as_ptr() as *const c_void, header_bytes.len())
+        };
+
+        if inner.is_null() {
+            Err(KernelError::Internal(
+                "Failed to create header from bytes".to_string(),
+            ))
+        } else {
+            Ok(BlockHeader { inner })
+        }
+    }
+
+    pub fn as_ref(&self) -> BlockHeaderRef<'_> {
+        unsafe { BlockHeaderRef::from_ptr(self.inner as *const _) }
+    }
+}
+
+impl FromMutPtr<btck_BlockHeader> for BlockHeader {
+    unsafe fn from_ptr(ptr: *mut btck_BlockHeader) -> Self {
+        BlockHeader { inner: ptr }
+    }
+}
+
+impl AsPtr<btck_BlockHeader> for BlockHeader {
+    fn as_ptr(&self) -> *const btck_BlockHeader {
+        self.inner as *const _
+    }
+}
+
+impl BlockHeaderExt for BlockHeader {}
+
+impl Clone for BlockHeader {
+    fn clone(&self) -> Self {
+        BlockHeader {
+            inner: unsafe { btck_block_header_copy(self.inner) },
+        }
+    }
+}
+
+impl Drop for BlockHeader {
+    fn drop(&mut self) {
+        unsafe { btck_block_header_destroy(self.inner) }
+    }
+}
+
+impl TryFrom<&[u8]> for BlockHeader {
+    type Error = KernelError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        BlockHeader::new(bytes)
+    }
+}
+
+pub struct BlockHeaderRef<'a> {
+    inner: *const btck_BlockHeader,
+    marker: PhantomData<&'a ()>,
+}
+
+unsafe impl<'a> Send for BlockHeaderRef<'a> {}
+unsafe impl<'a> Sync for BlockHeaderRef<'a> {}
+
+impl<'a> BlockHeaderRef<'a> {
+    pub fn to_owned(&self) -> BlockHeader {
+        BlockHeader {
+            inner: unsafe { btck_block_header_copy(self.inner) },
+        }
+    }
+}
+
+impl<'a> AsPtr<btck_BlockHeader> for BlockHeaderRef<'a> {
+    fn as_ptr(&self) -> *const btck_BlockHeader {
+        self.inner
+    }
+}
+
+impl<'a> FromPtr<btck_BlockHeader> for BlockHeaderRef<'a> {
+    unsafe fn from_ptr(ptr: *const btck_BlockHeader) -> Self {
+        BlockHeaderRef {
+            inner: ptr,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'a> BlockHeaderExt for BlockHeaderRef<'a> {}
+
+impl<'a> Copy for BlockHeaderRef<'a> {}
+
+impl<'a> Clone for BlockHeaderRef<'a> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 
 /// A block containing a header and transactions.
 ///
@@ -540,6 +659,10 @@ impl Block {
     /// ```
     pub fn transaction_count(&self) -> usize {
         unsafe { btck_block_count_transactions(self.inner) }
+    }
+
+    pub fn header(&self) -> BlockHeader {
+        unsafe { BlockHeader::from_ptr(btck_block_get_header(self.inner)) }
     }
 
     /// Returns a reference to the transaction at the specified index.
@@ -890,6 +1013,36 @@ impl BlockSpentOutputs {
     /// The returned reference is valid for the lifetime of the [`BlockSpentOutputs`].
     pub fn as_ref(&self) -> BlockSpentOutputsRef<'_> {
         unsafe { BlockSpentOutputsRef::from_ptr(self.inner as *const _) }
+    }
+
+    pub fn new(coins: &[Vec<Coin>]) -> Self {
+        struct CallbackContext<'a> {
+            coins: &'a [Vec<Coin>],
+        }
+
+        extern "C" fn coin_getter(
+            context: *mut c_void,
+            tx_index: usize,
+            coin_index: usize,
+        ) -> *const btck_Coin {
+            let ctx = unsafe { &*(context as *const CallbackContext) };
+            ctx.coins[tx_index][coin_index].as_ptr()
+        }
+
+        extern "C" fn count_getter(context: *mut c_void, tx_index: usize) -> usize {
+            let ctx = unsafe { &*(context as *const CallbackContext) };
+            ctx.coins[tx_index].len()
+        }
+
+        let context = CallbackContext { coins };
+        unsafe {
+            BlockSpentOutputs::from_ptr(btck_block_spent_outputs_create(
+                &context as *const CallbackContext as *mut c_void,
+                Some(coin_getter),
+                Some(count_getter),
+                coins.len(),
+            ))
+        }
     }
 }
 
@@ -1446,6 +1599,10 @@ unsafe impl Send for Coin {}
 unsafe impl Sync for Coin {}
 
 impl Coin {
+    pub fn new(output: &TxOut) -> Coin {
+        unsafe { Coin::from_ptr(btck_coin_create(output.as_ptr(), 0, 0)) }
+    }
+
     /// Creates a borrowed reference to this coin.
     ///
     /// This allows converting from owned [`Coin`] to [`CoinRef`] without
@@ -1573,6 +1730,23 @@ mod tests {
     );
 
     test_owned_trait_requirements!(test_block_requirements, Block, btck_Block);
+
+    test_owned_trait_requirements!(
+        test_block_header_requirements,
+        BlockHeader,
+        btck_BlockHeader
+    );
+    test_ref_trait_requirements!(
+        test_block_header_ref_requirements,
+        BlockHeaderRef<'static>,
+        btck_BlockHeader
+    );
+
+    test_owned_clone_and_send!(
+        test_block_header_clone_send,
+        Block::new(&read_block_data()[0]).unwrap().header(),
+        Block::new(&read_block_data()[1]).unwrap()
+    );
 
     test_owned_trait_requirements!(
         test_block_spent_outputs_requirements,

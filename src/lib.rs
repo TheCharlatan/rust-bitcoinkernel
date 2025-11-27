@@ -291,8 +291,8 @@ impl std::error::Error for KernelError {
 }
 
 pub use crate::core::{
-    verify, Block, BlockHash, BlockSpentOutputs, BlockSpentOutputsRef, BlockTreeEntry, Coin,
-    CoinRef, ScriptPubkey, ScriptPubkeyRef, ScriptVerifyError, Transaction, TransactionRef,
+    verify, Block, BlockHash, BlockHeader, BlockSpentOutputs, BlockSpentOutputsRef, BlockTreeEntry,
+    Coin, CoinRef, ScriptPubkey, ScriptPubkeyRef, ScriptVerifyError, Transaction, TransactionRef,
     TransactionSpentOutputs, TransactionSpentOutputsRef, TxIn, TxInRef, TxOut, TxOutPoint,
     TxOutPointRef, TxOutRef, Txid, TxidRef,
 };

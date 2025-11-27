@@ -35,7 +35,6 @@
 #include <util/signalinterrupt.h>
 #include <util/strencodings.h>
 #include <util/syserror.h>
-#include <util/time.h>
 #include <util/translation.h>
 #include <validation.h>
 
@@ -151,11 +150,6 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
     }
 
     return true;
-}
-
-std::string CBlockFileInfo::ToString() const
-{
-    return strprintf("CBlockFileInfo(blocks=%u, size=%u, heights=%u...%u, time=%s...%s)", nBlocks, nSize, nHeightFirst, nHeightLast, FormatISO8601Date(nTimeFirst), FormatISO8601Date(nTimeLast));
 }
 } // namespace kernel
 
