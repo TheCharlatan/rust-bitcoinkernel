@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- New `btck_block_tree_entry_equals` function for comparing BlockTreeEntry objects (096924d39d64)
+
+### Changed
+- `data_directory` and `blocks_directory` parameters in `btck_chainstate_manager_options_create` now allow null values to represent empty paths (6657bcbdb4d0)
+
 ## [0.1.1] - 2025-24-11
 
 ### Fixed
