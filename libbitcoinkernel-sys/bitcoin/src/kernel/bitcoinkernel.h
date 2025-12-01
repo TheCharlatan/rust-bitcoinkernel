@@ -35,6 +35,17 @@
 #else
     #define BITCOINKERNEL_WARN_UNUSED_RESULT
 #endif
+
+/**
+ * BITCOINKERNEL_ARG_NONNULL is a compiler attribute used to indicate that
+ * certain pointer arguments to a function are not expected to be null.
+ *
+ * Callers must not pass a null pointer for arguments marked with this attribute,
+ * as doing so may result in undefined behavior. This attribute should only be
+ * used for arguments where a null pointer is unambiguously a programmer error,
+ * such as for opaque handles, and not for pointers to raw input data that might
+ * validly be null (e.g., from an empty std::span or std::string).
+ */
 #if !defined(BITCOINKERNEL_BUILD) && defined(__GNUC__)
     #define BITCOINKERNEL_ARG_NONNULL(...) __attribute__((__nonnull__(__VA_ARGS__)))
 #else
@@ -922,6 +933,17 @@ BITCOINKERNEL_API int32_t BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_tree_entry
 BITCOINKERNEL_API const btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_tree_entry_get_block_hash(
     const btck_BlockTreeEntry* block_tree_entry) BITCOINKERNEL_ARG_NONNULL(1);
 
+/**
+ * @brief Check if two block tree entries are equal. Two block tree entries are equal when they
+ * point to the same block.
+ *
+ * @param[in] entry1 Non-null.
+ * @param[in] entry2 Non-null.
+ * @return           1 if the block tree entries are equal, 0 otherwise.
+ */
+BITCOINKERNEL_API int BITCOINKERNEL_WARN_UNUSED_RESULT btck_block_tree_entry_equals(
+    const btck_BlockTreeEntry* entry1, const btck_BlockTreeEntry* entry2) BITCOINKERNEL_ARG_NONNULL(1, 2);
+
 ///@}
 
 /** @name ChainstateManagerOptions
@@ -933,11 +955,12 @@ BITCOINKERNEL_API const btck_BlockHash* BITCOINKERNEL_WARN_UNUSED_RESULT btck_bl
  * @brief Create options for the chainstate manager.
  *
  * @param[in] context          Non-null, the created options and through it the chainstate manager will
-                               associate with this kernel context for the duration of their lifetimes.
- * @param[in] data_directory   Non-null, path string of the directory containing the chainstate data.
- *                             If the directory does not exist yet, it will be created.
- * @param[in] blocks_directory Non-null, path string of the directory containing the block data. If
- *                             the directory does not exist yet, it will be created.
+ *                             associate with this kernel context for the duration of their lifetimes.
+ * @param[in] data_directory   Non-null, non-empty path string of the directory containing the
+ *                             chainstate data. If the directory does not exist yet, it will be
+ *                             created.
+ * @param[in] blocks_directory Non-null, non-empty path string of the directory containing the block
+ *                             data. If the directory does not exist yet, it will be created.
  * @return                     The allocated chainstate manager options, or null on error.
  */
 BITCOINKERNEL_API btck_ChainstateManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESULT btck_chainstate_manager_options_create(
@@ -945,7 +968,7 @@ BITCOINKERNEL_API btck_ChainstateManagerOptions* BITCOINKERNEL_WARN_UNUSED_RESUL
     const char* data_directory,
     size_t data_directory_len,
     const char* blocks_directory,
-    size_t blocks_directory_len) BITCOINKERNEL_ARG_NONNULL(1, 2);
+    size_t blocks_directory_len) BITCOINKERNEL_ARG_NONNULL(1);
 
 /**
  * @brief Set the number of available worker threads used during validation.

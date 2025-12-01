@@ -896,6 +896,10 @@ btck_BlockValidationResult btck_block_validation_state_get_block_validation_resu
 
 btck_ChainstateManagerOptions* btck_chainstate_manager_options_create(const btck_Context* context, const char* data_dir, size_t data_dir_len, const char* blocks_dir, size_t blocks_dir_len)
 {
+    if (data_dir == nullptr || data_dir_len == 0 || blocks_dir == nullptr || blocks_dir_len == 0) {
+        LogError("Failed to create chainstate manager options: dir must be non-null and non-empty");
+        return nullptr;
+    }
     try {
         fs::path abs_data_dir{fs::absolute(fs::PathFromString({data_dir, data_dir_len}))};
         fs::create_directories(abs_data_dir);
@@ -1111,6 +1115,11 @@ int32_t btck_block_tree_entry_get_height(const btck_BlockTreeEntry* entry)
 const btck_BlockHash* btck_block_tree_entry_get_block_hash(const btck_BlockTreeEntry* entry)
 {
     return btck_BlockHash::ref(btck_BlockTreeEntry::get(entry).phashBlock);
+}
+
+int btck_block_tree_entry_equals(const btck_BlockTreeEntry* entry1, const btck_BlockTreeEntry* entry2)
+{
+    return &btck_BlockTreeEntry::get(entry1) == &btck_BlockTreeEntry::get(entry2);
 }
 
 btck_BlockHash* btck_block_hash_create(const unsigned char block_hash[32])

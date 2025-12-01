@@ -398,7 +398,6 @@ BOOST_AUTO_TEST_CASE(btck_transaction_tests)
     BOOST_CHECK_THROW(Transaction{invalid_data}, std::runtime_error);
     auto empty_data = hex_string_to_byte_vec("");
     BOOST_CHECK_THROW(Transaction{empty_data}, std::runtime_error);
-    BOOST_CHECK_THROW(Transaction{std::span<std::byte>(static_cast<std::byte*>(nullptr), 2)}, std::runtime_error);
 
     BOOST_CHECK_EQUAL(tx.CountOutputs(), 2);
     BOOST_CHECK_EQUAL(tx.CountInputs(), 1);
@@ -475,7 +474,9 @@ BOOST_AUTO_TEST_CASE(btck_script_pubkey)
     ScriptPubkey script2{script_data_2};
     CheckHandle(script, script2);
 
-    BOOST_CHECK_THROW(ScriptPubkey{std::span<std::byte>(static_cast<std::byte*>(nullptr), 2)}, std::runtime_error);
+    std::span<std::byte> empty_data{};
+    ScriptPubkey empty_script{empty_data};
+    CheckHandle(script, empty_script);
 }
 
 BOOST_AUTO_TEST_CASE(btck_transaction_output)
@@ -592,7 +593,6 @@ BOOST_AUTO_TEST_CASE(btck_block)
     BOOST_CHECK_THROW(Block{invalid_data}, std::runtime_error);
     auto empty_data = hex_string_to_byte_vec("");
     BOOST_CHECK_THROW(Block{empty_data}, std::runtime_error);
-    BOOST_CHECK_THROW(Block{std::span<std::byte>(static_cast<std::byte*>(nullptr), 2)}, std::runtime_error);
 }
 
 Context create_context(std::shared_ptr<TestKernelNotifications> notifications, ChainType chain_type, std::shared_ptr<TestValidationInterface> validation_interface = nullptr)
@@ -624,6 +624,20 @@ BOOST_AUTO_TEST_CASE(btck_chainman_tests)
         Context context{options};
         ChainstateManagerOptions chainman_opts{context, test_directory.m_directory.string(), (test_directory.m_directory / "blocks").string()};
         ChainMan chainman{context, chainman_opts};
+    }
+    { // null or empty data_directory or blocks_directory are not allowed
+        Context context{};
+        auto valid_dir{test_directory.m_directory.string()};
+        std::vector<std::pair<std::string_view, std::string_view>> illegal_cases{
+            {"", valid_dir},
+            {valid_dir, {nullptr, 0}},
+            {"", ""},
+            {{nullptr, 0}, {nullptr, 0}},
+        };
+        for (auto& [data_dir, blocks_dir] : illegal_cases) {
+            BOOST_CHECK_THROW(ChainstateManagerOptions(context, data_dir, blocks_dir),
+                              std::runtime_error);
+        };
     }
 
     auto notifications{std::make_shared<TestKernelNotifications>()};
@@ -796,6 +810,48 @@ BOOST_AUTO_TEST_CASE(btck_block_hash_tests)
     BOOST_CHECK(block_hash != block_hash_2);
     BOOST_CHECK(block_hash == block_hash);
     CheckHandle(block_hash, block_hash_2);
+}
+
+BOOST_AUTO_TEST_CASE(btck_block_tree_entry_tests)
+{
+    auto test_directory{TestDirectory{"block_tree_entry_test_bitcoin_kernel"}};
+    auto notifications{std::make_shared<TestKernelNotifications>()};
+    auto context{create_context(notifications, ChainType::REGTEST)};
+    auto chainman{create_chainman(
+        test_directory,
+        /*reindex=*/false,
+        /*wipe_chainstate=*/false,
+        /*block_tree_db_in_memory=*/true,
+        /*chainstate_db_in_memory=*/true,
+        context)};
+
+    // Process a couple of blocks
+    for (size_t i{0}; i < 3; i++) {
+        Block block{hex_string_to_byte_vec(REGTEST_BLOCK_DATA[i])};
+        bool new_block{false};
+        chainman->ProcessBlock(block, &new_block);
+        BOOST_CHECK(new_block);
+    }
+
+    auto chain{chainman->GetChain()};
+    auto entry_0{chain.GetByHeight(0)};
+    auto entry_1{chain.GetByHeight(1)};
+    auto entry_2{chain.GetByHeight(2)};
+
+    // Test inequality
+    BOOST_CHECK(entry_0 != entry_1);
+    BOOST_CHECK(entry_1 != entry_2);
+    BOOST_CHECK(entry_0 != entry_2);
+
+    // Test equality with same entry
+    BOOST_CHECK(entry_0 == chain.GetByHeight(0));
+    BOOST_CHECK(entry_0 == BlockTreeEntry{entry_0});
+    BOOST_CHECK(entry_1 == entry_1);
+
+    // Test GetPrevious
+    auto prev{entry_1.GetPrevious()};
+    BOOST_CHECK(prev.has_value());
+    BOOST_CHECK(prev.value() == entry_0);
 }
 
 BOOST_AUTO_TEST_CASE(btck_chainman_in_memory_tests)
