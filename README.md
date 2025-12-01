@@ -18,6 +18,12 @@ history with:
 git subtree pull --prefix libbitcoinkernel-sys/bitcoin https://github.com/bitcoin/bitcoin master --squash
 ```
 
+After updating the subtree, you can check for kernel-related commits in the
+update using the provided script:
+```
+./contrib/check_subtree_kernel_commits.sh
+```
+
 To build this library, the usual Bitcoin Core build requirements, such as
 `cmake` and a working C and C++ compiler are required. An installation of boost
 is required as well. Consult the Bitcoin Core documentation for the required
